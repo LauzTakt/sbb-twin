@@ -893,3 +893,20 @@ textarea:focus-visible {
 .primary.go:hover {
   background: #007a30;
 }
+
+.weather-canvas {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+.seg.wx button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+@media (max-width: 1500px) {
+  .seg.wx .label {
+    display: none;
+  }
+}

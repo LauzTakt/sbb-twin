@@ -8,7 +8,7 @@ export type Geometry = { type: string; coordinates: unknown } | null;
 export type Incident = { id: string; title: string; description: string; severity: string; where: string; createdAt: number; disruptionId?: string; geometry: Geometry };
 export type Status = { ts: number; trainsActive: number; trainsSimulated: number; realtime: { enabled: boolean; feedAgeSec: number | null; trips: number }; brokerClients: number; timetableDate: string };
 export type Event = { ts: number; kind: string; type: string; [k: string]: unknown };
-export type WeatherSnapshot = { ts: number; measuredAt: number | null; fields: string[]; stations: [string, string, number, number, number, number | null, number | null, number | null, number | null][] };
+export type WeatherSnapshot = { ts: number; measuredAt: number | null; fields: string[]; stations: (string | number | null)[][] };
 export type TemperatureGrid = { ts: number; measuredAt: number; bbox: [number, number, number, number]; step: number; cols: number; rows: number; values: (number | null)[] };
 
 export function brokerUrl() {
@@ -25,6 +25,7 @@ type Handlers = {
   connection: (state: "connecting" | "online" | "offline") => void;
   weather: (w: WeatherSnapshot) => void;
   grid: (g: TemperatureGrid) => void;
+  precip: (g: TemperatureGrid) => void;
   override: (id: string, o: WeatherOverride | null) => void;
   settings: (s: { protection: boolean }) => void;
 };
@@ -35,7 +36,7 @@ export function connectFeed(h: Handlers): MqttClient {
   const c = mqtt.connect(brokerUrl(), { reconnectPeriod: 2000, clientId: `viewer-${Math.random().toString(36).slice(2, 8)}` });
   c.on("connect", () => {
     h.connection("online");
-    c.subscribe([`${ROOT}/fleet`, `${ROOT}/status`, `${ROOT}/truth/disruptions/+`, `${ROOT}/incidents/+`, `${ROOT}/truth/trains/+`, `${ROOT}/events/#`, `${ROOT}/truth/events`, `${ROOT}/weather/snapshot`, `${ROOT}/weather/temperature-grid`, `${ROOT}/truth/weather/+`, `${ROOT}/truth/settings`]);
+    c.subscribe([`${ROOT}/fleet`, `${ROOT}/status`, `${ROOT}/truth/disruptions/+`, `${ROOT}/incidents/+`, `${ROOT}/truth/trains/+`, `${ROOT}/events/#`, `${ROOT}/truth/events`, `${ROOT}/weather/snapshot`, `${ROOT}/weather/temperature-grid`, `${ROOT}/weather/precipitation-grid`, `${ROOT}/truth/weather/+`, `${ROOT}/truth/settings`]);
   });
   c.on("close", () => h.connection("offline"));
   c.on("message", (topic, payload) => {
@@ -51,6 +52,7 @@ export function connectFeed(h: Handlers): MqttClient {
     else if ((topic.includes("/events/") || topic.endsWith("/truth/events")) && body) h.event(body);
     else if (topic.endsWith("/weather/snapshot") && body) h.weather(body);
     else if (topic.endsWith("/weather/temperature-grid") && body) h.grid(body);
+    else if (topic.endsWith("/weather/precipitation-grid") && body) h.precip(body);
     else if (topic.includes("/truth/weather/")) h.override(last, body);
     else if (topic.endsWith("/truth/settings") && body) h.settings(body);
   });

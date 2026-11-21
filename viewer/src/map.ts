@@ -38,8 +38,8 @@ function darkPaint(l: LayerSpecification): Record<string, unknown> {
   const water = /water|lake|river|see|fluss|gewaesser/.test(id);
   if (l.type === "background") return { "background-color": "#101418" };
   if (l.type === "fill") {
-    const c = water ? "#0e2233" : /forest|wood|wald/.test(id) ? "#122019" : /building/.test(id) ? "#1d232b" : "#151a20";
-    return { "fill-color": c, "fill-outline-color": c };
+    // no outline colour: outlines also trace tile edges and draw a grid of lines over the map
+    return { "fill-color": water ? "#0e2233" : /forest|wood|wald/.test(id) ? "#122019" : /building/.test(id) ? "#1d232b" : "#151a20" };
   }
   if (l.type === "line") return { "line-color": water ? "#16324a" : /boundary|border|grenze/.test(id) ? "#46505e" : /rail|bahn/.test(id) ? "#2c3440" : "#232a33" };
   if (l.type === "symbol") return { "text-color": water ? "#5d8bb0" : "#9aa3ae", "text-halo-color": "#101418", "text-halo-width": 1.2 };
@@ -53,7 +53,11 @@ export function applyBase(map: LibreMap, theme: Theme, satellite: boolean) {
   const style = map.getStyle();
   for (const l of style.layers) {
     if (!baseIds.includes(l.id)) continue;
-    const target = theme === "dark" ? { ...original.get(l.id), ...darkPaint(l) } : original.get(l.id) ?? {};
+    const base = original.get(l.id) ?? {};
+    const dark = darkPaint(l);
+    const target: Record<string, unknown> = theme === "dark" ? { ...base, ...dark } : { ...base };
+    // back to light: properties only the dark theme sets go back to their defaults
+    if (theme === "light") for (const k of Object.keys(dark)) if (!(k in base)) target[k] = undefined;
     for (const [k, v] of Object.entries(target)) {
       if (k.endsWith("-transition")) continue;
       try {

@@ -2,12 +2,13 @@ import * as maplibregl from "maplibre-gl";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import type { GeoJSONSource, ImageSource, Map as LibreMap } from "maplibre-gl";
 import type { MqttClient } from "mqtt";
-import { Activity, CloudSun, Crosshair, Layers, Link2, Moon, Pause, RefreshCcw, ShieldCheck, ShieldOff, Siren, Sun, TrainFront, X, Zap } from "lucide-react";
+import { Activity, CloudSnow, CloudSun, Crosshair, Layers, Link2, Moon, Pause, RefreshCcw, ShieldCheck, ShieldOff, Siren, Sun, Thermometer, TrainFront, Wind, X, Zap } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, brokerUrl, connectFeed, watchTrain, type Disruption, type Event, type Incident, type Status, type TemperatureGrid, type WeatherOverride, type WeatherSnapshot } from "./feed";
 import { applyBase, baseStyle, type Theme } from "./map";
 import { COLOURS, TrainCanvas } from "./trains";
-import { gridImage, RAMP, rampColour, temperatureAt } from "./weatherLayer";
+import { gridImage, precipImage, RAIN_LEGEND, RAMP, rampColour, SNOW_LEGEND, temperatureAt } from "./weatherLayer";
+import { WeatherParticles } from "./particles";
 
 type FC = { type: "FeatureCollection"; features: { type: "Feature"; properties: Record<string, unknown>; geometry: { type: string; coordinates: unknown } }[] };
 
@@ -101,6 +102,8 @@ export function App() {
   const [events, setEvents] = useState<Event[]>([]);
   const [weather, setWeather] = useState<WeatherSnapshot>();
   const [grid, setGrid] = useState<TemperatureGrid>();
+  const [precip, setPrecip] = useState<TemperatureGrid>();
+  const particles = useRef<WeatherParticles | undefined>(undefined);
   // the whole page is light or dark; the map is either the drawn map or satellite imagery
   const [theme, setTheme] = useState<Theme>(() => {
     try {
@@ -116,7 +119,9 @@ export function App() {
   const placing = useRef<Record<string, unknown> | undefined>(undefined);
   const [picked, setPicked] = useState<{ kind: "disruption" | "incident" | "weather"; id: string }>();
   const [placingLabel, setPlacingLabel] = useState<string>();
-  const [showTemp, setShowTemp] = useState(false);
+  // weather layer: off, temperature map, precipitation (rain/snow radar) or wind gusts
+  const [wx, setWx] = useState<"off" | "temp" | "precip" | "wind">("off");
+  const showTemp = wx === "temp";
   const [showTrains, setShowTrains] = useState(true);
   const [tab, setTab] = useState<"god" | "incidents" | "events" | "connect">("god");
   // ?train=<trainId> opens the app on that train, following it
@@ -143,6 +148,7 @@ export function App() {
       if (!alive) return m.remove();
       mapRef.current = m;
       (window as unknown as { railMap?: LibreMap }).railMap = m; // handy for debugging in the console
+      particles.current = new WeatherParticles(m);
       layer.current = new TrainCanvas(m);
       setReady(true);
       m.on("load", () => {
@@ -210,6 +216,7 @@ export function App() {
         event: (e) => setEvents((x) => [e, ...x].slice(0, 80)),
         weather: setWeather,
         grid: setGrid,
+        precip: setPrecip,
         override: (id, o) => setOverrides((x) => (o ? { ...x, [id]: o } : Object.fromEntries(Object.entries(x).filter(([k]) => k !== id)))),
         settings: (s) => setProtection(s.protection),
       });
@@ -234,7 +241,8 @@ export function App() {
   }, [selected, following, showTrains, ready]);
 
   // ---- overlays (added once; the base map never reloads)
-  const data = useRef({ disruptions: empty as FC, weather: empty as FC, areas: empty as FC, grid: undefined as ReturnType<typeof gridImage> | undefined, temp: false });
+  const data = useRef({ disruptions: empty as FC, weather: empty as FC, areas: empty as FC, grid: undefined as ReturnType<typeof gridImage> | undefined, precipImg: undefined as ReturnType<typeof precipImage> | undefined, temp: false });
+  const wxRef = useRef(wx);
   function addTemperature(m: LibreMap) {
     const d = data.current;
     if (!d.grid || m.getSource("temperature")) return;
@@ -243,6 +251,12 @@ export function App() {
       { id: "temperature", type: "raster", source: "temperature", paint: { "raster-opacity": 0.6, "raster-resampling": "linear", "raster-fade-duration": 0 }, layout: { visibility: d.temp ? "visible" : "none" } },
       m.getLayer("network") ? "network" : undefined,
     );
+  }
+  function addPrecip(m: LibreMap) {
+    const img = data.current.precipImg;
+    if (!img || m.getSource("precipitation")) return;
+    m.addSource("precipitation", { type: "image", url: img.url, coordinates: img.coordinates });
+    m.addLayer({ id: "precipitation", type: "raster", source: "precipitation", paint: { "raster-opacity": 0.85, "raster-resampling": "linear", "raster-fade-duration": 0 }, layout: { visibility: wxRef.current === "precip" ? "visible" : "none" } }, m.getLayer("network") ? "network" : undefined);
   }
   function addOverlays(m: LibreMap) {
     const d = data.current;
@@ -286,6 +300,7 @@ export function App() {
     }
     if (!m.getSource("weather")) {
       m.addSource("weather", { type: "geojson", data: d.weather as never });
+      m.addLayer({ id: "wind-label", type: "symbol", source: "weather", filter: [">=", ["get", "gust"], 0], layout: { visibility: "none", "text-field": ["get", "gustLabel"], "text-size": ["interpolate", ["linear"], ["zoom"], 7, 10.5, 10, 13], "text-font": ["Frutiger Neue Bold"], "text-allow-overlap": false, "text-padding": 6, "symbol-sort-key": ["-", 0, ["get", "gust"]] }, paint: { "text-color": ["step", ["get", "gust"], "#2d327d", 50, "#0079c7", 75, "#f27e00", 100, "#eb0000"], "text-halo-color": "rgba(255,255,255,0.95)", "text-halo-width": 2 } });
       m.addLayer({ id: "weather-label", type: "symbol", source: "weather", layout: { visibility: d.temp ? "visible" : "none", "text-field": ["get", "label"], "text-size": ["interpolate", ["linear"], ["zoom"], 7, 11, 10, 13.5], "text-font": ["Frutiger Neue Bold"], "text-allow-overlap": false, "text-padding": 6 }, paint: { "text-color": "#212121", "text-halo-color": "rgba(255,255,255,0.92)", "text-halo-width": 2 } });
     }
   }
@@ -312,6 +327,8 @@ export function App() {
       m.setPaintProperty(`stations-${tier}`, "circle-stroke-color", dark ? "#0b0e11" : "#212121");
     }
     if (layer.current) layer.current.theme = dark ? "dark" : "light";
+    if (particles.current) particles.current.dark = dark;
+    if (m.getLayer("wind-label")) m.setPaintProperty("wind-label", "text-halo-color", dark ? "rgba(16,20,24,0.92)" : "rgba(255,255,255,0.95)");
   }
   useEffect(() => {
     look.current = { theme, satellite };
@@ -365,8 +382,20 @@ export function App() {
     data.current.weather = {
       type: "FeatureCollection",
       features: weather.stations
-        .filter((s) => s[5] !== null)
-        .map(([id, name, lat, lon, , t]) => ({ type: "Feature" as const, properties: { id, name, colour: rampColour(t!), label: `${t!.toFixed(1)}°` }, geometry: { type: "Point" as const, coordinates: [lon, lat] } })),
+        .map((row) => Object.fromEntries(weather.fields.map((f, i) => [f, row[i]])) as Record<string, string | number | null>)
+        .filter((s) => s.tempC !== null || s.gustKmh !== null)
+        .map((s) => ({
+          type: "Feature" as const,
+          properties: {
+            id: s.id,
+            name: s.name,
+            colour: typeof s.tempC === "number" ? rampColour(s.tempC) : "#999",
+            label: typeof s.tempC === "number" ? `${s.tempC.toFixed(1)}°` : "",
+            gust: typeof s.gustKmh === "number" ? Math.round(s.gustKmh) : -1,
+            gustLabel: typeof s.gustKmh === "number" ? `${Math.round(s.gustKmh)} km/h` : "",
+          },
+          geometry: { type: "Point" as const, coordinates: [s.lon as number, s.lat as number] },
+        })),
     };
     (mapRef.current?.getSource("weather") as GeoJSONSource | undefined)?.setData(data.current.weather as never);
   }, [weather]);
@@ -387,10 +416,34 @@ export function App() {
   }, [grid]);
   useEffect(() => {
     data.current.temp = showTemp;
+    wxRef.current = wx;
     const m = mapRef.current;
     if (m && showTemp && !m.getSource("temperature")) addTemperature(m);
-    for (const id of ["temperature", "weather-label"]) if (m?.getLayer(id)) m.setLayoutProperty(id, "visibility", showTemp ? "visible" : "none");
-  }, [showTemp]);
+    if (m && wx === "precip" && !m.getSource("precipitation")) addPrecip(m);
+    const show: Record<string, boolean> = { temperature: wx === "temp", "weather-label": wx === "temp", precipitation: wx === "precip", "wind-label": wx === "wind" };
+    for (const [id, on] of Object.entries(show)) if (m?.getLayer(id)) m.setLayoutProperty(id, "visibility", on ? "visible" : "none");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wx]);
+  useEffect(() => {
+    if (!precip) return;
+    data.current.precipImg = precipImage(precip, grid);
+    const m = mapRef.current;
+    const src = m?.getSource("precipitation") as ImageSource | undefined;
+    if (src) src.updateImage({ url: data.current.precipImg.url, coordinates: data.current.precipImg.coordinates });
+    else if (m && wx === "precip") addPrecip(m);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [precip, grid]);
+  useEffect(() => {
+    // falling rain / drifting snow / wind streaks inside the active god-mode weather areas
+    particles.current?.set(
+      Object.values(overrides)
+        .filter((o) => o.status === "active")
+        .map((o) => {
+          const t = o.tempC ?? (grid ? (temperatureAt(grid, o.lon, o.lat) ?? 5) + (o.tempDeltaC ?? 0) : 5);
+          return { id: o.id, lon: o.lon, lat: o.lat, radiusKm: o.radiusKm, precipMm: o.precipMm ?? 0, gustKmh: o.gustKmh ?? 0, snow: t <= 1 };
+        }),
+    );
+  }, [overrides, grid]);
 
   // the picked event: highlighted on the map, scrolled to in the list
   useEffect(() => {
@@ -451,9 +504,20 @@ export function App() {
           <button className="toggle" aria-pressed={showTrains} onClick={() => setShowTrains((x) => !x)}>
             <Layers size={15} /> Trains
           </button>
-          <button className="toggle" aria-pressed={showTemp} onClick={() => setShowTemp((x) => !x)}>
-            <CloudSun size={15} /> Temperature
-          </button>
+          <div className="seg wx" role="group" aria-label="Weather layer">
+            {(
+              [
+                ["temp", "Temperature", Thermometer],
+                ["precip", "Rain & snow", CloudSnow],
+                ["wind", "Wind", Wind],
+              ] as const
+            ).map(([id, label, Icon]) => (
+              <button key={id} aria-pressed={wx === id} onClick={() => setWx((w) => (w === id ? "off" : id))} title={label}>
+                <Icon size={15} />
+                <span className="label">{label}</span>
+              </button>
+            ))}
+          </div>
           <button className="primary go" onClick={() => void syncAll()} title="Every train reads the real data again">
             <RefreshCcw size={15} /> Sync all
           </button>
@@ -524,6 +588,30 @@ export function App() {
             <i className="ring" />
             Simulated (provoked)
           </span>
+          {wx === "precip" && (
+            <div className="ramp">
+              <div style={{ background: `linear-gradient(90deg, ${RAIN_LEGEND.map(([, c]) => c).join(",")})` }} />
+              <small>
+                <span>rain · light</span>
+                <span>heavy</span>
+              </small>
+              <div style={{ background: `linear-gradient(90deg, ${SNOW_LEGEND.map(([, c]) => c).join(",")})`, marginTop: 4, boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.15)" }} />
+              <small>
+                <span>snow · light</span>
+                <span>heavy</span>
+              </small>
+            </div>
+          )}
+          {wx === "wind" && (
+            <div className="ramp">
+              <small>
+                <span style={{ color: "#2d327d" }}>gusts &lt; 50 km/h</span>
+                <span style={{ color: "#0079c7" }}>50</span>
+                <span style={{ color: "#f27e00" }}>75</span>
+                <span style={{ color: "#eb0000" }}>≥ 100</span>
+              </small>
+            </div>
+          )}
           {showTemp && (
             <div className="ramp">
               <div style={{ background: `linear-gradient(90deg, ${RAMP.map(([t, c]) => `${c} ${((t + 20) / 55) * 100}%`).join(",")})` }} />

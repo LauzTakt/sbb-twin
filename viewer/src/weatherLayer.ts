@@ -86,3 +86,64 @@ export function temperatureAt(g: TemperatureGrid, lon: number, lat: number) {
   const fy = y - r0;
   return (q[0]! * (1 - fx) + q[1]! * fx) * (1 - fy) + (q[2]! * (1 - fx) + q[3]! * fx) * fy;
 }
+
+// Precipitation like a weather radar: blues to violet for rain, white to ice-blue for snow (where it is <= 1 °C).
+const RAIN: [number, number, number, number][] = [
+  [0.05, 150, 205, 255],
+  [0.3, 70, 160, 255],
+  [1, 30, 110, 230],
+  [2.5, 45, 60, 210],
+  [5, 120, 45, 210],
+  [10, 200, 30, 200],
+];
+const SNOW: [number, number, number, number][] = [
+  [0.05, 255, 255, 255],
+  [1, 225, 246, 255],
+  [3, 185, 232, 255],
+  [6, 140, 215, 255],
+];
+function ramp(stops: [number, number, number, number][], v: number): [number, number, number] {
+  if (v <= stops[0][0]) return [stops[0][1], stops[0][2], stops[0][3]];
+  for (let i = 1; i < stops.length; i++)
+    if (v <= stops[i][0]) {
+      const a = stops[i - 1];
+      const b = stops[i];
+      const k = (v - a[0]) / (b[0] - a[0]);
+      return [a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k, a[3] + (b[3] - a[3]) * k];
+    }
+  const l = stops[stops.length - 1];
+  return [l[1], l[2], l[3]];
+}
+export const RAIN_LEGEND = RAIN.map(([v, r, g, b]) => [v, `rgb(${r},${g},${b})`] as const);
+export const SNOW_LEGEND = SNOW.map(([v, r, g, b]) => [v, `rgb(${r},${g},${b})`] as const);
+
+export function precipImage(p: TemperatureGrid, t?: TemperatureGrid) {
+  const canvas = document.createElement("canvas");
+  canvas.width = p.cols;
+  canvas.height = p.rows;
+  const ctx = canvas.getContext("2d")!;
+  const img = ctx.createImageData(p.cols, p.rows);
+  for (let i = 0; i < p.values.length; i++) {
+    const v = p.values[i] ?? 0;
+    if (v < 0.05) continue;
+    const temp = t && t.cols === p.cols ? t.values[i] : null;
+    const snow = temp !== null && temp !== undefined && temp <= 1;
+    const [r, g, b] = ramp(snow ? SNOW : RAIN, v);
+    img.data[i * 4] = r;
+    img.data[i * 4 + 1] = g;
+    img.data[i * 4 + 2] = b;
+    img.data[i * 4 + 3] = Math.min(235, 90 + v * 70);
+  }
+  ctx.putImageData(img, 0, 0);
+  const big = document.createElement("canvas");
+  big.width = p.cols * 4;
+  big.height = p.rows * 4;
+  const bctx = big.getContext("2d")!;
+  bctx.imageSmoothingEnabled = true;
+  bctx.imageSmoothingQuality = "high";
+  bctx.filter = "blur(3px)";
+  bctx.drawImage(canvas, 0, 0, big.width, big.height);
+  const [w, s, e, n] = p.bbox;
+  const h = p.step / 2;
+  return { url: big.toDataURL("image/png"), coordinates: [[w - h, n + h], [e + h, n + h], [e + h, s - h], [w - h, s - h]] as [[number, number], [number, number], [number, number], [number, number]] };
+}
