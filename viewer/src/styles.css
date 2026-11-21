@@ -72,7 +72,7 @@ main { flex: 1; min-height: 0; position: relative; display: flex; }
 .tabs { display: flex; gap: 4px; margin-bottom: 14px; padding: 3px; background: var(--milk); border-radius: 999px; }
 .tabs button { flex: 1; border: 0; background: transparent; border-radius: 999px; padding: 7px 10px; font-size: 14px; color: var(--metal); }
 .tabs button[aria-pressed="true"] { background: var(--white); color: var(--charcoal); font-weight: 700; box-shadow: 0 1px 3px rgba(0,0,0,.12); }
-.side h2.gap { margin-top: 22px; }
+.side h2.gap, .modal h2.gap { margin-top: 24px; }
 .field { display: grid; gap: 4px; margin-bottom: 10px; position: relative; font-size: 13px; color: var(--metal); min-width: 0; }
 .field input, .field select { height: 40px; border: 1px solid var(--cloud); border-radius: 8px; padding: 0 10px; font: inherit; font-size: 15px; color: var(--charcoal); background: var(--white); min-width: 0; }
 .field input:focus, .field select:focus { outline: 2px solid var(--sky); }
@@ -102,3 +102,12 @@ main { flex: 1; min-height: 0; position: relative; display: flex; }
 .sync:disabled { background: var(--cement); }
 .bulletins p { margin: 4px 0 2px; font-size: 13px; line-height: 1.45; color: var(--iron); white-space: pre-line; }
 @media (max-width: 760px) { .top .stats { display: none; } }
+
+.register { display: inline-flex; align-items: center; gap: 6px; border: 0; background: var(--red); color: #fff; border-radius: 999px; padding: 8px 16px; font-weight: 700; font-size: 14px; }
+.register:hover { background: #c60018; }
+.modal-back { position: fixed; inset: 0; z-index: 60; background: rgba(33, 33, 33, 0.45); display: grid; place-items: center; padding: 16px; }
+.modal { width: min(580px, 100%); max-height: calc(100vh - 32px); overflow-y: auto; background: var(--white); border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,.3); padding: 20px 22px 22px; }
+.modal header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.modal h2 { margin: 0; font-size: 20px; }
+.modal .picker { max-height: 220px; }
+@media (max-width: 760px) { .register span, .sync span { display: none; } .top { gap: 8px; } }

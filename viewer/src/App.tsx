@@ -1,7 +1,7 @@
 import * as maplibregl from "maplibre-gl";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import type { GeoJSONSource, Map as LibreMap } from "maplibre-gl";
-import { CircleDot, Crosshair, RefreshCcw, TrainFront, X } from "lucide-react";
+import { CircleDot, Crosshair, Plus, RefreshCcw, TrainFront, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api, connectLive, send, type Disruption, type Item, type Live, type SnapshotRow, type Status } from "./feed";
 import { Control } from "./Control";
@@ -49,8 +49,8 @@ export function App() {
   const [status, setStatus] = useState<Status>();
   const [alertItems, setItems] = useState<Item[]>([]);
   const [disruptions, setDisruptions] = useState<Disruption[]>([]);
-  const [supported, setSupported] = useState(false);
-  const [tab, setTab] = useState<"disruptions" | "bulletins" | "control">("disruptions");
+  const [tab, setTab] = useState<"disruptions" | "bulletins">("disruptions");
+  const [registering, setRegistering] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [picked, setPicked] = useState<string>();
   pickedId.current = picked;
@@ -214,11 +214,27 @@ export function App() {
             <b>{items.length}</b> {items.length === 1 ? "disruption" : "disruptions"}
           </span>
         </div>
+        <button className="register" onClick={() => setRegistering(true)}>
+          <Plus size={15} /> Register disruption
+        </button>
         <button className="sync" disabled={syncing} onClick={() => { setSyncing(true); setPicked(undefined); void send("POST", "/control/reset", {}).catch(() => undefined).finally(() => setSyncing(false)); }} title="Remove everything registered in the twin and go back to the real timetable">
           <RefreshCcw size={15} /> {syncing ? "Syncing…" : "Sync with reality"}
         </button>
         </div>
       </header>
+      {registering && (
+        <div className="modal-back" onMouseDown={(e) => e.target === e.currentTarget && setRegistering(false)} onKeyDown={(e) => e.key === "Escape" && setRegistering(false)}>
+          <div className="modal" role="dialog" aria-label="Register a disruption">
+            <header>
+              <h2>Register a disruption</h2>
+              <button className="icon" onClick={() => setRegistering(false)} aria-label="Close">
+                <X size={20} />
+              </button>
+            </header>
+            <Control disruptions={disruptions} />
+          </div>
+        </div>
+      )}
       <main>
         <div ref={mapEl} className="map" />
         {selected && live.current && <TrainCard key={selected} id={selected} live={live.current} following={following} onFollow={() => setFollowing((f) => !f)} onClose={() => (setSelected(undefined), setFollowing(false))} />}
@@ -227,9 +243,7 @@ export function App() {
           <div className="tabs" role="tablist">
             <button aria-pressed={tab === "disruptions"} onClick={() => setTab("disruptions")}>Disruptions</button>
             <button aria-pressed={tab === "bulletins"} onClick={() => setTab("bulletins")}>Bulletins</button>
-            <button aria-pressed={tab === "control"} onClick={() => setTab("control")}>Control</button>
           </div>
-          {tab === "control" && <Control disruptions={disruptions} supported={supported} onCatalogue={setSupported} />}
           {tab === "bulletins" && (
             <ul className="items bulletins">
               {!sorted.some((i) => i.description) && <p className="hint">No bulletin for the current disruptions.</p>}

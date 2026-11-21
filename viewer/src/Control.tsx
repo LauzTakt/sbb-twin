@@ -49,7 +49,8 @@ function Picker({ label, value, onChange }: { label: string; value?: Station; on
   );
 }
 
-export function Control({ disruptions, supported, onCatalogue }: { disruptions: Disruption[]; supported: boolean; onCatalogue: (ok: boolean) => void }) {
+export function Control({ disruptions }: { disruptions: Disruption[] }) {
+  const [supported, setSupported] = useState<boolean>();
   const [cats, setCats] = useState<Cat[]>([]);
   const [cause, setCause] = useState("");
   const [scope, setScope] = useState<"section" | "station">("section");
@@ -66,11 +67,10 @@ export function Control({ disruptions, supported, onCatalogue }: { disruptions: 
     void api<Cat[]>("/disruption-types")
       .then((c) => {
         const ok = Array.isArray(c) && c.length > 0 && "code" in c[0];
-        onCatalogue(ok);
+        setSupported(ok);
         if (ok) (setCats(c), setCause(c[0].code));
       })
-      .catch(() => onCatalogue(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+      .catch(() => setSupported(false));
   }, []);
   const cat = cats.find((c) => c.code === cause);
   useEffect(() => {
@@ -81,7 +81,8 @@ export function Control({ disruptions, supported, onCatalogue }: { disruptions: 
     t.setMinutes(Math.ceil(t.getMinutes() / 5) * 5);
     setTime(t.toLocaleTimeString("de-CH", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Zurich" }));
   }, [cat]);
-  if (!supported) return <p className="hint">The control-centre mode is being switched on: the twin is still starting its scenario engine.</p>;
+  if (supported === undefined) return <p className="hint">Loading…</p>;
+  if (!supported) return <p className="hint">The control-centre engine of the twin is not switched on yet: it is still being built, so disruptions cannot be registered for now.</p>;
   const ready = scope === "section" ? from && to && from.id !== to.id : station;
   const minutes = () => {
     if (endType === "UNKNOWN" || !time) return null;
@@ -114,7 +115,6 @@ export function Control({ disruptions, supported, onCatalogue }: { disruptions: 
   };
   return (
     <>
-      <h2>Report a disruption</h2>
       <label className="field">
         <span>Cause</span>
         <select value={cause} onChange={(e) => setCause(e.target.value)}>
