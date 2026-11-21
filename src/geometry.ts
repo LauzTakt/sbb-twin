@@ -177,6 +177,14 @@ export function edgesWithin(lat: number, lon: number, radiusKm: number): Set<num
   return out;
 }
 
+/** Middle vertex of an edge (unsigned ref), for altitude checks. */
+export function edgeMidpoint(ref: number): [number, number] | undefined {
+  const e = network?.edges[Math.abs(ref) - 1];
+  if (!e) return undefined;
+  const k = Math.floor(e[5].length / 4) * 2;
+  return [e[5][k], e[5][k + 1]];
+}
+
 /** GeoJSON geometry of a set of edges (for drawing an affected section). */
 export function edgesGeometry(refs: Set<number>) {
   const lines: number[][][] = [];
@@ -188,6 +196,11 @@ export function edgesGeometry(refs: Set<number>) {
     lines.push(line);
   }
   return lines.length ? { type: "MultiLineString" as const, coordinates: lines } : null;
+}
+
+export function abroadGeoJson() {
+  const f = join(config.dataDir, "abroad-lines.geojson");
+  return existsSync(f) ? readFileSync(f, "utf8") : JSON.stringify({ type: "FeatureCollection", features: [] });
 }
 
 export function networkGeoJson() {

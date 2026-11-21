@@ -52,6 +52,8 @@ export const weather = {
   units: {} as Record<string, string>,
   raw: undefined as undefined | { cols: number; rows: number; values: (number | null)[]; measuredAt: number },
   grid: undefined as undefined | { cols: number; rows: number; values: (number | null)[]; measuredAt: number }, // with overrides
+  precipRaw: undefined as undefined | number[],
+  precip: undefined as undefined | number[], // mm per 10 minutes, with overrides
   overrides: new Map<string, WeatherOverride>(),
   fetchedAt: 0,
   error: undefined as string | undefined,
@@ -191,6 +193,28 @@ function buildGrid() {
     }
   }
   weather.raw = { cols, rows, values, measuredAt: Math.max(0, ...measured.map((s) => s.measuredAt ?? 0)) };
+  // precipitation: plain inverse-distance weighting of the stations that measure it (no altitude effect), 25 km reach
+  const wet = [...weather.stations.values()].filter((s) => typeof s.precipMm === "number");
+  const precip = new Array(cols * rows).fill(0);
+  for (let r = 0; r < rows; r++) {
+    const lat = GRID.north - r * GRID.step;
+    for (let c = 0; c < cols; c++) {
+      const lon = GRID.west + c * GRID.step;
+      let num = 0;
+      let den = 0;
+      for (const s of wet) {
+        const dx = (s.lon - lon) * KM_LON;
+        const dy = (s.lat - lat) * 111.32;
+        const d2 = dx * dx + dy * dy;
+        if (d2 > 25 * 25) continue;
+        const w = 1 / Math.max(d2, 0.25);
+        num += w * (s.precipMm as number);
+        den += w;
+      }
+      precip[r * cols + c] = den ? Math.round((num / den) * 100) / 100 : 0;
+    }
+  }
+  weather.precipRaw = precip;
   applyOverrides();
 }
 
@@ -220,6 +244,27 @@ function applyOverrides() {
       }
   }
   weather.grid = { ...weather.raw, values };
+  if (weather.precipRaw) {
+    const p = weather.precipRaw.slice();
+    for (const o of active()) {
+      if (o.precipMm === undefined) continue;
+      for (let r = 0; r < rows; r++)
+        for (let c = 0; c < cols; c++) {
+          const w = weight(km(GRID.north - r * GRID.step, GRID.west + c * GRID.step, o.lat, o.lon), o.radiusKm);
+          if (w) p[r * cols + c] = Math.round((p[r * cols + c] * (1 - w) + o.precipMm * w) * 100) / 100;
+        }
+    }
+    weather.precip = p;
+  }
+}
+/** Temperature from the (overridden) grid at a point, nearest cell. */
+export function temperatureAt(lon: number, lat: number) {
+  const g = weather.grid;
+  if (!g) return undefined;
+  const c = Math.round((lon - GRID.west) / GRID.step);
+  const r = Math.round((GRID.north - lat) / GRID.step);
+  if (c < 0 || r < 0 || c >= g.cols || r >= g.rows) return undefined;
+  return g.values[r * g.cols + c] ?? undefined;
 }
 
 /** A station with the overrides that cover it applied. */
@@ -304,6 +349,12 @@ export function publishWeather() {
   for (const s of list) publish(`weather/stations/${s.id}`, { v: 1, ...s, source }, { retain: true, qos: 1 });
   const fields = ["id", "name", "lat", "lon", "altitudeM", ...FIELDS, "measuredAt"];
   publish("weather/snapshot", { v: 1, ts: Date.now(), measuredAt: weather.grid?.measuredAt ?? null, source, units: weather.units, fields, stations: list.map((s) => fields.map((f) => s[f] ?? null)) }, { retain: true, qos: 1 });
+  if (weather.grid && weather.precip)
+    publish(
+      "weather/precipitation-grid",
+      { v: 1, ts: Date.now(), measuredAt: weather.grid.measuredAt, unit: "mm per 10 minutes", phase: "snow where the temperature-grid value of the same cell is <= 1 °C, rain above", method: "inverse-distance weighting of MeteoSwiss stations within 25 km", bbox: [GRID.west, GRID.south, GRID.east, GRID.north], step: GRID.step, cols: weather.grid.cols, rows: weather.grid.rows, order: "row-major from north-west", values: weather.precip },
+      { retain: true, qos: 1 },
+    );
   if (weather.grid)
     publish(
       "weather/temperature-grid",

@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { InputError, TYPES, createDisruption, createIncident, disruptions, incidents } from "./disruptions.ts";
 import { byTrainId, neighbours, obstacleAhead, servedStations, sync, trains } from "./engine.ts";
 import { searchStations, stationIndex } from "./timetable.ts";
-import { networkGeoJson } from "./geometry.ts";
+import { abroadGeoJson, networkGeoJson } from "./geometry.ts";
 import { disruptionPayload, event, incidentPayload, infoPayload, positionPayload, removeDisruption, statusPayload } from "./feed.ts";
 import { clear, publish } from "./mqtt.ts";
 import { GRID, overridePayload, removeOverride, weather } from "./weather.ts";
@@ -73,6 +73,11 @@ export function api() {
     const i = stationIndex(c.req.param("id"));
     if (i === undefined) return c.json({ error: "Unknown station" }, 404);
     return c.json(neighbours(i, Math.min(80, Number(c.req.query("km") ?? 40))));
+  });
+  app.get("/abroad.geojson", (c) => {
+    c.header("content-type", "application/geo+json");
+    c.header("cache-control", "public, max-age=3600");
+    return c.body(abroadGeoJson());
   });
   app.get("/network.geojson", (c) => {
     c.header("content-type", "application/geo+json");

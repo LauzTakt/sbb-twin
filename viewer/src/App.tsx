@@ -97,6 +97,7 @@ export function App() {
   const [disruptions, setDisruptions] = useState<Record<string, Disruption>>({});
   const [incidents, setIncidents] = useState<Record<string, Incident>>({});
   const [simulated, setSimulated] = useState<Set<string>>(new Set());
+  const [causes, setCauses] = useState<Record<string, string[]>>({}); // why a simulated train behaves as it does
   const [events, setEvents] = useState<Event[]>([]);
   const [weather, setWeather] = useState<WeatherSnapshot>();
   const [grid, setGrid] = useState<TemperatureGrid>();
@@ -192,13 +193,20 @@ export function App() {
         status: setStatus,
         disruption: (id, d) => setDisruptions((x) => (d ? { ...x, [id]: d } : Object.fromEntries(Object.entries(x).filter(([k]) => k !== id)))),
         incident: (id, i) => setIncidents((x) => (i ? { ...x, [id]: i } : Object.fromEntries(Object.entries(x).filter(([k]) => k !== id)))),
-        simulated: (id, on) =>
+        simulated: (id, body) => {
           setSimulated((x) => {
             const n = new Set(x);
-            if (on) n.add(id);
+            if (body) n.add(id);
             else n.delete(id);
             return n;
-          }),
+          });
+          setCauses((x) => {
+            const n = { ...x };
+            if (body?.causes) n[id] = body.causes;
+            else delete n[id];
+            return n;
+          });
+        },
         event: (e) => setEvents((x) => [e, ...x].slice(0, 80)),
         weather: setWeather,
         grid: setGrid,
@@ -238,10 +246,10 @@ export function App() {
   }
   function addOverlays(m: LibreMap) {
     const d = data.current;
-    // railways abroad (OpenStreetMap via OpenFreeMap), under the Swiss BAV network
-    if (!m.getSource("osm")) {
-      m.addSource("osm", { type: "vector", url: "https://tiles.openfreemap.org/planet", attribution: "© OpenStreetMap contributors" });
-      m.addLayer({ id: "rail-abroad", type: "line", source: "osm", "source-layer": "transportation", filter: ["all", ["==", ["get", "class"], "rail"], ["!", ["has", "service"]], ["!", ["in", ["get", "subclass"], ["literal", ["subway", "tram", "light_rail", "funicular"]]]]], paint: { "line-color": "#686868", "line-width": ["interpolate", ["linear"], ["zoom"], 6, 0.6, 10, 1.3, 14, 2.4], "line-opacity": 0.6 } });
+    // railways abroad (OpenStreetMap, prepared by tools/prepare_abroad.py), under the Swiss BAV network
+    if (!m.getSource("abroad")) {
+      m.addSource("abroad", { type: "geojson", data: "/api/abroad.geojson", attribution: "© OpenStreetMap contributors" });
+      m.addLayer({ id: "rail-abroad", type: "line", source: "abroad", paint: { "line-color": "#686868", "line-width": ["interpolate", ["linear"], ["zoom"], 6, ["match", ["get", "usage"], "main", 1, 0.6], 10, ["match", ["get", "usage"], "main", 1.8, 1.2], 14, 2.6], "line-opacity": 0.7 } });
     }
     addTemperature(m);
     if (!m.getSource("network")) {
@@ -446,7 +454,7 @@ export function App() {
           <button className="toggle" aria-pressed={showTemp} onClick={() => setShowTemp((x) => !x)}>
             <CloudSun size={15} /> Temperature
           </button>
-          <button className="primary" onClick={() => void syncAll()} title="Every train reads the real data again">
+          <button className="primary go" onClick={() => void syncAll()} title="Every train reads the real data again">
             <RefreshCcw size={15} /> Sync all
           </button>
         </div>
@@ -536,6 +544,21 @@ export function App() {
           client={client.current}
           simulated={simulated.has(selected)}
           mods={Object.values(disruptions).filter((d) => d.status === "active" && d.scope.kind === "train" && d.scope.trainId === selected)}
+          holds={(causes[selected] ?? [])
+            .map((c) =>
+              c === "protection"
+                ? { id: c, label: "Train stopped ahead (signalling holds it)" }
+                : c === "protection-off"
+                  ? { id: c, label: "Train ahead in sight: driver braking" }
+                  : disruptions[c] && disruptions[c].status === "active" && !(disruptions[c].scope.kind === "train" && disruptions[c].scope.trainId === selected)
+                    ? { id: c, label: `${disruptions[c].label}: ${disruptions[c].where}` }
+                    : undefined,
+            )
+            .filter((x): x is { id: string; label: string } => Boolean(x))}
+          onPick={(id) => {
+            setPicked({ kind: "disruption", id });
+            setTab("god");
+          }}
           following={following}
           grid={grid}
           onFollow={() => setFollowing((f) => !f)}
@@ -551,7 +574,7 @@ export function App() {
   );
 }
 
-function TrainCard({ id, client, simulated, mods, following, grid, onFollow, onClose, say }: { id: string; client: MqttClient; simulated: boolean; mods: Disruption[]; following: boolean; grid?: TemperatureGrid; onFollow: () => void; onClose: () => void; say: (t: string) => void }) {
+function TrainCard({ id, client, simulated, mods, holds, onPick, following, grid, onFollow, onClose, say }: { id: string; client: MqttClient; simulated: boolean; mods: Disruption[]; holds: { id: string; label: string }[]; onPick: (id: string) => void; following: boolean; grid?: TemperatureGrid; onFollow: () => void; onClose: () => void; say: (t: string) => void }) {
   const [pos, setPos] = useState<Pos>();
   const [info, setInfo] = useState<Info>();
   const [maxKmh, setMaxKmh] = useState("60");
@@ -642,6 +665,20 @@ function TrainCard({ id, client, simulated, mods, following, grid, onFollow, onC
       <div className="modify">
         <h3>Modify this train</h3>
         {crashed && <p className="crash">Collision at {crashed.params.impactKmh} km/h</p>}
+        {holds.length > 0 && (
+          <div className="holds">
+            <b>Held by</b>
+            {holds.map((h) =>
+              h.id.startsWith("protection") ? (
+                <span key={h.id}>{h.label}</span>
+              ) : (
+                <button key={h.id} onClick={() => onPick(h.id)}>
+                  {h.label}
+                </button>
+              ),
+            )}
+          </div>
+        )}
         <div className="mod-row">
           {stopped ? (
             <button className="go" onClick={() => void api(`/disruptions/${stopped.id}/end`, { method: "POST", json: {} }).then(() => say("Train released: it continues, late"))}>

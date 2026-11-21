@@ -120,7 +120,7 @@ export function event(kind: "disruption" | "incident" | "train" | "sync" | "syst
 
 // ---------------------------------------------------------------- per tick
 export const FLEET_FIELDS = ["trainId", "lat", "lon", "bearing", "speedKmh", "motion", "delaySec", "line", "category", "atStopId", "continuity"];
-const truthPublished = new Set<string>();
+const truthPublished = new Map<string, string>(); // trainId -> causes signature
 const disruptionSig = new Map<string, string>();
 let lastStatus = 0;
 
@@ -138,8 +138,9 @@ export function publishTick(t: number, removed: Train[]) {
       tr.infoAt = t;
       publish(`trains/${id}/info`, infoPayload(tr, t), { retain: true, qos: 1 });
     }
-    if (tr.mode === "sim" && !truthPublished.has(id)) {
-      truthPublished.add(id);
+    const causesSig = [...tr.causes].join(",");
+    if (tr.mode === "sim" && truthPublished.get(id) !== causesSig) {
+      truthPublished.set(id, causesSig);
       publish(`truth/trains/${id}`, truthTrain(tr), { retain: true, qos: 1 });
     } else if (tr.mode === "real" && truthPublished.has(id)) {
       truthPublished.delete(id);

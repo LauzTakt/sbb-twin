@@ -862,3 +862,34 @@ textarea:focus-visible {
   outline-offset: 1px;
   background: color-mix(in srgb, var(--sky) 7%, var(--white));
 }
+
+.holds {
+  display: grid;
+  gap: 5px;
+  font-size: 14px;
+  background: color-mix(in srgb, var(--sky) 8%, var(--white));
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.holds b {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--metal);
+}
+.holds button {
+  text-align: left;
+  border: 0;
+  background: transparent;
+  color: var(--sky);
+  padding: 0;
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+.primary.go {
+  background: var(--green);
+}
+.primary.go:hover {
+  background: #007a30;
+}

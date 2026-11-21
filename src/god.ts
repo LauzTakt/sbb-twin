@@ -1,14 +1,16 @@
 // God mode: weather overrides and their consequences on the trains, protection switch, releasing trains.
 import { addSystemDisruption, disruptions, type Disruption } from "./disruptions.ts";
-import { edgesWithin } from "./geometry.ts";
+import { edgeMidpoint, edgesWithin } from "./geometry.ts";
 import { settings } from "./engine.ts";
-import { addOverride, endOverride, expireOverrides, weather, type WeatherOverride } from "./weather.ts";
+import { addOverride, elevation, endOverride, expireOverrides, temperatureAt, weather, type WeatherOverride } from "./weather.ts";
 
 export const WEATHER_PRESETS = [
   { id: "heatwave", label: "Heatwave", tempC: 38 },
   { id: "cold", label: "Cold snap", tempC: -18 },
-  { id: "storm", label: "Storm", windKmh: 70, gustKmh: 120, precipMm: 6 },
-  { id: "rain", label: "Heavy rain", precipMm: 12 },
+  { id: "storm", label: "Storm", windKmh: 70, gustKmh: 120, precipMm: 6, tempDeltaC: -4 }, // a cold front: it also cools
+  { id: "rain", label: "Heavy rain", precipMm: 12, tempDeltaC: -2 },
+  { id: "snow", label: "Snowfall", tempC: -3, precipMm: 3 },
+  { id: "blizzard", label: "Heavy snowfall", tempC: -6, precipMm: 6, windKmh: 40, gustKmh: 70 },
   { id: "warmer", label: "Warmer (+5 °C)", tempDeltaC: 5 },
   { id: "colder", label: "Colder (−5 °C)", tempDeltaC: -5 },
 ] as const;
@@ -22,11 +24,25 @@ function consequences(o: WeatherOverride): Disruption[] {
   const add = (type: string, label: string, reasonCode: string, effect: Disruption["effect"], params: Disruption["params"]) =>
     addSystemDisruption({ type, label, reasonCode, effect, scope, where, params, edges, endsAt: o.endsAt, origin: `weather override ${o.id}` });
   const out: Disruption[] = [];
-  if ((o.tempC ?? -99) >= 35) out.push(add("heat", "Heat: track buckling risk", "EG_006", "speed_restriction", { maxKmh: 80 }));
-  if ((o.tempC ?? 99) <= -15) out.push(add("frost", "Frost: points and overhead line icing", "EG_196", "speed_restriction", { maxKmh: 60 }));
+  // the temperature in the area decides rain or snow (the same storm can rain in valleys and snow higher up)
+  const temp = o.tempC ?? temperatureAt(o.lon, o.lat) ?? 5;
+  const precip = o.precipMm ?? 0;
+  const snow = precip >= 1 && temp <= 1;
+  if (temp >= 35) out.push(add("heat", "Heat: track buckling risk", "EG_006", "speed_restriction", { maxKmh: 80 }));
+  if (temp <= -15) out.push(add("frost", "Frost: icing of points and overhead lines", "EG_016", "speed_restriction", { maxKmh: 60 }));
   if ((o.gustKmh ?? 0) >= 100) out.push(add("storm", "Storm: lines closed", "EG_101", "section_closure", {}));
   else if ((o.gustKmh ?? 0) >= 75) out.push(add("wind", "Strong wind: reduced speed", "EG_101", "speed_restriction", { maxKmh: 60 }));
-  if ((o.precipMm ?? 0) >= 8) out.push(add("rain", "Heavy rain: landslide risk", "EG_018", "speed_restriction", { maxKmh: 40 }));
+  if (snow) {
+    out.push(add("snow", precip >= 4 ? "Heavy snowfall: slow running" : "Snow on the tracks: reduced speed", "EG_023", "speed_restriction", { maxKmh: precip >= 4 ? 40 : 60 }));
+    if (precip >= 4) {
+      // avalanche risk closes the mountain lines in the area (track above ~1,100 m)
+      const mountain = new Set([...edges].filter((ref) => {
+        const mid = edgeMidpoint(ref);
+        return mid !== undefined && (elevation(mid[0], mid[1]) ?? 0) >= 1100;
+      }));
+      if (mountain.size) out.push(addSystemDisruption({ type: "avalanche", label: "Avalanche risk: mountain lines closed", reasonCode: "EG_022", effect: "section_closure", scope, where, params: {}, edges: mountain, endsAt: o.endsAt, origin: `weather override ${o.id}` }));
+    }
+  } else if (precip >= 8) out.push(add("rain", "Heavy rain: landslide risk", "EG_018", "speed_restriction", { maxKmh: 40 }));
   return out;
 }
 

@@ -20,7 +20,7 @@ type Handlers = {
   status: (s: Status) => void;
   disruption: (id: string, d: Disruption | null) => void;
   incident: (id: string, i: Incident | null) => void;
-  simulated: (trainId: string, on: boolean) => void;
+  simulated: (trainId: string, body: { causes?: string[] } | null) => void;
   event: (e: Event) => void;
   connection: (state: "connecting" | "online" | "offline") => void;
   weather: (w: WeatherSnapshot) => void;
@@ -47,7 +47,7 @@ export function connectFeed(h: Handlers): MqttClient {
     else if (topic.endsWith("/status")) h.status(body);
     else if (topic.includes("/truth/disruptions/")) h.disruption(last, body);
     else if (topic.includes("/incidents/")) h.incident(last, body);
-    else if (topic.includes("/truth/trains/")) h.simulated(last, Boolean(body));
+    else if (topic.includes("/truth/trains/")) h.simulated(last, body);
     else if ((topic.includes("/events/") || topic.endsWith("/truth/events")) && body) h.event(body);
     else if (topic.endsWith("/weather/snapshot") && body) h.weather(body);
     else if (topic.endsWith("/weather/temperature-grid") && body) h.grid(body);
