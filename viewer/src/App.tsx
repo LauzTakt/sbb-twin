@@ -86,8 +86,9 @@ export function App() {
   const [showTemp, setShowTemp] = useState(false);
   const [showTrains, setShowTrains] = useState(true);
   const [tab, setTab] = useState<"provoke" | "incidents" | "events" | "connect">("provoke");
-  const [selected, setSelected] = useState<string>();
-  const [following, setFollowing] = useState(false);
+  // ?train=<trainId> opens the app on that train, following it
+  const [selected, setSelected] = useState<string | undefined>(() => new URLSearchParams(location.search).get("train") ?? undefined);
+  const [following, setFollowing] = useState(() => new URLSearchParams(location.search).has("train"));
   const [toast, setToast] = useState<string>();
   const [clock, setClock] = useState(Date.now());
   useEffect(() => {
@@ -367,8 +368,8 @@ function TrainCard({ id, client, simulated, mods, following, grid, onFollow, onC
     if (r) say(r.synced.length ? "Back on the real data" : "Already on the real data");
   };
   const temp = grid && pos ? temperatureAt(grid, pos.lon, pos.lat) : null;
-  const passed = (c: Call) => c.actualDep !== null || (c.actualArr !== null && c.plannedDep === null);
-  const upcoming = info?.calls.filter((c) => !passed(c)).slice(0, 6) ?? [];
+  // stops still ahead carry an expected time; passed ones do not
+  const upcoming = info?.calls.filter((c) => c.expectedArr !== null || c.expectedDep !== null).slice(0, 6) ?? [];
   const late = (pos?.delaySec ?? 0) >= 60;
   return (
     <section className="card" aria-label="Train details">

@@ -49,10 +49,18 @@ export function gridImage(g: TemperatureGrid) {
     img.data[i * 4 + 3] = 210;
   }
   ctx.putImageData(img, 0, 0);
+  // upsample with smoothing so the 2.5 km cells read as a continuous field
+  const big = document.createElement("canvas");
+  big.width = g.cols * 6;
+  big.height = g.rows * 6;
+  const bctx = big.getContext("2d")!;
+  bctx.imageSmoothingEnabled = true;
+  bctx.imageSmoothingQuality = "high";
+  bctx.drawImage(canvas, 0, 0, big.width, big.height);
   const [w, s, e, n] = g.bbox;
   const h = g.step / 2;
   return {
-    url: canvas.toDataURL("image/png"),
+    url: big.toDataURL("image/png"),
     coordinates: [
       [w - h, n + h],
       [e + h, n + h],
