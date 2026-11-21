@@ -8,6 +8,7 @@ import { config } from "./config.ts";
 import { station } from "./realtime.ts";
 import { stationIndex, stops } from "./timetable.ts";
 import { edgesGeometry, sectionEdges } from "./geometry.ts";
+import { abroadRoute } from "./abroad.ts";
 import { dayTrips, servedStations } from "./engine.ts";
 import { clear, publish } from "./mqtt.ts";
 import * as channel from "./channel.ts";
@@ -154,7 +155,9 @@ function build(feed: Feed) {
       if (ia !== undefined && ib !== undefined) {
         const edges = sectionEdges(stops[ia], stops[ib]);
         // no track in our network (e.g. abroad): a straight line between the two ends, so the section is still a line
-        geometry = edges.size ? edgesGeometry(edges) : { type: "MultiLineString", coordinates: [[[from.lon, from.lat], [to.lon, to.lat]]] };
+        // outside our network the section follows the foreign railway (OpenStreetMap) between the two stations
+        const route = edges.size ? null : abroadRoute(from, to);
+        geometry = edges.size ? edgesGeometry(edges) : { type: "MultiLineString", coordinates: [route ? [[from.lon, from.lat], ...route, [to.lon, to.lat]] : [[from.lon, from.lat], [to.lon, to.lat]]] };
         stationIds.add(from.id);
         stationIds.add(to.id);
       }
