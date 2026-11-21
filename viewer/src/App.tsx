@@ -120,8 +120,10 @@ export function App() {
   const [picked, setPicked] = useState<{ kind: "disruption" | "incident" | "weather"; id: string }>();
   const [placingLabel, setPlacingLabel] = useState<string>();
   // weather layer: off, temperature map, precipitation (rain/snow radar) or wind gusts
-  const [wx, setWx] = useState<"off" | "temp" | "precip" | "wind">("off");
+  const [wx, setWx] = useState<"off" | "temp" | "wind">("off");
+  const [showPrecip, setShowPrecip] = useState(true); // rain & snow always shown where it falls
   const showTemp = wx === "temp";
+  const precipRef = useRef(showPrecip);
   const [showTrains, setShowTrains] = useState(true);
   const [tab, setTab] = useState<"god" | "incidents" | "events" | "connect">("god");
   // ?train=<trainId> opens the app on that train, following it
@@ -218,6 +220,13 @@ export function App() {
         grid: setGrid,
         precip: setPrecip,
         override: (id, o) => setOverrides((x) => (o ? { ...x, [id]: o } : Object.fromEntries(Object.entries(x).filter(([k]) => k !== id)))),
+        reset: () => {
+          setDisruptions({});
+          setIncidents({});
+          setOverrides({});
+          setSimulated(new Set());
+          setCauses({});
+        },
         settings: (s) => setProtection(s.protection),
       });
       void api<{ protection: boolean }>("/god").then((g) => setProtection(g.protection)).catch(() => {});
@@ -256,7 +265,7 @@ export function App() {
     const img = data.current.precipImg;
     if (!img || m.getSource("precipitation")) return;
     m.addSource("precipitation", { type: "image", url: img.url, coordinates: img.coordinates });
-    m.addLayer({ id: "precipitation", type: "raster", source: "precipitation", paint: { "raster-opacity": 0.85, "raster-resampling": "linear", "raster-fade-duration": 0 }, layout: { visibility: wxRef.current === "precip" ? "visible" : "none" } }, m.getLayer("network") ? "network" : undefined);
+    m.addLayer({ id: "precipitation", type: "raster", source: "precipitation", paint: { "raster-opacity": 0.85, "raster-resampling": "linear", "raster-fade-duration": 0 }, layout: { visibility: precipRef.current ? "visible" : "none" } }, m.getLayer("network") ? "network" : undefined);
   }
   function addOverlays(m: LibreMap) {
     const d = data.current;
@@ -419,18 +428,25 @@ export function App() {
     wxRef.current = wx;
     const m = mapRef.current;
     if (m && showTemp && !m.getSource("temperature")) addTemperature(m);
-    if (m && wx === "precip" && !m.getSource("precipitation")) addPrecip(m);
-    const show: Record<string, boolean> = { temperature: wx === "temp", "weather-label": wx === "temp", precipitation: wx === "precip", "wind-label": wx === "wind" };
+    precipRef.current = showPrecip;
+    if (m && showPrecip && !m.getSource("precipitation")) addPrecip(m);
+    const show: Record<string, boolean> = { temperature: wx === "temp", "weather-label": wx === "temp", precipitation: showPrecip, "wind-label": wx === "wind" };
     for (const [id, on] of Object.entries(show)) if (m?.getLayer(id)) m.setLayoutProperty(id, "visibility", on ? "visible" : "none");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wx]);
+  }, [wx, showPrecip]);
   useEffect(() => {
     if (!precip) return;
     data.current.precipImg = precipImage(precip, grid);
     const m = mapRef.current;
     const src = m?.getSource("precipitation") as ImageSource | undefined;
     if (src) src.updateImage({ url: data.current.precipImg.url, coordinates: data.current.precipImg.coordinates });
-    else if (m && wx === "precip") addPrecip(m);
+    else if (m && showPrecip) {
+      try {
+        addPrecip(m);
+      } catch {
+        m.once("idle", () => addPrecip(m));
+      }
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [precip, grid]);
   useEffect(() => {
@@ -455,10 +471,52 @@ export function App() {
     return () => clearTimeout(t);
   }, [picked, tab]);
 
+  // ---- actions: the UI changes at once; the server confirms over MQTT, or the change is undone with a message
+  const drop = <T,>(x: Record<string, T>, id: string) => Object.fromEntries(Object.entries(x).filter(([k]) => k !== id));
+  const act = {
+    endDisruption: (id: string) => {
+      const before = disruptions[id];
+      if (before) setDisruptions((x) => ({ ...x, [id]: { ...before, status: "ended", endedAt: Date.now() } }));
+      void api(`/disruptions/${id}/end`, { method: "POST", json: {} }).catch((e) => {
+        say(e.message);
+        if (before) setDisruptions((x) => ({ ...x, [id]: before }));
+      });
+    },
+    removeDisruption: (id: string) => {
+      const before = disruptions[id];
+      setDisruptions((x) => drop(x, id));
+      void api(`/disruptions/${id}`, { method: "DELETE" }).catch((e) => {
+        say(e.message);
+        if (before) setDisruptions((x) => ({ ...x, [id]: before }));
+      });
+    },
+    endWeather: (id: string) => {
+      const before = overrides[id];
+      if (before) setOverrides((x) => ({ ...x, [id]: { ...before, status: "ended", endedAt: Date.now() } }));
+      void api(`/weather/overrides/${id}/end`, { method: "POST", json: {} }).catch((e) => {
+        say(e.message);
+        if (before) setOverrides((x) => ({ ...x, [id]: before }));
+      });
+    },
+    unmark: (id: string) => {
+      const before = incidents[id];
+      setIncidents((x) => drop(x, id));
+      void api(`/incidents/${id}`, { method: "DELETE" })
+        .then(() => say("Incident unmarked"))
+        .catch((e) => {
+          say(e.message);
+          if (before) setIncidents((x) => ({ ...x, [id]: before }));
+        });
+    },
+  };
+
   // ---- actions
   const syncAll = async () => {
-    const r = await api<{ synced: string[] }>("/sync", { method: "POST", json: {} }).catch((e) => (say(e.message), null));
-    if (r) say(r.synced.length ? `${r.synced.length} trains read the real data again` : "All trains already follow the real data");
+    const r = await api<{ removed: number; synced: number }>("/god/reset", { method: "POST", json: {} }).catch((e) => (say(e.message), null));
+    if (!r) return;
+    setPicked(undefined);
+    setProtection(true);
+    say(r.removed || r.synced ? `Back to reality: ${r.removed} changes removed, ${r.synced} trains synced` : "Already on the real data");
   };
   const active = Object.values(disruptions).filter((d) => d.status === "active");
   return (
@@ -505,10 +563,13 @@ export function App() {
             <Layers size={15} /> Trains
           </button>
           <div className="seg wx" role="group" aria-label="Weather layer">
+            <button aria-pressed={showPrecip} onClick={() => setShowPrecip((x) => !x)} title="Rain & snow">
+              <CloudSnow size={15} />
+              <span className="label">Rain & snow</span>
+            </button>
             {(
               [
                 ["temp", "Temperature", Thermometer],
-                ["precip", "Rain & snow", CloudSnow],
                 ["wind", "Wind", Wind],
               ] as const
             ).map(([id, label, Icon]) => (
@@ -518,7 +579,7 @@ export function App() {
               </button>
             ))}
           </div>
-          <button className="primary go" onClick={() => void syncAll()} title="Every train reads the real data again">
+          <button className="primary go" onClick={() => void syncAll()} title="Back to reality: delete every change and sync every train">
             <RefreshCcw size={15} /> Sync all
           </button>
         </div>
@@ -545,6 +606,7 @@ export function App() {
               disruptions={Object.values(disruptions)}
               overrides={Object.values(overrides)}
               picked={picked?.id}
+              act={act}
               protection={protection}
               setProtection={setProtection}
               placingLabel={placingLabel}
@@ -561,7 +623,7 @@ export function App() {
               say={say}
             />
           )}
-          {tab === "incidents" && <Incidents incidents={Object.values(incidents)} picked={picked?.id} say={say} />}
+          {tab === "incidents" && <Incidents incidents={Object.values(incidents)} picked={picked?.id} onUnmark={act.unmark} say={say} />}
           {tab === "events" && <Events events={events} />}
           {tab === "connect" && <Connect />}
         </div>
@@ -588,7 +650,7 @@ export function App() {
             <i className="ring" />
             Simulated (provoked)
           </span>
-          {wx === "precip" && (
+          {showPrecip && (precip?.values.some((v) => (v ?? 0) >= 0.05) || Object.values(overrides).some((o) => o.status === "active" && (o.precipMm ?? 0) > 0)) && (
             <div className="ramp">
               <div style={{ background: `linear-gradient(90deg, ${RAIN_LEGEND.map(([, c]) => c).join(",")})` }} />
               <small>
@@ -632,6 +694,7 @@ export function App() {
           client={client.current}
           simulated={simulated.has(selected)}
           mods={Object.values(disruptions).filter((d) => d.status === "active" && d.scope.kind === "train" && d.scope.trainId === selected)}
+          onEnd={act.endDisruption}
           holds={(causes[selected] ?? [])
             .map((c) =>
               c === "protection"
@@ -662,7 +725,7 @@ export function App() {
   );
 }
 
-function TrainCard({ id, client, simulated, mods, holds, onPick, following, grid, onFollow, onClose, say }: { id: string; client: MqttClient; simulated: boolean; mods: Disruption[]; holds: { id: string; label: string }[]; onPick: (id: string) => void; following: boolean; grid?: TemperatureGrid; onFollow: () => void; onClose: () => void; say: (t: string) => void }) {
+function TrainCard({ id, client, simulated, mods, onEnd, holds, onPick, following, grid, onFollow, onClose, say }: { id: string; client: MqttClient; simulated: boolean; mods: Disruption[]; onEnd: (id: string) => void; holds: { id: string; label: string }[]; onPick: (id: string) => void; following: boolean; grid?: TemperatureGrid; onFollow: () => void; onClose: () => void; say: (t: string) => void }) {
   const [pos, setPos] = useState<Pos>();
   const [info, setInfo] = useState<Info>();
   const [maxKmh, setMaxKmh] = useState("60");
@@ -769,7 +832,13 @@ function TrainCard({ id, client, simulated, mods, holds, onPick, following, grid
         )}
         <div className="mod-row">
           {stopped ? (
-            <button className="go" onClick={() => void api(`/disruptions/${stopped.id}/end`, { method: "POST", json: {} }).then(() => say("Train released: it continues, late"))}>
+            <button
+              className="go"
+              onClick={() => {
+                onEnd(stopped.id);
+                say("Resumed: it accelerates and catches up with its real timetable");
+              }}
+            >
               Resume
             </button>
           ) : (
@@ -834,7 +903,7 @@ function TrainCard({ id, client, simulated, mods, holds, onPick, following, grid
                   {d.effect === "obstacle" ? (d.params?.collidedAt ? ` · hit at ${d.params.impactKmh} km/h` : ` · ${d.params?.distanceM} m ahead`) : ""}
                   {d.params?.holdMinutes && d.effect === "train_delay" ? ` · ${d.params.holdMinutes} min` : ""}
                 </span>
-                <button onClick={() => void api(`/disruptions/${d.id}/end`, { method: "POST", json: {} })}>Remove</button>
+                <button onClick={() => onEnd(d.id)}>Remove</button>
               </li>
             ))}
           </ul>
@@ -848,7 +917,8 @@ function TrainCard({ id, client, simulated, mods, holds, onPick, following, grid
 type Preset = { id: string; label: string; tempC?: number; tempDeltaC?: number; precipMm?: number; windKmh?: number; gustKmh?: number };
 const NETWORK_TYPES = (t: DType) => t.scope === "section" || t.scope === "station";
 
-function GodMode({ disruptions, overrides, picked, protection, setProtection, placingLabel, onPlace, onCancelPlace, say }: { disruptions: Disruption[]; overrides: WeatherOverride[]; picked?: string; protection: boolean; setProtection: (on: boolean) => void; placingLabel?: string; onPlace: (body: Record<string, unknown>, label: string) => void; onCancelPlace: () => void; say: (t: string) => void }) {
+type Act = { endDisruption: (id: string) => void; removeDisruption: (id: string) => void; endWeather: (id: string) => void; unmark: (id: string) => void };
+function GodMode({ disruptions, overrides, picked, act, protection, setProtection, placingLabel, onPlace, onCancelPlace, say }: { disruptions: Disruption[]; overrides: WeatherOverride[]; picked?: string; act: Act; protection: boolean; setProtection: (on: boolean) => void; placingLabel?: string; onPlace: (body: Record<string, unknown>, label: string) => void; onCancelPlace: () => void; say: (t: string) => void }) {
   const [types, setTypes] = useState<DType[]>([]);
   const [presets, setPresets] = useState<Preset[]>([]);
   const [typeId, setTypeId] = useState("overhead_line_fault");
@@ -1014,7 +1084,7 @@ function GodMode({ disruptions, overrides, picked, protection, setProtection, pl
               </span>
               <small>since {hm(o.startedAt)}{o.endsAt ? ` · until ${hm(o.endsAt)}` : ""}</small>
             </div>
-            <button onClick={() => void api(`/weather/overrides/${o.id}/end`, { method: "POST", json: {} })}>End</button>
+            <button onClick={() => act.endWeather(o.id)}>End</button>
           </li>
         ))}
         {live.map((d) => (
@@ -1027,7 +1097,7 @@ function GodMode({ disruptions, overrides, picked, protection, setProtection, pl
                 {d.endsAt ? ` · until ${hm(d.endsAt)}` : ""} · {d.affectedTrains.length} trains
               </small>
             </div>
-            <button onClick={() => void api(`/disruptions/${d.id}/end`, { method: "POST", json: {} })}>End</button>
+            <button onClick={() => act.endDisruption(d.id)}>End</button>
           </li>
         ))}
         {ended.map((d) => (
@@ -1037,7 +1107,7 @@ function GodMode({ disruptions, overrides, picked, protection, setProtection, pl
               <span>{d.where}</span>
               <small>ended {hm(d.endedAt)} · {d.affectedTrains.length} trains</small>
             </div>
-            <button onClick={() => void api(`/disruptions/${d.id}`, { method: "DELETE" })}>Remove</button>
+            <button onClick={() => act.removeDisruption(d.id)}>Remove</button>
           </li>
         ))}
       </ul>
@@ -1050,7 +1120,7 @@ function GodMode({ disruptions, overrides, picked, protection, setProtection, pl
   );
 }
 
-function Incidents({ incidents, picked, say }: { incidents: Incident[]; picked?: string; say: (t: string) => void }) {
+function Incidents({ incidents, picked, onUnmark, say }: { incidents: Incident[]; picked?: string; onUnmark: (id: string) => void; say: (t: string) => void }) {
   const [title, setTitle] = useState("");
   const [severity, setSeverity] = useState("major");
   const [station, setStation] = useState<Station>();
@@ -1103,7 +1173,7 @@ function Incidents({ incidents, picked, say }: { incidents: Incident[]; picked?:
                   {i.disruptionId ? " · from a provoked disruption" : ""}
                 </small>
               </div>
-              <button onClick={() => void api(`/incidents/${i.id}`, { method: "DELETE" }).then(() => say("Incident unmarked"))}>Unmark</button>
+              <button onClick={() => onUnmark(i.id)}>Unmark</button>
             </li>
           ))}
       </ul>

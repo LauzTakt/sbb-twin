@@ -27,6 +27,7 @@ type Handlers = {
   grid: (g: TemperatureGrid) => void;
   precip: (g: TemperatureGrid) => void;
   override: (id: string, o: WeatherOverride | null) => void;
+  reset: () => void; // (re)connected: forget everything, the retained messages rebuild it
   settings: (s: { protection: boolean }) => void;
 };
 export type WeatherOverride = { id: string; label: string; lat: number; lon: number; radiusKm: number; tempC?: number; tempDeltaC?: number; precipMm?: number; windKmh?: number; gustKmh?: number; startedAt: number; endsAt: number | null; endedAt?: number; status: "active" | "ended"; disruptionIds: string[] };
@@ -36,6 +37,7 @@ export function connectFeed(h: Handlers): MqttClient {
   const c = mqtt.connect(brokerUrl(), { reconnectPeriod: 2000, clientId: `viewer-${Math.random().toString(36).slice(2, 8)}` });
   c.on("connect", () => {
     h.connection("online");
+    h.reset();
     c.subscribe([`${ROOT}/fleet`, `${ROOT}/status`, `${ROOT}/truth/disruptions/+`, `${ROOT}/incidents/+`, `${ROOT}/truth/trains/+`, `${ROOT}/events/#`, `${ROOT}/truth/events`, `${ROOT}/weather/snapshot`, `${ROOT}/weather/temperature-grid`, `${ROOT}/weather/precipitation-grid`, `${ROOT}/truth/weather/+`, `${ROOT}/truth/settings`]);
   });
   c.on("close", () => h.connection("offline"));

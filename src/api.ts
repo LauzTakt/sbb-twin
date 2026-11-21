@@ -137,6 +137,32 @@ export function api() {
     event("disruption", { type: s.protection ? "protection.on" : "protection.off" });
     return c.json(s);
   });
+  // Back to reality: delete everything we created (disruptions, weather changes, marked incidents), protection on,
+  // and every train snaps back to the real data.
+  app.post("/god/reset", (c) => {
+    const t = Date.now();
+    let removed = 0;
+    for (const d of [...disruptions.values()]) {
+      if (!d.endedAt) d.endedAt = t;
+      removeDisruption(d.id);
+      removed++;
+    }
+    for (const o of [...weather.overrides.values()]) {
+      endWeather(o.id);
+      removeOverride(o.id);
+      removed++;
+    }
+    for (const i of [...incidents.values()]) {
+      incidents.delete(i.id);
+      clear(`incidents/${i.id}`);
+      removed++;
+    }
+    const s = setProtection(true);
+    publish("truth/settings", { v: 1, ...s, ts: t }, { retain: true, qos: 1 });
+    const synced = sync();
+    event("sync", { type: "reset", removed, trainIds: synced });
+    return c.json({ removed, synced: synced.length });
+  });
   app.post("/god/release-all", (c) => {
     const n = releaseAll();
     event("disruption", { type: "release.all", count: n });
