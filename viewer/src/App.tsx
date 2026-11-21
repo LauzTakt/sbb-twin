@@ -95,7 +95,7 @@ export function App() {
   // the whole page is light or dark; the map is either the drawn map or satellite imagery
   const [theme, setTheme] = useState<Theme>(() => {
     try {
-      return localStorage.getItem("rail-twin-theme") === "dark" ? "dark" : "light";
+      return localStorage.getItem("sbb-twin-theme") === "dark" ? "dark" : "light";
     } catch {
       return "light";
     }
@@ -257,7 +257,7 @@ export function App() {
     look.current = { theme, satellite };
     document.documentElement.dataset.theme = theme;
     try {
-      localStorage.setItem("rail-twin-theme", theme);
+      localStorage.setItem("sbb-twin-theme", theme);
     } catch {
       /* private mode */
     }
@@ -345,7 +345,7 @@ export function App() {
           <span className="mark">
             <TrainFront size={19} />
           </span>
-          rail-twin
+          sbb-twin
           <span className={`conn ${conn}`}>{conn === "online" ? "Live" : conn === "offline" ? "Offline" : "Connecting"}</span>
         </div>
         <div className="stats">
@@ -359,8 +359,12 @@ export function App() {
           <span>
             <b>{active.length}</b> disruptions
           </span>
-          <span title="Age of the official GTFS-RT predictions">RT {status?.realtime.feedAgeSec ?? "–"} s</span>
-          {weather?.measuredAt && <span title="MeteoSwiss measurement time">weather {hm(weather.measuredAt)}</span>}
+          <span className="rt" title="Age of the official GTFS-RT predictions">RT {status?.realtime.feedAgeSec ?? "–"} s</span>
+          {weather?.measuredAt && (
+            <span className="wx" title="MeteoSwiss measurement time">
+              weather {hm(weather.measuredAt)}
+            </span>
+          )}
         </div>
         <div className="tools">
           <div className="seg" role="group" aria-label="Base map">
@@ -947,14 +951,14 @@ function Connect() {
       <code className="block">{url}</code>
       <ul className="topics">
         {[
-          ["rail/v1/fleet", "all trains, 1 message per second"],
-          ["rail/v1/trains/+/position", "one train per message, every second"],
-          ["rail/v1/trains/+/info", "line, operator, stops and times (retained)"],
-          ["rail/v1/incidents/+", "marked incidents (retained)"],
-          ["rail/v1/weather/temperature-grid", "temperature map (retained)"],
-          ["rail/v1/weather/snapshot", "MeteoSwiss stations (retained)"],
-          ["rail/v1/status", "heartbeat (retained)"],
-          ["rail/v1/detections/{team}/{id}", "yours to publish"],
+          ["sbb-twin/v1/fleet", "all trains, 1 message per second"],
+          ["sbb-twin/v1/trains/+/position", "one train per message, every second"],
+          ["sbb-twin/v1/trains/+/info", "line, operator, stops and times (retained)"],
+          ["sbb-twin/v1/incidents/+", "marked incidents (retained)"],
+          ["sbb-twin/v1/weather/temperature-grid", "temperature map (retained)"],
+          ["sbb-twin/v1/weather/snapshot", "MeteoSwiss stations (retained)"],
+          ["sbb-twin/v1/status", "heartbeat (retained)"],
+          ["sbb-twin/v1/detections/{team}/{id}", "yours to publish"],
         ].map(([t, d]) => (
           <li key={t}>
             <code>{t}</code>
@@ -962,7 +966,7 @@ function Connect() {
           </li>
         ))}
       </ul>
-      <code className="block">{`const c = mqtt.connect("${url}")\nc.on("connect", () => c.subscribe("rail/v1/fleet"))\nc.on("message", (_, b) => console.log(JSON.parse(b).trains.length))`}</code>
+      <code className="block">{`const c = mqtt.connect("${url}")\nc.on("connect", () => c.subscribe("sbb-twin/v1/fleet"))\nc.on("message", (_, b) => console.log(JSON.parse(b).trains.length))`}</code>
     </>
   );
 }

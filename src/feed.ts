@@ -1,4 +1,4 @@
-// What rail-twin publishes on MQTT: payload builders and the per-tick publication.
+// What sbb-twin publishes on MQTT: payload builders and the per-tick publication.
 import { randomUUID } from "node:crypto";
 import { clear, publish, brokerStats } from "./mqtt.ts";
 import { byTrainId, collisions, delayOf, edgeName, expectedArrival, expectedDeparture, nextCall, timetableDate, trains, tripMeta, type Train } from "./engine.ts";
@@ -9,7 +9,7 @@ import { weather } from "./weather.ts";
 
 export const VERSION = "1.0.0";
 export const startedAt = Date.now();
-export const streamId = randomUUID().replaceAll("-", "").slice(0, 16); // changes on every restart of rail-twin
+export const streamId = randomUUID().replaceAll("-", "").slice(0, 16); // changes on every restart of sbb-twin
 let tickNo = 0;
 /** Observable movement only: whether a train is moving and where it stands (no intent such as "held"). */
 const motionOf = (tr: Train) => (tr.speed >= 0.3 && tr.leg >= 0 ? "moving" : "stopped");
@@ -180,7 +180,7 @@ export function statusPayload(t = Date.now()) {
   return {
     v: 1,
     ts: t,
-    service: "rail-twin",
+    service: "sbb-twin",
     version: VERSION,
     streamId,
     tick: tickNo,

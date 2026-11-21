@@ -21,7 +21,7 @@ export const config = {
   gtfsRtKey: process.env.OTD_GTFS_RT_KEY ?? "",
   gtfsRtUrl: process.env.OTD_GTFS_RT_URL ?? "https://api.opentransportdata.swiss/la/gtfs-rt",
   rtIntervalMs: Number(process.env.RT_INTERVAL_MS ?? 30_000),
-  topicRoot: process.env.TOPIC_ROOT ?? "rail/v1",
+  topicRoot: process.env.TOPIC_ROOT ?? "sbb-twin/v1",
   production: process.env.NODE_ENV === "production",
   viewerDir: here("../viewer/"),
 };

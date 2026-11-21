@@ -1,5 +1,5 @@
 services:
-  rail-twin:
+  sbb-twin:
     build: .
     ports:
       - "8787:8787" # viewer, API, MQTT over WebSocket at /mqtt

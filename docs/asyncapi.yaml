@@ -1,6 +1,6 @@
 asyncapi: 3.0.0
 info:
-  title: rail-twin
+  title: sbb-twin
   version: 1.0.0
   description: |
     Live digital twin of every Swiss train (GTFS + GTFS-RT on BAV track geometry), MeteoSwiss weather and a
@@ -24,62 +24,62 @@ servers:
     protocol: mqtt
 channels:
   status:
-    address: rail/v1/status
+    address: sbb-twin/v1/status
     messages: { status: { $ref: "#/components/messages/status" } }
     bindings: { mqtt: { qos: 1, retain: true } }
   fleet:
-    address: rail/v1/fleet
+    address: sbb-twin/v1/fleet
     messages: { fleet: { $ref: "#/components/messages/fleet" } }
     bindings: { mqtt: { qos: 0, retain: false } }
   trainPosition:
-    address: rail/v1/trains/{trainId}/position
+    address: sbb-twin/v1/trains/{trainId}/position
     parameters: { trainId: { $ref: "#/components/parameters/trainId" } }
     messages: { position: { $ref: "#/components/messages/position" } }
     bindings: { mqtt: { qos: 0, retain: false } }
   trainInfo:
-    address: rail/v1/trains/{trainId}/info
+    address: sbb-twin/v1/trains/{trainId}/info
     parameters: { trainId: { $ref: "#/components/parameters/trainId" } }
     messages: { info: { $ref: "#/components/messages/info" } }
     bindings: { mqtt: { qos: 1, retain: true } }
   incident:
-    address: rail/v1/incidents/{incidentId}
+    address: sbb-twin/v1/incidents/{incidentId}
     parameters: { incidentId: { description: Incident id. } }
     messages: { incident: { $ref: "#/components/messages/incident" } }
     bindings: { mqtt: { qos: 1, retain: true } }
   events:
-    address: rail/v1/events/{kind}
+    address: sbb-twin/v1/events/{kind}
     parameters: { kind: { enum: [incident, train, system] } }
     messages: { event: { $ref: "#/components/messages/event" } }
     bindings: { mqtt: { qos: 1, retain: false } }
   weatherStation:
-    address: rail/v1/weather/stations/{stationId}
+    address: sbb-twin/v1/weather/stations/{stationId}
     parameters: { stationId: { description: MeteoSwiss station abbreviation, e.g. SMA. } }
     messages: { station: { $ref: "#/components/messages/weatherStation" } }
     bindings: { mqtt: { qos: 1, retain: true } }
   weatherSnapshot:
-    address: rail/v1/weather/snapshot
+    address: sbb-twin/v1/weather/snapshot
     messages: { snapshot: { $ref: "#/components/messages/weatherSnapshot" } }
     bindings: { mqtt: { qos: 1, retain: true } }
   temperatureGrid:
-    address: rail/v1/weather/temperature-grid
+    address: sbb-twin/v1/weather/temperature-grid
     messages: { grid: { $ref: "#/components/messages/temperatureGrid" } }
     bindings: { mqtt: { qos: 1, retain: true } }
   truthDisruption:
-    address: rail/v1/truth/disruptions/{disruptionId}
+    address: sbb-twin/v1/truth/disruptions/{disruptionId}
     parameters: { disruptionId: { description: Provoked disruption id. } }
     messages: { disruption: { $ref: "#/components/messages/disruption" } }
     bindings: { mqtt: { qos: 1, retain: true } }
   truthTrain:
-    address: rail/v1/truth/trains/{trainId}
+    address: sbb-twin/v1/truth/trains/{trainId}
     parameters: { trainId: { $ref: "#/components/parameters/trainId" } }
     messages: { simulated: { $ref: "#/components/messages/truthTrain" } }
     bindings: { mqtt: { qos: 1, retain: true } }
   truthEvents:
-    address: rail/v1/truth/events
+    address: sbb-twin/v1/truth/events
     messages: { event: { $ref: "#/components/messages/event" } }
     bindings: { mqtt: { qos: 1, retain: false } }
   detections:
-    address: rail/v1/detections/{team}/{detectionId}
+    address: sbb-twin/v1/detections/{team}/{detectionId}
     description: Reserved for the detection team (publish allowed). Tombstone when withdrawn.
     parameters: { team: { description: Team name. }, detectionId: { description: Your id. } }
     bindings: { mqtt: { qos: 1, retain: true } }

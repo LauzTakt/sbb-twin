@@ -1,5 +1,5 @@
 // Embedded MQTT broker (Aedes): TCP on MQTT_PORT and MQTT over WebSocket at /mqtt on the HTTP port.
-// Only rail-twin publishes under the root, except the namespaces reserved for other teams.
+// Only sbb-twin publishes under the root, except the namespaces reserved for other teams.
 import { createServer } from "node:net";
 import type { Server as HttpServer } from "node:http";
 import { Aedes } from "aedes";
@@ -13,9 +13,9 @@ export const brokerStats = { clients: 0 };
 
 export async function startBroker(http: HttpServer) {
   // ~1,000-2,000 position messages per second: allow many in flight, and never let one frozen subscriber stall the rest.
-  broker = await Aedes.createBroker({ id: "rail-twin", concurrency: 5000, drainTimeout: 10_000, queueLimit: 5000, heartbeatInterval: 30_000 });
+  broker = await Aedes.createBroker({ id: "sbb-twin", concurrency: 5000, drainTimeout: 10_000, queueLimit: 5000, heartbeatInterval: 30_000 });
   broker.authorizePublish = (client, packet, done) => {
-    if (!client) return done(null); // rail-twin itself
+    if (!client) return done(null); // sbb-twin itself
     const t = packet.topic;
     if (OPEN_NAMESPACES.some((ns) => t.startsWith(topic(ns))) || !t.startsWith(`${config.topicRoot}/`)) return done(null);
     done(new Error(`${t} is read-only: other teams may publish under ${topic("detections/")} or ${topic("ext/")}`));

@@ -1,7 +1,7 @@
-// The viewer reads rail-twin exactly as other teams do: MQTT over WebSocket.
+// The viewer reads sbb-twin exactly as other teams do: MQTT over WebSocket.
 import mqtt, { type MqttClient } from "mqtt";
 
-export const ROOT = "rail/v1";
+export const ROOT = "sbb-twin/v1";
 export type SnapshotRow = [trainId: string, lat: number, lon: number, bearing: number, speedKmh: number, motion: string, delaySec: number, line: string, category: string, atStopId: string | null, continuity: number];
 export type Disruption = { id: string; type: string; label: string; reasonCode: string; effect: string; where: string; status: "active" | "ended"; startedAt: number; endsAt: number | null; endedAt: number | null; affectedTrains: string[]; scope: Record<string, string>; params: Record<string, number>; geometry: Geometry };
 export type Geometry = { type: string; coordinates: unknown } | null;

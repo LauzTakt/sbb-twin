@@ -1,4 +1,4 @@
-# rail-twin
+# sbb-twin
 
 A live digital twin of every Swiss train, published on MQTT.
 
@@ -24,8 +24,8 @@ The viewer at `/` shows everything and is only for watching; it reads the same M
 | MQTT over WebSocket (local) | `ws://127.0.0.1:8787/mqtt` |
 | MQTT over TCP (local / Docker) | `mqtt://127.0.0.1:1883` |
 
-MQTT 3.1.1 or 5, anonymous, **read-only**. You may publish only under `rail/v1/detections/{team}/…` and
-`rail/v1/ext/{team}/…`. Use a unique client id and a clean session.
+MQTT 3.1.1 or 5, anonymous, **read-only**. You may publish only under `sbb-twin/v1/detections/{team}/…` and
+`sbb-twin/v1/ext/{team}/…`. Use a unique client id and a clean session.
 
 ```python
 # pip install paho-mqtt==2.1.0
@@ -33,7 +33,7 @@ import json, paho.mqtt.client as mqtt
 c = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, transport="websockets")
 c.tls_set()                                   # wss; drop for ws://
 c.ws_set_options(path="/mqtt")
-c.on_connect = lambda c, u, f, rc, p: c.subscribe("rail/v1/fleet")
+c.on_connect = lambda c, u, f, rc, p: c.subscribe("sbb-twin/v1/fleet")
 c.on_message = lambda c, u, m: print(len(json.loads(m.payload)["trains"]), "trains")
 c.connect("<public-host>", 443)
 c.loop_forever()
@@ -43,17 +43,17 @@ c.loop_forever()
 // npm i mqtt   (browsers: <script src="https://unpkg.com/mqtt@5.10.4/dist/mqtt.min.js"></script>)
 const mqtt = require("mqtt");
 const c = mqtt.connect("wss://<public-host>/mqtt");
-c.on("connect", () => c.subscribe(["rail/v1/fleet", "rail/v1/trains/+/info"]));
+c.on("connect", () => c.subscribe(["sbb-twin/v1/fleet", "sbb-twin/v1/trains/+/info"]));
 c.on("message", (topic, bytes) => {
   if (!bytes.length) return;                  // empty payload = retained message deleted
   const msg = JSON.parse(bytes.toString());
-  if (topic === "rail/v1/fleet") console.log(msg.trains.length, "trains at", new Date(msg.ts));
+  if (topic === "sbb-twin/v1/fleet") console.log(msg.trains.length, "trains at", new Date(msg.ts));
 });
 ```
 
 ## Topics
 
-All topics are under `rail/v1/`. Payloads are UTF-8 JSON with a schema version `v`. Times are **epoch milliseconds
+All topics are under `sbb-twin/v1/`. Payloads are UTF-8 JSON with a schema version `v`. Times are **epoch milliseconds
 (UTC)**; Swiss local time is `Europe/Zurich`. Coordinates are WGS84 degrees. An **empty retained payload is a
 tombstone**: the entity was removed.
 
@@ -113,7 +113,7 @@ A row's position is valid at `ts`. A train missing from a newer `fleet` message 
 | `delaySec` | delay in seconds (+ late) at the next stop: departure delay at intermediate stops, arrival delay at the terminus |
 | `edgeId`, `track` | BAV track segment id; `track: "approx"` = no BAV match (mostly abroad or replacement buses): straight line between stops |
 | `continuity` | increases when the train jumps (e.g. synced back to the real data): **do not interpolate across a change** |
-| `streamId`, `tick` | `streamId` changes when rail-twin restarts; `tick` increases by one per second within a stream |
+| `streamId`, `tick` | `streamId` changes when sbb-twin restarts; `tick` increases by one per second within a stream |
 
 **Smooth maps**: render about one second behind and interpolate each train between its last two positions; snap
 when `continuity` or `streamId` changes. Speed and bearing allow extrapolating up to one second.

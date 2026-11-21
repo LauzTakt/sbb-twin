@@ -1,4 +1,4 @@
-// rail-twin: live digital twin of every Swiss train, published on MQTT.
+// sbb-twin: live digital twin of every Swiss train, published on MQTT.
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
@@ -14,15 +14,15 @@ import { event, publishTick } from "./feed.ts";
 import { pollWeather, publishWeather, weather } from "./weather.ts";
 import { expireWeather } from "./god.ts";
 
-process.on("unhandledRejection", (e) => console.error("[rail-twin] unhandled:", (e as Error)?.message ?? e));
+process.on("unhandledRejection", (e) => console.error("[sbb-twin] unhandled:", (e as Error)?.message ?? e));
 
 const geo = loadGeometry();
-console.log(`[rail-twin] track geometry: ${geo.edges} BAV edges, ${geo.paths} matched station pairs`);
+console.log(`[sbb-twin] track geometry: ${geo.edges} BAV edges, ${geo.paths} matched station pairs`);
 await loadTimetable();
 if (live.enabled()) {
   const ok = await pollRealtime();
-  console.log(`[rail-twin] GTFS-RT: ${ok ? `${live.trips.size} trips` : live.error}`);
-} else console.warn("[rail-twin] no OTD_GTFS_RT_KEY: trains follow the planned timetable only");
+  console.log(`[sbb-twin] GTFS-RT: ${ok ? `${live.trips.size} trips` : live.error}`);
+} else console.warn("[sbb-twin] no OTD_GTFS_RT_KEY: trains follow the planned timetable only");
 
 const handleApi = getRequestListener(api().fetch);
 type Vite = { middlewares: (req: IncomingMessage, res: ServerResponse) => void };
@@ -47,7 +47,7 @@ if (!config.production) {
 }
 await startBroker(server);
 server.listen(config.port, config.host, () =>
-  console.log(`[rail-twin] viewer + API http://${config.host}:${config.port}/ · MQTT tcp://${config.host}:${config.mqttPort} · MQTT/WebSocket ws://${config.host}:${config.port}/mqtt`),
+  console.log(`[sbb-twin] viewer + API http://${config.host}:${config.port}/ · MQTT tcp://${config.host}:${config.mqttPort} · MQTT/WebSocket ws://${config.host}:${config.port}/mqtt`),
 );
 event("system", { type: "system.started" });
 
@@ -58,12 +58,12 @@ function loop() {
     const { removed } = tick(t);
     publishTick(t, removed);
   } catch (err) {
-    console.error("[rail-twin] tick failed:", err);
+    console.error("[sbb-twin] tick failed:", err);
   }
   setTimeout(loop, 1000 - (Date.now() % 1000) + 5);
 }
 loop();
-console.log(`[rail-twin] ${trains.size} trains in service`);
+console.log(`[sbb-twin] ${trains.size} trains in service`);
 
 setInterval(async () => {
   if (await pollRealtime()) applyRealtime();
@@ -71,11 +71,11 @@ setInterval(async () => {
 // MeteoSwiss publishes 10-minute values; poll every 5 minutes.
 const refreshWeather = async () => {
   if (await pollWeather()) publishWeather();
-  else console.warn("[rail-twin] weather:", weather.error);
+  else console.warn("[sbb-twin] weather:", weather.error);
 };
-void refreshWeather().then(() => console.log(`[rail-twin] weather: ${weather.stations.size} MeteoSwiss stations`));
+void refreshWeather().then(() => console.log(`[sbb-twin] weather: ${weather.stations.size} MeteoSwiss stations`));
 setInterval(refreshWeather, 5 * 60_000).unref();
 setInterval(expireWeather, 10_000).unref();
 setInterval(async () => {
-  if (await loadTimetable().catch((e) => (console.error("[rail-twin] timetable:", e.message), false))) event("system", { type: "system.timetable", note: "new service day loaded" });
+  if (await loadTimetable().catch((e) => (console.error("[sbb-twin] timetable:", e.message), false))) event("system", { type: "system.timetable", note: "new service day loaded" });
 }, 60_000).unref();

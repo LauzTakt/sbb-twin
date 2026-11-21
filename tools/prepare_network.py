@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Build rail-twin's track geometry from the federal rail network (BAV "Schienennetz").
+"""Build sbb-twin's track geometry from the federal rail network (BAV "Schienennetz").
 
 Every leg between two consecutive stops of a timetable trip gets the shortest path on the real
 track graph (one undirected edge per BAV Netzsegment, never mixing gauges), validated against the
 straight-line distance and the minimum scheduled running time.
 
-Outputs in rail-twin/data/:
+Outputs in sbb-twin/data/:
   network.json.gz      {"version":1, "nodes":[[stationId|null, name, lon, lat]...],
                         "edges":[[bavId, aNode, bNode, tracks, lengthM, [lon,lat,...]]...]}
   paths.json.gz        {"<from>><to>": [lengthM, "bav", [signed edge refs]]}  (+i = edge i-1 a->b)
@@ -659,7 +659,7 @@ def main():
 
     # --- summary
     print()
-    print("== rail-twin network summary ==")
+    print("== sbb-twin network summary ==")
     print(f"nodes {len(nodes)} | edges kept {len(edges)} / quarantined {len(segs) - len(edges)}"
           f" | {coverage['network']['lengthKm']} km | reversed {len(seg_report['reversed'])}, repaired {len(seg_report['repaired'])}")
     for q in seg_report["quarantined"]:

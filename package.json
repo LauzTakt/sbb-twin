@@ -1,5 +1,5 @@
 {
-  "name": "rail-twin",
+  "name": "sbb-twin",
   "private": true,
   "type": "module",
   "description": "Live digital twin of every Swiss train: GTFS + GTFS-RT on real track geometry, published on MQTT, with provokable disruptions.",
@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@hono/node-server": "^2.1.11",
+    "@types/three": "^0.187.0",
     "aedes": "^1.2.0",
     "gtfs-realtime-bindings": "^2.2.0",
     "hono": "^4.13.19",
@@ -19,6 +20,7 @@
     "pngjs": "^7.0.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
+    "three": "^0.187.0",
     "tsx": "^4.23.15",
     "ws": "^8.23.0"
   },

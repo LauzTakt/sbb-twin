@@ -27,7 +27,7 @@ export async function pollRealtime() {
   if (!config.gtfsRtKey) return false;
   try {
     const r = await fetch(config.gtfsRtUrl, {
-      headers: { Authorization: `Bearer ${config.gtfsRtKey}`, "User-Agent": "rail-twin (LauzHack 2026)", "Accept-Encoding": "gzip, deflate" },
+      headers: { Authorization: `Bearer ${config.gtfsRtKey}`, "User-Agent": "sbb-twin (LauzHack 2026)", "Accept-Encoding": "gzip, deflate" },
       signal: AbortSignal.timeout(20_000),
     });
     if (!r.ok) {

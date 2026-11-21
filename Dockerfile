@@ -1,4 +1,4 @@
-# rail-twin: one container with the twin, the MQTT broker (tcp 1883, ws /mqtt on 8787), the API and the viewer.
+# sbb-twin: one container with the twin, the MQTT broker (tcp 1883, ws /mqtt on 8787), the API and the viewer.
 FROM node:22-bookworm-slim AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
