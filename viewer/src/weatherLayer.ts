@@ -46,16 +46,17 @@ export function gridImage(g: TemperatureGrid) {
     img.data[i * 4] = r;
     img.data[i * 4 + 1] = gg;
     img.data[i * 4 + 2] = b;
-    img.data[i * 4 + 3] = 210;
+    img.data[i * 4 + 3] = 255;
   }
   ctx.putImageData(img, 0, 0);
-  // upsample with smoothing so the 2.5 km cells read as a continuous field
+  // upsample with smoothing and a soft blur so the cells read as one continuous field
   const big = document.createElement("canvas");
-  big.width = g.cols * 6;
-  big.height = g.rows * 6;
+  big.width = g.cols * 4;
+  big.height = g.rows * 4;
   const bctx = big.getContext("2d")!;
   bctx.imageSmoothingEnabled = true;
   bctx.imageSmoothingQuality = "high";
+  bctx.filter = "blur(3px)";
   bctx.drawImage(canvas, 0, 0, big.width, big.height);
   const [w, s, e, n] = g.bbox;
   const h = g.step / 2;

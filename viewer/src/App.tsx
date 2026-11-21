@@ -104,7 +104,8 @@ export function App() {
   useEffect(() => {
     let alive = true;
     void (async () => {
-      const m = new maplibregl.Map({ container: mapEl.current!, style: await basemap("dark"), center: [8.2, 46.8], zoom: 7.3, attributionControl: { compact: true }, maxPitch: 60 });
+      // locked to Switzerland: zoom freely, never leave these bounds (they match the temperature map)
+      const m = new maplibregl.Map({ container: mapEl.current!, style: await basemap("dark"), center: [8.2, 46.8], zoom: 7.3, attributionControl: { compact: true }, maxPitch: 60, maxBounds: [[5.4, 45.55], [11.0, 48.05]], renderWorldCopies: false });
       if (!alive) return m.remove();
       mapRef.current = m;
       layer.current = new TrainCanvas(m);

@@ -136,14 +136,15 @@ started tracking it). `skipped: true` = the train passes without stopping.
 
 ```json
 { "v": 1, "ts": 1795285800000, "measuredAt": 1795285200000, "unit": "°C",
-  "method": "inverse-distance weighting of MeteoSwiss stations, corrected for altitude (6.5 °C/km, terrain model)",
-  "bbox": [5.9, 45.78, 10.55, 47.86], "step": 0.025, "cols": 187, "rows": 84,
-  "order": "row-major from north-west; null = no station within 30 km",
-  "values": [null, null, 6.4, 6.3, …] }
+  "method": "inverse-distance weighting of MeteoSwiss stations (plus Open-Meteo model values outside Switzerland), corrected for altitude (6.5 °C/km, terrain model)",
+  "bbox": [5.4, 45.55, 11.0, 48.05], "step": 0.0125, "cols": 449, "rows": 201,
+  "order": "row-major from north-west",
+  "values": [7.1, 7.0, 6.9, …] }
 ```
 
-Cell `(row, col)` is centred on `lon = bbox[0] + col·step`, `lat = bbox[3] − row·step` (≈ 2.8 km × 1.9 km).
+Cell `(row, col)` is centred on `lon = bbox[0] + col·step`, `lat = bbox[3] − row·step` (≈ 0.95 km × 1.4 km).
 Each value is the expected air temperature **at the ground height of that cell**: valleys warm, mountains cold.
+It covers Switzerland and its surroundings (the viewer's map bounds); outside Switzerland it relies on Open-Meteo model values.
 
 **Temperature at a train's position** (bilinear interpolation):
 
@@ -237,5 +238,5 @@ station pair) and the day timetables (`day-YYYY-MM-DD.json.gz`) from the officia
 
 Timetable GTFS and GTFS-RT: [opentransportdata.swiss](https://opentransportdata.swiss) · Rail network: BAV
 [Schienennetz](https://data.geo.admin.ch/browser/index.html#/collections/ch.bav.schienennetz) · Weather: MeteoSwiss
-SwissMetNet open data via data.geo.admin.ch · Terrain: Terrarium elevation tiles (AWS Open Data) · Base maps:
+SwissMetNet open data via data.geo.admin.ch, Open-Meteo outside Switzerland · Terrain: Terrarium elevation tiles (AWS Open Data) · Base maps:
 © swisstopo. Formation details and occupancy are not modelled.

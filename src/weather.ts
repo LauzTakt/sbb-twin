@@ -1,6 +1,7 @@
 // Live weather from MeteoSwiss (SwissMetNet, open data, 10-minute values): temperature, precipitation, wind.
 // Temperature is also interpolated into a grid corrected for altitude (in Switzerland altitude dominates):
-// T(x) = IDW over stations of (T_i + L * z_i)  -  L * z(x), with lapse rate L = 6.5 °C/km and z from a terrain model.
+// T(x) = IDW over points of (T_i + L * z_i)  -  L * z(x), with lapse rate L = 6.5 °C/km and z from a terrain model.
+// Points = MeteoSwiss stations, plus Open-Meteo model values around the border so the map covers the whole view.
 import { PNG } from "pngjs";
 import { publish } from "./mqtt.ts";
 
@@ -11,7 +12,7 @@ const FEEDS = {
 } as const;
 const url = (layer: string) => `https://data.geo.admin.ch/ch.meteoschweiz.messwerte-${layer}/ch.meteoschweiz.messwerte-${layer}_en.json`;
 const LAPSE = 0.0065; // °C per metre
-export const GRID = { west: 5.9, south: 45.78, east: 10.55, north: 47.86, step: 0.025 };
+export const GRID = { west: 5.4, south: 45.55, east: 11.0, north: 48.05, step: 0.0125 }; // = the viewer's map bounds
 
 export type WeatherStation = {
   id: string;
@@ -24,6 +25,28 @@ export type WeatherStation = {
   windKmh: number | null; // 10-minute mean
   measuredAt: number | null; // epoch ms
 };
+
+type ModelPoint = { lat: number; lon: number; altitudeM: number; tempC: number; at: number };
+let border: ModelPoint[] = [];
+let borderAt = 0;
+/** Open-Meteo current temperatures on a 0.4° lattice, away from MeteoSwiss stations (mostly abroad). */
+async function refreshBorder(stations: WeatherStation[]) {
+  if (Date.now() - borderAt < 30 * 60_000 && border.length) return;
+  const kmLon = 111.32 * Math.cos((46.8 * Math.PI) / 180);
+  const pts: [number, number][] = [];
+  for (let lat = GRID.south; lat <= GRID.north + 1e-9; lat += 0.4)
+    for (let lon = GRID.west; lon <= GRID.east + 1e-9; lon += 0.4) {
+      const near = stations.some((s) => s.tempC !== null && ((s.lon - lon) * kmLon) ** 2 + ((s.lat - lat) * 111.32) ** 2 < 15 * 15);
+      if (!near) pts.push([Math.round(lat * 1000) / 1000, Math.round(lon * 1000) / 1000]);
+    }
+  const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${pts.map((p) => p[0]).join(",")}&longitude=${pts.map((p) => p[1]).join(",")}&current=temperature_2m`, { signal: AbortSignal.timeout(20_000) });
+  if (!r.ok) throw new Error(`Open-Meteo HTTP ${r.status}`);
+  const body = (await r.json()) as { latitude: number; longitude: number; elevation: number; current: { temperature_2m: number; time: string } }[];
+  border = (Array.isArray(body) ? body : [body])
+    .filter((x) => typeof x.current?.temperature_2m === "number")
+    .map((x) => ({ lat: x.latitude, lon: x.longitude, altitudeM: x.elevation, tempC: x.current.temperature_2m, at: Date.parse(`${x.current.time}Z`) }));
+  borderAt = Date.now();
+}
 
 export const weather = {
   stations: new Map<string, WeatherStation>(),
@@ -105,6 +128,7 @@ export async function pollWeather() {
     weather.stations = stations;
     weather.fetchedAt = Date.now();
     weather.error = undefined;
+    await refreshBorder([...stations.values()]).catch((e) => console.warn("[weather] border model values unavailable:", e.message));
     buildGrid();
     return true;
   } catch (err) {
@@ -114,7 +138,8 @@ export async function pollWeather() {
 }
 
 function buildGrid() {
-  const pts = [...weather.stations.values()].filter((s) => s.tempC !== null);
+  const measured = [...weather.stations.values()].filter((s) => s.tempC !== null);
+  const pts = [...measured.map((s) => ({ lat: s.lat, lon: s.lon, altitudeM: s.altitudeM, tempC: s.tempC! })), ...border];
   const cols = Math.round((GRID.east - GRID.west) / GRID.step) + 1;
   const rows = Math.round((GRID.north - GRID.south) / GRID.step) + 1;
   const values: (number | null)[] = new Array(cols * rows).fill(null);
@@ -125,24 +150,22 @@ function buildGrid() {
       const lon = GRID.west + c * GRID.step;
       let num = 0;
       let den = 0;
-      let nearest = Infinity;
       for (const s of pts) {
         const dx = (s.lon - lon) * kmLon;
         const dy = (s.lat - lat) * 111.32;
         const d2 = dx * dx + dy * dy;
-        nearest = Math.min(nearest, d2);
-        if (d2 > 60 * 60) continue;
+        if (d2 > 90 * 90) continue;
         const w = 1 / Math.max(d2, 0.25) ** 1.2;
-        num += w * (s.tempC! + LAPSE * s.altitudeM);
+        num += w * (s.tempC + LAPSE * s.altitudeM);
         den += w;
       }
-      if (!den || nearest > 30 * 30) continue;
+      if (!den) continue;
       const z = elevation(lon, lat);
       const t = num / den - LAPSE * (z ?? 500);
       values[r * cols + c] = Math.round(t * 10) / 10;
     }
   }
-  const measuredAt = Math.max(0, ...pts.map((s) => s.measuredAt ?? 0));
+  const measuredAt = Math.max(0, ...measured.map((s) => s.measuredAt ?? 0));
   weather.grid = { cols, rows, values, measuredAt };
 }
 
@@ -161,7 +184,7 @@ export function publishWeather() {
   if (weather.grid)
     publish(
       "weather/temperature-grid",
-      { v: 1, ts: weather.fetchedAt, measuredAt: weather.grid.measuredAt, unit: "°C", method: "inverse-distance weighting of MeteoSwiss stations, corrected for altitude (6.5 °C/km, terrain model)", bbox: [GRID.west, GRID.south, GRID.east, GRID.north], step: GRID.step, cols: weather.grid.cols, rows: weather.grid.rows, order: "row-major from north-west; null = no station within 30 km", values: weather.grid.values },
+      { v: 1, ts: weather.fetchedAt, measuredAt: weather.grid.measuredAt, unit: "°C", method: "inverse-distance weighting of MeteoSwiss stations (plus Open-Meteo model values outside Switzerland), corrected for altitude (6.5 °C/km, terrain model)", bbox: [GRID.west, GRID.south, GRID.east, GRID.north], step: GRID.step, cols: weather.grid.cols, rows: weather.grid.rows, order: "row-major from north-west", values: weather.grid.values },
       { retain: true, qos: 1 },
     );
 }
