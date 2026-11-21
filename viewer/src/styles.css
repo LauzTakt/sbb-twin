@@ -111,3 +111,11 @@ main { flex: 1; min-height: 0; position: relative; display: flex; }
 .modal h2 { margin: 0; font-size: 20px; }
 .modal .picker { max-height: 220px; }
 @media (max-width: 760px) { .register span, .sync span { display: none; } .top { gap: 8px; } }
+
+.modal .primary.wide { margin-top: 4px; }
+.modal .hint { margin: 8px 0 0; }
+.modal h2.gap { margin: 28px 0 10px; padding-top: 18px; border-top: 1px solid var(--cloud); font-size: 17px; }
+.modal .field { margin-bottom: 12px; }
+.modal .seg { margin-bottom: 12px; }
+
+.modal .row:has(input[type="date"]) { grid-template-columns: 1.3fr 1.2fr 1fr; }

@@ -217,8 +217,8 @@ export function App() {
         <button className="register" onClick={() => setRegistering(true)}>
           <Plus size={15} /> Register disruption
         </button>
-        <button className="sync" disabled={syncing} onClick={() => { setSyncing(true); setPicked(undefined); void send("POST", "/control/reset", {}).catch(() => undefined).finally(() => setSyncing(false)); }} title="Remove everything registered in the twin and go back to the real timetable">
-          <RefreshCcw size={15} /> {syncing ? "Syncing…" : "Sync with reality"}
+        <button className="sync" disabled={syncing} onClick={() => { setSyncing(true); setPicked(undefined); void send("POST", "/control/reset", {}).catch(() => undefined).finally(() => setSyncing(false)); }} title="Remove everything registered in the twin and go back to the live data">
+          <RefreshCcw size={15} /> {syncing ? "Syncing…" : "Sync with live"}
         </button>
         </div>
       </header>

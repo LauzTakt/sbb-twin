@@ -7,6 +7,16 @@ type Cat = { code: string; label: string; effect: "interrupted" | "limited"; def
 type Station = { id: string; name: string };
 type Proposal = { measures?: { type: string; label?: string; probability?: number; at?: string }[]; note?: string };
 const fold = (x: string) => x.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+const zurichDay = (ms: number) => new Date(ms).toLocaleDateString("sv-SE", { timeZone: "Europe/Zurich" });
+/** Epoch ms of a date and a time of day in Swiss time (summer or winter time as that day has it). */
+function zurichEpoch(date: string, time: string) {
+  const [y, mo, d] = date.split("-").map(Number);
+  const [h, mi] = time.split(":").map(Number);
+  const guess = Date.UTC(y, mo - 1, d, h, mi);
+  const part = new Intl.DateTimeFormat("en-US", { timeZone: "Europe/Zurich", timeZoneName: "shortOffset" }).formatToParts(new Date(guess)).find((p) => p.type === "timeZoneName")?.value ?? "GMT+1";
+  const off = Number(part.replace("GMT", "").split(":")[0] || 0);
+  return guess - off * 3600_000;
+}
 const hm = (ms?: number | null) => (ms ? new Date(ms).toLocaleTimeString("de-CH", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Zurich" }) : "");
 const MEASURES: { type: string; label: string; body: Record<string, unknown> }[] = [
   { type: "short_turn", label: "Short-turn trains at both ends", body: { type: "short_turn", at: "both" } },
@@ -60,6 +70,7 @@ export function Control({ disruptions }: { disruptions: Disruption[] }) {
   const [effect, setEffect] = useState<"interrupted" | "limited">("interrupted");
   const [endType, setEndType] = useState("UNTIL");
   const [time, setTime] = useState("");
+  const [date, setDate] = useState(() => zurichDay(Date.now()));
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
   const [proposals, setProposals] = useState<Record<string, Proposal>>({});
@@ -79,25 +90,20 @@ export function Control({ disruptions }: { disruptions: Disruption[] }) {
     setEndType(cat.durationType === "UNTIL_AT_LEAST" ? "UNTIL_AT_LEAST" : cat.durationType === "UNKNOWN" ? "UNKNOWN" : "UNTIL");
     const t = new Date(Date.now() + (cat.defaultMinutes ?? 120) * 60000);
     t.setMinutes(Math.ceil(t.getMinutes() / 5) * 5);
+    setDate(zurichDay(t.getTime()));
     setTime(t.toLocaleTimeString("de-CH", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Zurich" }));
   }, [cat]);
   if (supported === undefined) return <p className="hint">Loading…</p>;
   if (!supported) return <p className="hint">The control-centre engine of the twin is not switched on yet: it is still being built, so disruptions cannot be registered for now.</p>;
   const ready = scope === "section" ? from && to && from.id !== to.id : station;
-  const minutes = () => {
-    if (endType === "UNKNOWN" || !time) return null;
-    const [h, m] = time.split(":").map(Number);
-    const now = new Date();
-    const zurich = new Date(now.toLocaleString("en-US", { timeZone: "Europe/Zurich" }));
-    let d = h * 60 + m - (zurich.getHours() * 60 + zurich.getMinutes());
-    if (d <= 0) d += 1440;
-    return d;
-  };
+  const endAt = () => (endType === "UNKNOWN" || !time || !date ? null : zurichEpoch(date, time));
   const report = async () => {
     if (!ready) return;
+    const end = endAt();
+    if (end !== null && end <= Date.now()) return setMsg("The expected end is in the past");
     setBusy(true);
     try {
-      const r = await send<{ disruption: Disruption; proposal?: Proposal }>("POST", "/disruptions", { cause, effect, scope: scope === "section" ? { kind: "section", from: from!.id, to: to!.id } : { kind: "station", station: station!.id }, minutes: minutes(), durationType: endType });
+      const r = await send<{ disruption: Disruption; proposal?: Proposal }>("POST", "/disruptions", { cause, effect, scope: scope === "section" ? { kind: "section", from: from!.id, to: to!.id } : { kind: "station", station: station!.id }, until: endAt(), durationType: endType });
       if (r.proposal) setProposals((p) => ({ ...p, [r.disruption.id]: r.proposal! }));
       setMsg(`Registered: ${r.disruption.summary ?? r.disruption.label ?? "disruption"}`);
     } catch (e) {
@@ -151,10 +157,16 @@ export function Control({ disruptions }: { disruptions: Disruption[] }) {
           </select>
         </label>
         {endType !== "UNKNOWN" && (
-          <label className="field">
-            <span>Time</span>
-            <input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
-          </label>
+          <>
+            <label className="field">
+              <span>Date</span>
+              <input type="date" value={date} min={zurichDay(Date.now())} onChange={(e) => setDate(e.target.value)} />
+            </label>
+            <label className="field">
+              <span>Time</span>
+              <input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+            </label>
+          </>
         )}
       </div>
       <button className="primary wide" disabled={!ready || busy} onClick={() => void report()}>
