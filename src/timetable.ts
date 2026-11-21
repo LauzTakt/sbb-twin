@@ -56,6 +56,8 @@ export function searchStations(q: string, limit = 8) {
   const n = norm(q.trim());
   if (!n) return [];
   const hits = stops.filter((s) => norm(s.name).includes(n) || s.id === q.trim());
-  hits.sort((a, b) => Number(!norm(b.name).startsWith(n)) - Number(!norm(a.name).startsWith(n)) || a.name.length - b.name.length);
+  // exact name first, then names starting with the query, then the rest; shorter names first within each group
+  const rank = (s: { name: string }) => (norm(s.name) === n ? 0 : norm(s.name).startsWith(n) ? 1 : 2);
+  hits.sort((a, b) => rank(a) - rank(b) || a.name.length - b.name.length);
   return hits.slice(0, limit);
 }

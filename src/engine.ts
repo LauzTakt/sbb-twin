@@ -366,6 +366,24 @@ const meta: Record<string, [string, string, string]> = {};
 export const tripMeta = (tripId: string) => meta[tripId];
 /** Today's timetable (every trip of the loaded service day). */
 export const dayTrips = () => trips;
+/** A trip's expected times now: an active train's own timeline (held or slowed trains move later), else the
+ *  timetable with the live predictions. `from` is the first stop where a passenger can still board it. */
+export function liveTimes(trip: Trip, t: number) {
+  const tr = trains.get(trip.key);
+  if (tr) {
+    const n = trip.stops.length;
+    const arr = new Float64Array(n);
+    const dep = new Float64Array(n);
+    for (let i = 0; i < n; i++) {
+      arr[i] = expectedArrival(tr, i, t);
+      dep[i] = expectedDeparture(tr, i, t);
+    }
+    return { arr, dep, skipped: tr.skipped, cancelled: tr.cancelled, train: tr as Train | undefined, from: tr.leg >= 0 ? tr.leg + 1 : tr.call };
+  }
+  const rt = live.trips.get(trip.key);
+  const tl = timeline(trip, rt);
+  return { arr: tl.eArr, dep: tl.eDep, skipped: tl.skipped, cancelled: Boolean(rt?.cancelled), train: undefined as Train | undefined, from: 0 };
+}
 
 export async function loadTimetable(t = Date.now()) {
   const today = zurich(t).date;

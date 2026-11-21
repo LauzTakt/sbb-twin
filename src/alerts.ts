@@ -150,7 +150,7 @@ function build(feed: Feed) {
     if (!geometry && stationIds.size) geometry = { type: "MultiPoint", coordinates: [...stationIds].map((id) => [served.get(id)!.lon, served.get(id)!.lat]) };
     const title = head.text.replace(/\s*\[(train|rack railway)\]\s*\.?\s*$/i, "").trim() || "Service information";
     // one event, many alerts (per operator, route or stop list): merge by title
-    const key = title.toLowerCase().replace(/\s+/g, " ");
+    const key = title.toLowerCase().replace(/[:\-–]/g, " ").replace(/\s+/g, " ").trim();
     const id = `sa-${createHash("sha1").update(key).digest("hex").slice(0, 12)}`;
     const same = out.get(id);
     if (same) {

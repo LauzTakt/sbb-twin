@@ -10,6 +10,7 @@ import { GRID, overridePayload, removeOverride, weather } from "./weather.ts";
 import { WEATHER_PRESETS, endWeather, releaseAll, releaseTrain, setProtection, setWeather } from "./god.ts";
 import { settings } from "./engine.ts";
 import { alertsState } from "./alerts.ts";
+import { journeyGeometry, plan, sectionGeometry, situation, trainGeometry } from "./planner.ts";
 
 const trainLookup = (id: string) => {
   const tr = byTrainId.get(id);
@@ -142,6 +143,32 @@ export function api() {
   // God mode: weather over an area, train protection, releasing trains
   app.get("/control/state", (c) => c.json({ ...controlState(), status: statusPayload() }));
   app.get("/alerts", (c) => c.json([...alertsState.alerts.values()]));
+  // passenger assistant: journeys on the live twin, what a passenger should know, and the track to draw
+  app.get("/plan", (c) => {
+    const from = c.req.query("from");
+    const to = c.req.query("to");
+    if (!from || !to) throw new InputError("from and to are required (station id or name)");
+    const after = Number(c.req.query("after") ?? Date.now()) || Date.now();
+    const limit = Math.max(1, Math.min(6, Number(c.req.query("limit") ?? 4) || 4));
+    const r = plan(from, to, after, limit);
+    return "error" in r ? c.json({ error: r.error }, 404) : c.json(r);
+  });
+  app.get("/situation", (c) => {
+    const r = situation({ station: c.req.query("station"), trainId: c.req.query("trainId"), from: c.req.query("from"), to: c.req.query("to") });
+    return "error" in r ? c.json({ error: r.error }, 404) : c.json(r);
+  });
+  app.get("/geometry/section", (c) => {
+    const r = sectionGeometry(c.req.query("from") ?? "", c.req.query("to") ?? "");
+    return r ? c.json(r) : c.json({ error: "Unknown stations" }, 404);
+  });
+  app.get("/geometry/journey/:id", (c) => {
+    const r = journeyGeometry(c.req.param("id"));
+    return r ? c.json(r) : c.json({ error: "Unknown or expired journey (plan again)" }, 404);
+  });
+  app.get("/geometry/train/:trainId", (c) => {
+    const r = trainGeometry(c.req.param("trainId"), c.req.query("from"), c.req.query("to"));
+    return r ? c.json(r) : c.json({ error: "Unknown train or stops" }, 404);
+  });
   app.get("/control", (c) => c.json({ protection: settings.protection, presets: WEATHER_PRESETS, overrides: [...weather.overrides.values()].map(overridePayload) }));
   app.post("/control/protection", async (c) => {
     const b = await body(c);
