@@ -97,7 +97,18 @@ function build(feed: Feed) {
   const now = Date.now();
   const served = new Map(servedStations().map((s) => [s.id, s]));
   const byName = new Map([...served.values()].map((s) => [s.name.toLowerCase(), s]));
-  const named = (n: string) => byName.get(n.trim().toLowerCase()) ?? byName.get(n.replace(/\s*\((?:F|D|I|A|FL)\)\s*$/i, "").trim().toLowerCase());
+  // "Domodossola" must find "Domodossola (I)": index the names without their country suffix too
+  const byBase = new Map([...served.values()].map((s) => [s.name.replace(/\s*\([A-Z]{1,2}\)\s*$/, "").toLowerCase(), s]));
+  const named = (n: string) => byName.get(n.trim().toLowerCase()) ?? byName.get(n.replace(/\s*\((?:F|D|I|A|FL)\)\s*$/i, "").trim().toLowerCase()) ?? byBase.get(n.trim().toLowerCase()) ?? unserved(n);
+  // a station nobody serves today (the line is interrupted, so its trains are cancelled) is still a place on the map
+  const unserved = (n: string) => {
+    const hit = stops.find((x) => x.name.toLowerCase() === n.trim().toLowerCase());
+    if (!hit) return undefined;
+    const s = { ...hit, trains: 0 };
+    served.set(hit.id, s);
+    byName.set(hit.name.toLowerCase(), s);
+    return s;
+  };
   const today = new Set(dayTrips().map((t) => t.trainId));
   const out = new Map<string, RealAlert>();
   for (const e of feed.entity ?? []) {
@@ -142,7 +153,8 @@ function build(feed: Feed) {
       const ib = stationIndex(to.id);
       if (ia !== undefined && ib !== undefined) {
         const edges = sectionEdges(stops[ia], stops[ib]);
-        if (edges.size) geometry = edgesGeometry(edges);
+        // no track in our network (e.g. abroad): a straight line between the two ends, so the section is still a line
+        geometry = edges.size ? edgesGeometry(edges) : { type: "MultiLineString", coordinates: [[[from.lon, from.lat], [to.lon, to.lat]]] };
         stationIds.add(from.id);
         stationIds.add(to.id);
       }

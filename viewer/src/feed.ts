@@ -52,7 +52,8 @@ export function connectLive(h: Handlers): Live {
       const m = JSON.parse(e.data as string);
       if (m.type === "tick") h.tick(m.trains, m.status);
       else if (m.type === "alerts") {
-        alerts = (m.alerts as Alert[]).filter((a) => a.severity !== "info").map((a) => ({ id: a.id, title: a.title, where: a.stations.slice(0, 3).map((x) => x.name).join(", "), severity: a.severity, note: endNote(a), trains: a.trains, geometry: a.geometry, source: "sbb" as const }));
+        // only real disruptions: the feed also carries notices ("stop moved", "access restricted", "Information") that are not
+        alerts = (m.alerts as Alert[]).filter((a) => /^(Interrupted|Limited|Irregular) service/i.test(a.title)).map((a) => ({ id: a.id, title: a.title, where: a.stations.slice(0, 3).map((x) => x.name).join(", "), severity: a.severity, note: endNote(a), trains: a.trains, geometry: a.geometry, source: "sbb" as const }));
         push();
       } else if (m.type === "state") {
         h.disruptions(m.disruptions as Disruption[]);
