@@ -2,7 +2,7 @@ import * as maplibregl from "maplibre-gl";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import type { GeoJSONSource, ImageSource, Map as LibreMap } from "maplibre-gl";
 import type { MqttClient } from "mqtt";
-import { Activity, CloudSnow, CloudSun, Crosshair, Layers, Link2, Moon, Pause, RefreshCcw, ShieldCheck, ShieldOff, Siren, Sun, Thermometer, TrainFront, Wind, X, Zap } from "lucide-react";
+import { Activity, CircleDot, CloudSnow, CloudSun, Crosshair, Layers, Link2, Moon, Pause, RefreshCcw, ShieldCheck, ShieldOff, Siren, Sun, Thermometer, TrainFront, Wind, X, Zap } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, brokerUrl, connectFeed, watchTrain, type Disruption, type Event, type Incident, type Status, type TemperatureGrid, type WeatherOverride, type WeatherSnapshot } from "./feed";
 import { applyBase, baseStyle, type Theme } from "./map";
@@ -37,48 +37,63 @@ function extent(g: { type: string; coordinates: unknown } | null): number {
   return km;
 }
 
-function StationPicker({ label, value, onChange, options }: { label: string; value?: Station; onChange: (s?: Station) => void; options?: (Station & { km?: number })[] }) {
+type StationOption = Station & { km?: number; trains?: number };
+let allStations: Promise<StationOption[]> | undefined;
+/** Every station served today, busiest first (loaded once). */
+const loadStations = () =>
+  (allStations ??= api<{ features: { properties: { id: string; name: string; trains: number }; geometry: { coordinates: [number, number] } }[] }>("/stations.geojson")
+    .then((fc) => fc.features.map((f) => ({ id: f.properties.id, name: f.properties.name, trains: f.properties.trains, lon: f.geometry.coordinates[0], lat: f.geometry.coordinates[1] })))
+    .catch(() => {
+      allStations = undefined;
+      return [];
+    }));
+const fold = (x: string) => x.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+
+function StationPicker({ label, value, onChange, options }: { label: string; value?: Station; onChange: (s?: Station) => void; options?: StationOption[] }) {
   const [q, setQ] = useState("");
-  const [hits, setHits] = useState<(Station & { km?: number })[]>([]);
   const [open, setOpen] = useState(false);
-  const norm = (x: string) => x.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+  const [all, setAll] = useState<StationOption[]>([]);
   useEffect(() => {
-    if (options) {
-      // only stations a train reaches from the other end: filter the list as the user types
-      if (!open || value) return setHits([]);
-      setHits(options.filter((s) => norm(s.name).includes(norm(q.trim()))).slice(0, 12));
-      return;
-    }
-    if (!q.trim() || value?.name === q) return setHits([]);
-    const id = setTimeout(() => api<Station[]>(`/stations?q=${encodeURIComponent(q)}`).then(setHits).catch(() => setHits([])), 150);
-    return () => clearTimeout(id);
-  }, [q, value, options, open]);
+    if (!options) void loadStations().then(setAll);
+  }, [options]);
+  const source = options ?? all;
+  const n = fold(q.trim());
+  // open on focus with everything; typing narrows it (names starting with the text first)
+  const list = open
+    ? source
+        .filter((s) => !n || fold(s.name).includes(n))
+        .sort((a, b) => (n ? Number(!fold(b.name).startsWith(n)) - Number(!fold(a.name).startsWith(n)) : 0))
+        .slice(0, 400)
+    : [];
   return (
     <label className="field picker">
       <span>{label}</span>
       <input
-        value={value?.name ?? q}
+        value={value ? value.name : q}
         placeholder={options ? "Choose a connected station" : "Search a station"}
         onFocus={() => setOpen(true)}
-        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        onClick={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 160)}
         onChange={(e) => {
-          onChange(undefined);
+          if (value) onChange(undefined);
           setQ(e.target.value);
+          setOpen(true);
         }}
       />
-      {hits.length > 0 && (
+      {list.length > 0 && (
         <ul>
-          {hits.map((s) => (
+          {list.map((s) => (
             <li key={s.id}>
               <button
                 type="button"
+                onMouseDown={(e) => e.preventDefault()}
                 onClick={() => {
                   onChange(s);
                   setQ(s.name);
-                  setHits([]);
+                  setOpen(false);
                 }}
               >
-                {s.name} <small>{s.km !== undefined ? `${s.km} km` : s.id}</small>
+                {s.name} <small>{s.km !== undefined ? `${s.km} km` : s.trains !== undefined ? `${s.trains} trains` : s.id}</small>
               </button>
             </li>
           ))}
@@ -114,6 +129,7 @@ export function App() {
   });
   const [satellite, setSatellite] = useState(false);
   const look = useRef({ theme, satellite });
+  const prevTheme = useRef(theme);
   const [overrides, setOverrides] = useState<Record<string, WeatherOverride>>({});
   const [protection, setProtection] = useState(true);
   const placing = useRef<Record<string, unknown> | undefined>(undefined);
@@ -125,7 +141,9 @@ export function App() {
   const showTemp = wx === "temp";
   const precipRef = useRef(showPrecip);
   const [showTrains, setShowTrains] = useState(true);
-  const [tab, setTab] = useState<"god" | "incidents" | "events" | "connect">("god");
+  const [showStations, setShowStations] = useState(true);
+  const [station, setStation] = useState<{ id: string; name: string; trains: number }>();
+  const [tab, setTab] = useState<"control" | "incidents" | "events" | "connect">("control");
   // ?train=<trainId> opens the app on that train, following it
   const [selected, setSelected] = useState<string | undefined>(() => new URLSearchParams(location.search).get("train") ?? undefined);
   const [following, setFollowing] = useState(() => new URLSearchParams(location.search).has("train"));
@@ -159,19 +177,23 @@ export function App() {
       });
       m.on("click", (e) => {
         if (placing.current) {
-          // god mode: put the prepared weather change where the map was clicked
+          // control: put the prepared weather change where the map was clicked
           const body = { ...placing.current, lat: e.lngLat.lat, lon: e.lngLat.lng };
           placing.current = undefined;
           setPlacingLabel(undefined);
           m.getCanvas().style.cursor = "";
-          void api<{ override: WeatherOverride; consequences: { label: string }[] }>("/weather/overrides", { method: "POST", json: body })
-            .then((r) => say(`${r.override.label} placed${r.consequences.length ? ` · ${r.consequences.map((c) => c.label).join(", ")}` : ""}`))
+          void api<{ override: WeatherOverride; consequences: Disruption[] }>("/weather/overrides", { method: "POST", json: body })
+            .then((r) => {
+              createdRef.current(r);
+              say(`${r.override.label} placed${r.consequences.length ? ` · ${r.consequences.map((c) => c.label).join(", ")}` : ""}`);
+            })
             .catch((err) => say(err.message));
           return;
         }
         const id = layer.current?.hit(e.point.x, e.point.y);
         if (id) {
           setSelected(id);
+          setStation(undefined);
           return;
         }
         // no train there: the smallest event under the cursor (a station before a section before a weather area)
@@ -187,11 +209,18 @@ export function App() {
         if (hit) {
           const kind = hit.properties.kind as "disruption" | "incident" | "weather";
           setPicked({ kind, id: String(hit.properties.id) });
-          setTab(kind === "incident" ? "incidents" : "god");
+          setTab(kind === "incident" ? "incidents" : "control");
+          return;
+        }
+        const st = m.queryRenderedFeatures(box, { layers: ["stations-major", "stations-medium", "stations-minor"].filter((l) => m.getLayer(l)) })[0];
+        if (st) {
+          setStation({ id: String(st.properties.id), name: String(st.properties.name), trains: Number(st.properties.trains) });
+          setSelected(undefined);
           return;
         }
         setPicked(undefined);
         setSelected(undefined);
+        setStation(undefined);
         setFollowing(false);
       });
       m.on("dragstart", () => setFollowing(false));
@@ -242,6 +271,11 @@ export function App() {
     if (layer.current) layer.current.simulated = simulated;
   }, [simulated]);
   useEffect(() => {
+    const m = mapRef.current;
+    for (const tier of ["major", "medium", "minor"])
+      for (const id of [`stations-${tier}`, `station-labels-${tier}`]) if (m?.getLayer(id)) m.setLayoutProperty(id, "visibility", showStations ? "visible" : "none");
+  }, [showStations]);
+  useEffect(() => {
     if (!layer.current) return;
     layer.current.selected = selected;
     layer.current.following = following && Boolean(selected);
@@ -272,12 +306,15 @@ export function App() {
     // railways abroad (OpenStreetMap, prepared by tools/prepare_abroad.py), under the Swiss BAV network
     if (!m.getSource("abroad")) {
       m.addSource("abroad", { type: "geojson", data: "/api/abroad.geojson", attribution: "© OpenStreetMap contributors" });
-      m.addLayer({ id: "rail-abroad", type: "line", source: "abroad", paint: { "line-color": "#686868", "line-width": ["interpolate", ["linear"], ["zoom"], 6, ["match", ["get", "usage"], "main", 1, 0.6], 10, ["match", ["get", "usage"], "main", 1.8, 1.2], 14, 2.6], "line-opacity": 0.7 } });
+      m.addLayer({ id: "rail-abroad-halo", type: "line", source: "abroad", layout: { "line-join": "round", "line-cap": "round" }, paint: { "line-color": "#ffffff", "line-width": ["interpolate", ["linear"], ["zoom"], 6, 2.2, 10, 3.4, 14, 5.6], "line-opacity": 0.8 } });
+      m.addLayer({ id: "rail-abroad", type: "line", source: "abroad", layout: { "line-join": "round", "line-cap": "round" }, paint: { "line-color": "#767676", "line-width": ["interpolate", ["linear"], ["zoom"], 6, ["match", ["get", "usage"], "main", 0.9, 0.6], 10, ["match", ["get", "usage"], "main", 1.6, 1.1], 14, 2.6], "line-opacity": 0.85 } });
     }
     addTemperature(m);
     if (!m.getSource("network")) {
+      // Swiss network (BAV): a halo under a strong line so the tracks read on any base map
       m.addSource("network", { type: "geojson", data: "/api/network.geojson" });
-      m.addLayer({ id: "network", type: "line", source: "network", paint: { "line-color": "#686868", "line-width": ["interpolate", ["linear"], ["zoom"], 6, 0.7, 10, 1.5, 14, 2.6], "line-opacity": 0.75 } });
+      m.addLayer({ id: "network-halo", type: "line", source: "network", layout: { "line-join": "round", "line-cap": "round" }, paint: { "line-color": "#ffffff", "line-width": ["interpolate", ["linear"], ["zoom"], 6, 2.6, 10, 4, 14, 6.5], "line-opacity": 0.9 } });
+      m.addLayer({ id: "network", type: "line", source: "network", layout: { "line-join": "round", "line-cap": "round" }, paint: { "line-color": "#444444", "line-width": ["interpolate", ["linear"], ["zoom"], 6, 1, 10, 1.8, 14, 3.2], "line-opacity": 0.95 } });
     }
     if (!m.getSource("stations")) {
       // stops: busy stations from far out, small ones as you zoom in (SBB style: white dot, dark ring)
@@ -317,12 +354,16 @@ export function App() {
   function restyle(m: LibreMap) {
     const { theme: th, satellite: sat } = look.current;
     applyBase(m, th, sat);
-    const rail = sat ? "#ffffff" : th === "dark" ? "#53647f" : "#686868";
+    const rail = sat ? "#ffffff" : th === "dark" ? "#9aa6b8" : "#444444";
+    const halo = sat ? "rgba(0,0,0,0.55)" : th === "dark" ? "#0b0e11" : "#ffffff";
     if (m.getLayer("network")) {
       m.setPaintProperty("network", "line-color", rail);
-      m.setPaintProperty("network", "line-opacity", sat ? 0.6 : 0.75);
+      m.setPaintProperty("network-halo", "line-color", halo);
     }
-    if (m.getLayer("rail-abroad")) m.setPaintProperty("rail-abroad", "line-color", rail);
+    if (m.getLayer("rail-abroad")) {
+      m.setPaintProperty("rail-abroad", "line-color", sat ? "#e6e6e6" : th === "dark" ? "#6f7a8a" : "#767676");
+      m.setPaintProperty("rail-abroad-halo", "line-color", halo);
+    }
     const dark = th === "dark" || sat;
     if (m.getLayer("weather-label")) {
       m.setPaintProperty("weather-label", "text-color", dark ? "#ffffff" : "#212121");
@@ -348,7 +389,17 @@ export function App() {
       /* private mode */
     }
     const m = mapRef.current;
-    if (m?.isStyleLoaded()) restyle(m);
+    if (!m?.isStyleLoaded()) return;
+    const el = mapEl.current;
+    if (el && prevTheme.current !== theme) {
+      // the map dips, recolours while dim, and fades back: no visible jump
+      el.classList.add("restyling");
+      const t1 = setTimeout(() => restyle(m), 180);
+      const t2 = setTimeout(() => el.classList.remove("restyling"), 260);
+      prevTheme.current = theme;
+      return () => (clearTimeout(t1), clearTimeout(t2));
+    }
+    restyle(m);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [theme, satellite]);
   useEffect(() => {
@@ -471,6 +522,22 @@ export function App() {
     return () => clearTimeout(t);
   }, [picked, tab]);
 
+  // ---- creations show at once from the server's reply (MQTT confirms a moment later)
+  const upsert = {
+    disruption: (d?: Disruption | null) => d && setDisruptions((x) => ({ ...x, [d.id]: d })),
+    incident: (i?: Incident | null) => i && setIncidents((x) => ({ ...x, [i.id]: i })),
+    override: (o?: WeatherOverride | null) => o && setOverrides((x) => ({ ...x, [o.id]: o })),
+  };
+  const created: Created = (r) => {
+    if (!r) return;
+    upsert.disruption(r.disruption);
+    upsert.incident(r.incident);
+    upsert.override(r.override);
+    for (const d of r.consequences ?? []) upsert.disruption(d);
+  };
+  const createdRef = useRef(created);
+  createdRef.current = created;
+
   // ---- actions: the UI changes at once; the server confirms over MQTT, or the change is undone with a message
   const drop = <T,>(x: Record<string, T>, id: string) => Object.fromEntries(Object.entries(x).filter(([k]) => k !== id));
   const act = {
@@ -559,9 +626,16 @@ export function App() {
           <button className="toggle icon-only" onClick={() => setTheme((t) => (t === "light" ? "dark" : "light"))} aria-label={theme === "light" ? "Dark theme" : "Light theme"} title={theme === "light" ? "Dark theme" : "Light theme"}>
             {theme === "light" ? <Moon size={16} /> : <Sun size={16} />}
           </button>
-          <button className="toggle" aria-pressed={showTrains} onClick={() => setShowTrains((x) => !x)}>
-            <Layers size={15} /> Trains
-          </button>
+          <div className="seg wx" role="group" aria-label="Layers">
+            <button aria-pressed={showTrains} onClick={() => setShowTrains((x) => !x)} title="Trains">
+              <Layers size={15} />
+              <span className="label">Trains</span>
+            </button>
+            <button aria-pressed={showStations} onClick={() => setShowStations((x) => !x)} title="Stations">
+              <CircleDot size={15} />
+              <span className="label">Stations</span>
+            </button>
+          </div>
           <div className="seg wx" role="group" aria-label="Weather layer">
             <button aria-pressed={showPrecip} onClick={() => setShowPrecip((x) => !x)} title="Rain & snow">
               <CloudSnow size={15} />
@@ -589,7 +663,7 @@ export function App() {
         <nav className="tabs">
           {(
             [
-              ["god", "God mode", Zap],
+              ["control", "Control", Zap],
               ["incidents", "Incidents", Siren],
               ["events", "Events", Activity],
               ["connect", "Connect", Link2],
@@ -601,12 +675,13 @@ export function App() {
           ))}
         </nav>
         <div className="pane">
-          {tab === "god" && (
-            <GodMode
+          {tab === "control" && (
+            <ControlPanel
               disruptions={Object.values(disruptions)}
               overrides={Object.values(overrides)}
               picked={picked?.id}
               act={act}
+              onCreated={created}
               protection={protection}
               setProtection={setProtection}
               placingLabel={placingLabel}
@@ -623,7 +698,7 @@ export function App() {
               say={say}
             />
           )}
-          {tab === "incidents" && <Incidents incidents={Object.values(incidents)} picked={picked?.id} onUnmark={act.unmark} say={say} />}
+          {tab === "incidents" && <Incidents incidents={Object.values(incidents)} picked={picked?.id} onUnmark={act.unmark} onCreated={(i) => upsert.incident(i)} say={say} />}
           {tab === "events" && <Events events={events} />}
           {tab === "connect" && <Connect />}
         </div>
@@ -695,6 +770,7 @@ export function App() {
           simulated={simulated.has(selected)}
           mods={Object.values(disruptions).filter((d) => d.status === "active" && d.scope.kind === "train" && d.scope.trainId === selected)}
           onEnd={act.endDisruption}
+          onCreated={created}
           holds={(causes[selected] ?? [])
             .map((c) =>
               c === "protection"
@@ -708,7 +784,7 @@ export function App() {
             .filter((x): x is { id: string; label: string } => Boolean(x))}
           onPick={(id) => {
             setPicked({ kind: "disruption", id });
-            setTab("god");
+            setTab("control");
           }}
           following={following}
           grid={grid}
@@ -720,12 +796,29 @@ export function App() {
           say={say}
         />
       )}
+      {station && !selected && (
+        <StationCard
+          key={station.id}
+          station={station}
+          onCreated={created}
+          onClose={() => setStation(undefined)}
+          onTrain={(id) => {
+            setSelected(id);
+            setStation(undefined);
+          }}
+          onSection={() => {
+            setTab("control");
+            window.dispatchEvent(new CustomEvent("sbb-section-from", { detail: station }));
+          }}
+          say={say}
+        />
+      )}
       {toast && <p className="toast">{toast}</p>}
     </div>
   );
 }
 
-function TrainCard({ id, client, simulated, mods, onEnd, holds, onPick, following, grid, onFollow, onClose, say }: { id: string; client: MqttClient; simulated: boolean; mods: Disruption[]; onEnd: (id: string) => void; holds: { id: string; label: string }[]; onPick: (id: string) => void; following: boolean; grid?: TemperatureGrid; onFollow: () => void; onClose: () => void; say: (t: string) => void }) {
+function TrainCard({ id, client, simulated, mods, onEnd, onCreated, holds, onPick, following, grid, onFollow, onClose, say }: { id: string; client: MqttClient; simulated: boolean; mods: Disruption[]; onEnd: (id: string) => void; onCreated: Created; holds: { id: string; label: string }[]; onPick: (id: string) => void; following: boolean; grid?: TemperatureGrid; onFollow: () => void; onClose: () => void; say: (t: string) => void }) {
   const [pos, setPos] = useState<Pos>();
   const [info, setInfo] = useState<Info>();
   const [maxKmh, setMaxKmh] = useState("60");
@@ -736,7 +829,8 @@ function TrainCard({ id, client, simulated, mods, onEnd, holds, onPick, followin
   const crashed = mods.find((d) => d.effect === "obstacle" && d.params?.collidedAt);
   useEffect(() => watchTrain(client, id, (p) => setPos(p as unknown as Pos), (i) => setInfo(i as unknown as Info)), [client, id]);
   const provoke = async (type: string, params?: Record<string, number>) => {
-    const r = await api<{ disruption: { label: string } }>("/disruptions", { method: "POST", json: { type, scope: { kind: "train", trainId: id }, params } }).catch((e) => (say(e.message), null));
+    const r = await api<{ disruption: Disruption }>("/disruptions", { method: "POST", json: { type, scope: { kind: "train", trainId: id }, params } }).catch((e) => (say(e.message), null));
+    onCreated(r);
     if (r) say(`${r.disruption.label}: provoked`);
   };
   const sync = async () => {
@@ -918,7 +1012,71 @@ type Preset = { id: string; label: string; tempC?: number; tempDeltaC?: number; 
 const NETWORK_TYPES = (t: DType) => t.scope === "section" || t.scope === "station";
 
 type Act = { endDisruption: (id: string) => void; removeDisruption: (id: string) => void; endWeather: (id: string) => void; unmark: (id: string) => void };
-function GodMode({ disruptions, overrides, picked, act, protection, setProtection, placingLabel, onPlace, onCancelPlace, say }: { disruptions: Disruption[]; overrides: WeatherOverride[]; picked?: string; act: Act; protection: boolean; setProtection: (on: boolean) => void; placingLabel?: string; onPlace: (body: Record<string, unknown>, label: string) => void; onCancelPlace: () => void; say: (t: string) => void }) {
+type Created = (r: { disruption?: Disruption; incident?: Incident | null; override?: WeatherOverride; consequences?: Disruption[] } | null) => void;
+type BoardRow = { trainId: string | null; line: string; category: string; headsign: string; planned: number; expected: number; delayMin: number; cancelled: boolean };
+function StationCard({ station, onCreated, onClose, onTrain, onSection, say }: { station: { id: string; name: string; trains: number }; onCreated: Created; onClose: () => void; onTrain: (id: string) => void; onSection: () => void; say: (t: string) => void }) {
+  const [board, setBoard] = useState<BoardRow[]>();
+  useEffect(() => {
+    const load = () => void api<BoardRow[]>(`/stations/${station.id}/board`).then(setBoard).catch(() => setBoard([]));
+    load();
+    const id = setInterval(load, 15000);
+    return () => clearInterval(id);
+  }, [station.id]);
+  const provoke = async (type: string) => {
+    const r = await api<{ disruption: Disruption; incident: Incident | null }>("/disruptions", { method: "POST", json: { type, scope: { kind: "station", station: station.id }, mark: true } }).catch((e) => (say(e.message), null));
+    onCreated(r);
+    if (r) say(`${r.disruption.label}: ${station.name}`);
+  };
+  return (
+    <section className="card station-card" aria-label="Station">
+      <header>
+        <span className="badge station-badge">
+          <CircleDot size={14} />
+        </span>
+        <div>
+          <h2>{station.name}</h2>
+          <small>{station.trains} trains today</small>
+        </div>
+        <button className="icon" onClick={onClose} aria-label="Close">
+          <X size={18} />
+        </button>
+      </header>
+      <ol className="calls board">
+        {board === undefined && <li className="hint">Loading…</li>}
+        {board?.length === 0 && <li className="hint">No departures in the next hour.</li>}
+        {board?.map((r) => (
+          <li key={`${r.line}-${r.planned}-${r.headsign}`} className={r.cancelled ? "skipped" : ""}>
+            <time>{hm(r.planned)}</time>
+            <span>
+              {r.trainId ? (
+                <button className="linklike" onClick={() => onTrain(r.trainId!)}>
+                  <b>{r.line}</b> {r.headsign}
+                </button>
+              ) : (
+                <>
+                  <b>{r.line}</b> {r.headsign}
+                </>
+              )}
+            </span>
+            {r.cancelled ? <em className="late">cancelled</em> : r.delayMin > 0 ? <em className="late">+{r.delayMin}′</em> : <em />}
+          </li>
+        ))}
+      </ol>
+      <div className="modify">
+        <h3>Control</h3>
+        <div className="mod-row">
+          <button className="danger" onClick={() => void provoke("station_fire")}>
+            Close station
+          </button>
+          <button onClick={() => void provoke("signal_box_failure")}>Signal box failure</button>
+          <button onClick={onSection}>Section from here…</button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ControlPanel({ disruptions, overrides, picked, act, onCreated, protection, setProtection, placingLabel, onPlace, onCancelPlace, say }: { disruptions: Disruption[]; overrides: WeatherOverride[]; picked?: string; act: Act; onCreated: Created; protection: boolean; setProtection: (on: boolean) => void; placingLabel?: string; onPlace: (body: Record<string, unknown>, label: string) => void; onCancelPlace: () => void; say: (t: string) => void }) {
   const [types, setTypes] = useState<DType[]>([]);
   const [presets, setPresets] = useState<Preset[]>([]);
   const [typeId, setTypeId] = useState("overhead_line_fault");
@@ -930,6 +1088,15 @@ function GodMode({ disruptions, overrides, picked, act, protection, setProtectio
   const [hold, setHold] = useState("8");
   const [busy, setBusy] = useState(false);
   const [reachable, setReachable] = useState<(Station & { km: number })[]>();
+  useEffect(() => {
+    const onFrom = (e: globalThis.Event) => {
+      const st = (e as CustomEvent<Station>).detail;
+      setTypeId("overhead_line_fault");
+      setFrom({ id: st.id, name: st.name, lon: 0, lat: 0 });
+    };
+    window.addEventListener("sbb-section-from", onFrom);
+    return () => window.removeEventListener("sbb-section-from", onFrom);
+  }, []);
   useEffect(() => {
     setTo(undefined);
     setReachable(undefined);
@@ -951,8 +1118,9 @@ function GodMode({ disruptions, overrides, picked, act, protection, setProtectio
     setBusy(true);
     const scope = type.scope === "section" ? { kind: "section", from: from!.id, to: to!.id } : { kind: "station", station: station!.id };
     const params = type.effect === "speed_restriction" ? { maxKmh: Number(maxKmh) } : type.effect === "signal_failure" ? { holdMinutes: Number(hold) } : undefined;
-    const r = await api<{ disruption: { label: string; where: string } }>("/disruptions", { method: "POST", json: { type: type.id, scope, minutes: minutes ? Number(minutes) : null, params, mark: true } }).catch((e) => (say(e.message), null));
+    const r = await api<{ disruption: Disruption; incident: Incident | null }>("/disruptions", { method: "POST", json: { type: type.id, scope, minutes: minutes ? Number(minutes) : null, params, mark: true } }).catch((e) => (say(e.message), null));
     setBusy(false);
+    onCreated(r);
     if (r) say(`${r.disruption.label}: ${r.disruption.where}`);
   };
   const place = () => {
@@ -1120,14 +1288,15 @@ function GodMode({ disruptions, overrides, picked, act, protection, setProtectio
   );
 }
 
-function Incidents({ incidents, picked, onUnmark, say }: { incidents: Incident[]; picked?: string; onUnmark: (id: string) => void; say: (t: string) => void }) {
+function Incidents({ incidents, picked, onUnmark, onCreated, say }: { incidents: Incident[]; picked?: string; onUnmark: (id: string) => void; onCreated: (i: Incident) => void; say: (t: string) => void }) {
   const [title, setTitle] = useState("");
   const [severity, setSeverity] = useState("major");
   const [station, setStation] = useState<Station>();
   const [description, setDescription] = useState("");
   const submit = async () => {
-    const r = await api("/incidents", { method: "POST", json: { title, severity, description, scope: station ? { kind: "station", station: station.id } : { kind: "network" } } }).catch((e) => (say(e.message), null));
+    const r = await api<Incident>("/incidents", { method: "POST", json: { title, severity, description, scope: station ? { kind: "station", station: station.id } : { kind: "network" } } }).catch((e) => (say(e.message), null));
     if (r) {
+      onCreated(r);
       setTitle("");
       setDescription("");
       say("Incident marked");

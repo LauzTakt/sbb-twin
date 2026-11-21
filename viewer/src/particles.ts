@@ -30,7 +30,7 @@ export class WeatherParticles {
 
   set(areas: Area[]) {
     this.areas = areas
-      .filter((a) => a.precipMm >= 0.3 || a.gustKmh >= 60)
+      .filter((a) => a.precipMm >= 0.3)
       .map((area) => {
         const old = this.areas.find((x) => x.area.id === area.id);
         const n = Math.min(260, Math.round(40 + area.precipMm * 30 + (area.gustKmh >= 60 ? 60 : 0)));
@@ -81,14 +81,6 @@ export class WeatherParticles {
           ctx.beginPath();
           ctx.moveTo(x, y);
           ctx.lineTo(x - drift * 3, y - len);
-          ctx.stroke();
-        }
-        if (windy && p.s > 1.1) {
-          ctx.strokeStyle = this.dark ? "rgba(255,255,255,0.35)" : "rgba(45,50,125,0.35)";
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          ctx.moveTo(x, y);
-          ctx.lineTo(x - 18 - p.s * 10, y);
           ctx.stroke();
         }
       }

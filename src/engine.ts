@@ -376,6 +376,34 @@ export async function loadTimetable(t = Date.now()) {
   return true;
 }
 export const timetableDate = () => loadedDate;
+/** Next departures from a station in the twin: live times for trains in service, predictions for the rest. */
+export function stationBoard(station: number, t: number, minutes = 60, limit = 12) {
+  const rows: { trainId: string | null; line: string; category: string; headsign: string; planned: number; expected: number; delayMin: number; cancelled: boolean }[] = [];
+  for (const trip of trips) {
+    const n = trip.stops.length;
+    for (let i = 0; i < n - 1; i++) {
+      if (trip.stops[i] !== station) continue;
+      const planned = trip.dep[i];
+      if (planned < t - 15 * 60_000 || planned > t + minutes * 60_000) continue;
+      const tr = trains.get(trip.key);
+      if (tr && (tr.leg >= i || (tr.leg < 0 && tr.call > i))) continue; // already left
+      let expected = planned;
+      let cancelled = false;
+      if (tr) {
+        expected = expectedDeparture(tr, i, t);
+        cancelled = tr.cancelled;
+      } else {
+        const rt = live.trips.get(trip.key);
+        cancelled = Boolean(rt?.cancelled);
+        expected = timeline(trip, rt).eDep[i];
+      }
+      if (expected < t - 60_000 && !cancelled) continue;
+      rows.push({ trainId: tr?.trip.trainId ?? null, line: trip.line, category: trip.cat, headsign: trip.head, planned, expected, delayMin: Math.max(0, Math.round((expected - planned) / 60_000)), cancelled });
+    }
+  }
+  return rows.sort((a, b) => a.expected - b.expected).slice(0, limit);
+}
+
 /** Stations served today with the number of trains calling there (for the map). */
 export function servedStations() {
   const calls = new Map<number, number>();

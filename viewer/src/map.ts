@@ -27,9 +27,9 @@ export async function baseStyle(): Promise<StyleSpecification> {
     type: "raster",
     source: "swissimage",
     layout: { visibility: "none" },
-    paint: { "raster-opacity": 0, "raster-opacity-transition": { duration: 450, delay: 0 }, "raster-fade-duration": 250 },
+    paint: { "raster-opacity": 0, "raster-opacity-transition": { duration: 700, delay: 0 }, "raster-fade-duration": 300 },
   } as LayerSpecification);
-  style.transition = { duration: 350, delay: 0 };
+  style.transition = { duration: 600, delay: 0 };
   return style;
 }
 

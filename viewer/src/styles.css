@@ -330,6 +330,9 @@ textarea:focus-visible {
   left: 0;
   right: 0;
   z-index: 5;
+  max-height: 300px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   list-style: none;
   margin: 4px 0 0;
   padding: 4px;
@@ -909,4 +912,57 @@ textarea:focus-visible {
   .seg.wx .label {
     display: none;
   }
+}
+
+/* smooth theme changes: surfaces fade their colours; the map dips while it recolours */
+body,
+.bar,
+.side,
+.card,
+.legend,
+.tabs button,
+.field input,
+.field select,
+.field textarea,
+.items li,
+.switch,
+.chips button,
+.toggle,
+.seg,
+.seg button,
+.mod-row button,
+.card footer button,
+.facts div,
+.toast {
+  transition: background-color 0.5s ease, color 0.5s ease, border-color 0.5s ease, box-shadow 0.5s ease;
+}
+.map {
+  transition: opacity 0.26s ease, filter 0.26s ease;
+}
+.map.restyling {
+  opacity: 0.35;
+  filter: blur(1.5px);
+}
+.station-badge {
+  background: var(--charcoal);
+  color: var(--white) !important;
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 26px;
+  padding: 0;
+}
+.linklike {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.linklike:hover {
+  text-decoration: underline;
+}
+.board li {
+  align-items: baseline;
 }
