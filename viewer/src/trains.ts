@@ -22,7 +22,6 @@ export class TrainCanvas {
   private trains = new Map<string, T>();
   private at = 0;
   private raf = 0;
-  simulated = new Set<string>();
   selected?: string;
   following = false;
   visible = true; // the "Trains" layer switch
@@ -129,15 +128,6 @@ export class TrainCanvas {
         ctx.arc(0, 0, r * 2.1, 0, Math.PI * 2);
         ctx.fillStyle = "rgba(0,121,199,0.18)";
         ctx.fill();
-      }
-      if (this.simulated.has(t.id)) {
-        ctx.beginPath();
-        ctx.arc(0, 0, r * 1.95, 0, Math.PI * 2);
-        ctx.strokeStyle = this.theme === "light" ? "#212121" : "#ffffff";
-        ctx.lineWidth = 1.6;
-        ctx.setLineDash([3, 2]);
-        ctx.stroke();
-        ctx.setLineDash([]);
       }
       ctx.rotate(((t.bearing - rot) * Math.PI) / 180);
       ctx.beginPath();
