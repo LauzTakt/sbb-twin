@@ -1,13 +1,14 @@
 import * as maplibregl from "maplibre-gl";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import type { GeoJSONSource, ImageSource, Map as LibreMap } from "maplibre-gl";
-import { Activity, CircleDot, CloudSnow, CloudSun, Crosshair, Layers, Link2, Moon, Pause, RefreshCcw, ShieldCheck, ShieldOff, Siren, Sun, Thermometer, TrainFront, Wind, X, Zap } from "lucide-react";
+import { Activity, CircleDot, CloudSnow, CloudSun, Crosshair, Layers, Link2, Moon, Mountain, Pause, RefreshCcw, ShieldCheck, ShieldOff, Siren, Sun, Thermometer, TrainFront, Wind, X, Zap } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, brokerUrl, connectLive, type ControlState, type Live, type RealAlert, type Disruption, type Event, type Incident, type Status, type TemperatureGrid, type WeatherOverride, type WeatherSnapshot } from "./feed";
 import { applyBase, baseStyle, type Theme } from "./map";
 import { COLOURS, TrainCanvas } from "./trains";
 import { gridImage, precipImage, RAIN_LEGEND, RAMP, rampColour, SNOW_LEGEND, temperatureAt } from "./weatherLayer";
 import { WeatherParticles } from "./particles";
+import { disable3D, enable3D } from "./view3d";
 
 type FC = { type: "FeatureCollection"; features: { type: "Feature"; properties: Record<string, unknown>; geometry: { type: string; coordinates: unknown } }[] };
 
@@ -149,6 +150,7 @@ export function App() {
   const [following, setFollowing] = useState(() => new URLSearchParams(location.search).has("train"));
   const [toast, setToast] = useState<string>();
   const [ready, setReady] = useState(false);
+  const [threeD, setThreeD] = useState(false);
   const [clock, setClock] = useState(Date.now());
   useEffect(() => {
     const id = setInterval(() => setClock(Date.now()), 1000);
@@ -250,6 +252,14 @@ export function App() {
   useEffect(() => {
     if (layer.current) layer.current.simulated = simulated;
   }, [simulated]);
+  // 3D: relief, swisstopo buildings and three.js trains (three.js loads on first use)
+  useEffect(() => {
+    const m = mapRef.current;
+    const t = layer.current;
+    if (!m || !t) return;
+    if (threeD) void enable3D(m, t);
+    else disable3D(m, t);
+  }, [threeD, ready]);
   // the twin sends its whole control state whenever it changes: the page shows exactly that, nothing older
   const applyState = useRef((s: ControlState) => {
     setDisruptions(Object.fromEntries(s.disruptions.map((d) => [d.id, d])));
@@ -386,7 +396,7 @@ export function App() {
       /* private mode */
     }
     const m = mapRef.current;
-    if (!m?.isStyleLoaded()) return;
+    if (!m?.getLayer("swissimage")) return;
     const el = mapEl.current;
     if (el && prevTheme.current !== theme) {
       // the map dips, recolours while dim, and fades back: no visible jump
@@ -644,6 +654,10 @@ export function App() {
               Satellite
             </button>
           </div>
+          <button className="toggle" aria-pressed={threeD} onClick={() => setThreeD((x) => !x)} title="3D: relief, buildings and trains">
+            <Mountain size={15} />
+            <span className="label">3D</span>
+          </button>
           <button className="toggle icon-only" onClick={() => setTheme((t) => (t === "light" ? "dark" : "light"))} aria-label={theme === "light" ? "Dark theme" : "Light theme"} title={theme === "light" ? "Dark theme" : "Light theme"}>
             {theme === "light" ? <Moon size={16} /> : <Sun size={16} />}
           </button>

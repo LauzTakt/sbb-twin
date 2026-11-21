@@ -48,9 +48,14 @@ function darkPaint(l: LayerSpecification): Record<string, unknown> {
 }
 
 /** Recolour the base map for a theme and show or hide the satellite imagery. */
+// The base map draws railways, funiculars and cable cars in red at high zoom. The twin draws its own rail network,
+// and red means a disruption here: those base-map lines are hidden.
+const HIDDEN = /^(tunnel_|l1_|l2_)?public_transport(_aerialway)?$/;
+
 export function applyBase(map: LibreMap, theme: Theme, satellite: boolean) {
   if (!map.getLayer("swissimage")) return; // style not ready (or replaced): nothing to recolour yet
   const style = map.getStyle();
+  for (const l of style.layers) if (HIDDEN.test(l.id) && map.getLayoutProperty(l.id, "visibility") !== "none") map.setLayoutProperty(l.id, "visibility", "none");
   for (const l of style.layers) {
     if (!baseIds.includes(l.id)) continue;
     const base = original.get(l.id) ?? {};
