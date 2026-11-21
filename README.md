@@ -5,10 +5,13 @@ A live digital twin of every Swiss train, published on MQTT.
 - **Trains**: every train in service (≈ 900–1,900 depending on the hour), one precise position per second. Positions are
   computed from the official timetable (GTFS) and the official real-time predictions (GTFS-RT delays, cancellations,
   skipped stops), along the **real track geometry** of the federal rail network (BAV), with realistic acceleration and braking.
-- **Weather**: live MeteoSwiss measurements (temperature, precipitation, wind at ~300 stations) and a **temperature
-  map** of Switzerland corrected for altitude.
-- **Control** (our team): provoke disruptions that really change how trains behave (closures, breakdowns, speed
-  restrictions, …), modify any single train, mark/unmark incidents, and **sync** trains back to the real data.
+- **Weather**: live MeteoSwiss measurements at ~300 stations (temperature, precipitation, wind, gusts, humidity, dew
+  point, pressure, sunshine, radiation, foehn, snow) and a **temperature map** of Switzerland corrected for altitude.
+- **God mode** (our team): change the world and watch it react. Provoke network disruptions (closures, speed
+  restrictions, signal failures, station closures), drive or stop any single train (target speed, service or emergency
+  braking, obstacles and collisions), change the weather over an area (heatwaves, cold snaps, storms, heavy rain: the
+  railway reacts with speed restrictions and closures), switch train protection off (rear-end collisions become
+  possible), mark/unmark incidents, and **sync** trains back to the real data.
 
 Other teams consume the MQTT feed (e.g. incident detection from positions, passenger or station UIs).
 The viewer at `/` shows everything and is only for watching; it reads the same MQTT feed as everybody else.
@@ -67,7 +70,9 @@ tombstone**: the entity was removed.
 | `weather/temperature-grid` | yes | 1 | every 10 min | **temperature map** (grid, see below) |
 | `truth/disruptions/{id}` | yes | 1 | on change | **ground truth**: disruptions we provoked, the trains they affected, geometry |
 | `truth/trains/{trainId}` | yes | 1 | while simulated | ground truth: this train is following a provoked behaviour, not the real data |
-| `truth/events` | no | 1 | on occurrence | `disruption.started` / `disruption.ended`, `sync.trains` / `sync.all` |
+| `truth/weather/{id}` | yes | 1 | on change | ground truth: weather changed in god mode (area, values, consequences) |
+| `truth/settings` | yes | 1 | on change | ground truth: god-mode switches (`protection`) |
+| `truth/events` | no | 1 | on occurrence | `disruption.started` / `disruption.ended`, `train.collision` (with `impactKmh`), `weather.override`, `train.released`, `release.all`, `protection.on` / `protection.off`, `sync.trains` / `sync.all` |
 | `detections/{team}/{id}` | yes (yours) | 1 | yours | **reserved for the detection team**; tombstone when withdrawn |
 | `ext/{team}/…` | yours | yours | yours | free namespace for other teams |
 
@@ -174,8 +179,10 @@ function temperatureAt(g, lon, lat) {
 }
 ```
 
-`weather/snapshot` (also `weather/stations/{id}` one by one): `fields` = `id, name, lat, lon, altitudeM, tempC,
-precipMm` (last 10 minutes), `windKmh` (10-minute mean), `measuredAt`. `null` = not measured at that station.
+`weather/snapshot` (also `weather/stations/{id}` one by one): `fields` = `id, name, lat, lon, altitudeM, tempC, precipMm,
+windKmh, gustKmh, humidityPct, dewPointC, pressureHpa, sunshineMin, radiationWm2, foehn, snowCm, newSnowCm, measuredAt`;
+`units` gives each unit as MeteoSwiss publishes it. 10-minute values (precipitation and sunshine per 10 minutes), snow
+daily. `null` = not measured at that station. Weather changed in god mode is published here like real weather.
 
 ### Incidents (`incidents/{id}`)
 
@@ -200,6 +207,9 @@ The viewer drives these; scripts can too. Base `http(s)://<host>/api`.
 | `POST /disruptions/{id}/end`, `DELETE /disruptions/{id}` | end it (trains resume, still late) / end and forget |
 | `POST /incidents` `{title, severity?, description?, scope?}` · `DELETE /incidents/{id}` | mark / unmark |
 | `POST /sync` `{trainIds?}` | trains read the real data again (all trains if omitted) |
+| `POST /trains/{trainId}/release` | end every change on that train (it moves on, still late until synced) |
+| `POST /weather/overrides` `{lat, lon, radiusKm, minutes?, preset? \| tempC? \| tempDeltaC?, precipMm?, windKmh?, gustKmh?}` · `POST /weather/overrides/{id}/end` | change the weather over an area (presets: `heatwave`, `cold`, `storm`, `rain`, `warmer`, `colder`) |
+| `POST /god/protection` `{on}` · `POST /god/release-all` · `GET /god` | train protection switch; end every change; current god-mode state |
 | `GET /trains`, `GET /trains/{trainId}`, `GET /stations?q=`, `GET /weather`, `GET /status` | read helpers |
 
 | Type | SBB reason | Scope | What trains do |
@@ -209,12 +219,23 @@ The viewer drives these; scripts can too. Base `http(s)://<host>/api`.
 | `signal_box_failure` | EG_010 | station, `params.maxKmh`, `params.holdMinutes` | slow running around the station and a hold at it |
 | `station_fire` | EG_110 | station | station closed: trains pass without stopping |
 | `rolling_stock_failure` | EG_014 | train `{kind:"train",trainId}` | the train brakes (0.7 m/s²) and stays; followers stop behind it |
+| `emergency_brake` | EG_014 | train | the same with emergency braking (1.2 m/s²) |
+| `obstacle_collision` | EG_100 | train, `params.distanceM` | an obstacle that far ahead: emergency braking; without enough distance the train hits it at the remaining speed and is immobilised |
+| `target_speed` | — | train, `params.kmh` | the train accelerates/brakes to that speed and cruises (still stops at its stations, never leaves early; capped by category) |
 | `technical_delay` | EG_014 | train, `params.holdMinutes` | waits that long at its next stop |
 | `train_speed_limit` | — | train, `params.maxKmh` | the train runs at most at that speed |
 | `skip_next_stop` | — | train | passes its next stop |
 | `cancellation` | EG_063 | train | ends its run at the next stop and leaves service |
 
 A provoked train keeps its own behaviour (it stays late) after the disruption ends, until it is **synced**.
+
+**Weather consequences** (automatic, inside the changed area): ≥ 35 °C → *Heat: track buckling risk* (80 km/h);
+≤ −15 °C → *Frost* (60 km/h); gusts ≥ 100 km/h → *Storm: lines closed*; gusts ≥ 75 km/h → 60 km/h; precipitation
+≥ 8 mm/10 min → *Heavy rain: landslide risk* (40 km/h). They end with the weather change.
+
+**Train protection** (signalling) is on by default: a train never runs into one stopped ahead. Switched off, a
+driver only sees a stopped train 500 m ahead and emergency-brakes; without enough distance it is a **rear-end
+collision** at the remaining speed (a `train.collision` event, both trains immobilised until released).
 
 ## Run it
 
