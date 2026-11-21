@@ -9,6 +9,7 @@ import { clear, publish } from "./mqtt.ts";
 import { GRID, overridePayload, removeOverride, weather } from "./weather.ts";
 import { WEATHER_PRESETS, endWeather, releaseAll, releaseTrain, setProtection, setWeather } from "./god.ts";
 import { settings } from "./engine.ts";
+import { alertsState } from "./alerts.ts";
 
 const trainLookup = (id: string) => {
   const tr = byTrainId.get(id);
@@ -140,6 +141,7 @@ export function api() {
 
   // God mode: weather over an area, train protection, releasing trains
   app.get("/control/state", (c) => c.json({ ...controlState(), status: statusPayload() }));
+  app.get("/alerts", (c) => c.json([...alertsState.alerts.values()]));
   app.get("/control", (c) => c.json({ protection: settings.protection, presets: WEATHER_PRESETS, overrides: [...weather.overrides.values()].map(overridePayload) }));
   app.post("/control/protection", async (c) => {
     const b = await body(c);

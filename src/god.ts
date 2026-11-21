@@ -8,7 +8,7 @@ export const WEATHER_PRESETS = [
   { id: "heatwave", label: "Heatwave", tempC: 38 },
   { id: "cold", label: "Cold snap", tempC: -18 },
   { id: "storm", label: "Storm", windKmh: 70, gustKmh: 120, precipMm: 6, tempDeltaC: -4, minTempC: 3 }, // a cold front: it cools, but it rains
-  { id: "rain", label: "Heavy rain", precipMm: 12, tempDeltaC: -2, minTempC: 3 },
+  { id: "rain", label: "Heavy rain", precipMm: 5, tempDeltaC: -2, minTempC: 3 }, // 30 mm/h: very heavy rain
   { id: "snow", label: "Snowfall", tempC: -3, precipMm: 3 },
   { id: "blizzard", label: "Heavy snowfall", tempC: -6, precipMm: 6, windKmh: 40, gustKmh: 70 },
 ] as const;
@@ -41,7 +41,7 @@ function consequences(o: WeatherOverride): Disruption[] {
       }));
       if (mountain.size) out.push(addSystemDisruption({ type: "avalanche", label: "Avalanche risk: mountain lines closed", reasonCode: "EG_022", effect: "section_closure", scope, where, params: {}, edges: mountain, endsAt: o.endsAt, origin: `weather override ${o.id}` }));
     }
-  } else if (precip >= 8) out.push(add("rain", "Heavy rain: landslide risk", "EG_018", "speed_restriction", { maxKmh: 40 }));
+  } else if (precip >= 4) out.push(add("rain", "Heavy rain: landslide risk", "EG_018", "speed_restriction", { maxKmh: 40 }));
   return out;
 }
 

@@ -406,6 +406,13 @@ textarea:focus-visible {
 .items li[data-severity] b::before {
   background: var(--orange);
 }
+.items li[data-severity="major"] b::before,
+.items li[data-severity="critical"] b::before {
+  background: var(--red);
+}
+.items li[data-severity="info"] b::before {
+  background: var(--sky);
+}
 .items li div {
   display: grid;
   gap: 2px;

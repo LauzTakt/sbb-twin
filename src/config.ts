@@ -25,6 +25,10 @@ export const config = {
   gtfsRtKey: process.env.OTD_GTFS_RT_KEY ?? "",
   gtfsRtUrl: process.env.OTD_GTFS_RT_URL ?? "https://api.opentransportdata.swiss/la/gtfs-rt",
   rtIntervalMs: Number(process.env.RT_INTERVAL_MS ?? 30_000),
+  // real service alerts (a separate opentransportdata.swiss key)
+  gtfsSaKey: process.env.OTD_GTFS_SA_KEY ?? "",
+  gtfsSaUrl: process.env.OTD_GTFS_SA_URL ?? "https://api.opentransportdata.swiss/la/gtfs-sa",
+  saIntervalMs: Number(process.env.SA_INTERVAL_MS ?? 180_000),
   topicRoot: process.env.TOPIC_ROOT ?? "sbb-twin/v1",
   production: process.env.NODE_ENV === "production",
   viewerDir: here("../viewer/"),

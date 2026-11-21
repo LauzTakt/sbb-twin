@@ -117,6 +117,7 @@ A train's colour comes from what can be observed, in this order:
 | `minor`, speed restriction, signal failure | `orange` | the affected track thick in orange with a glow |
 | `info` | `blue` | — |
 | ended | `cement` / `smoke` | not drawn; listed greyed out for 30 minutes |
+| real SBB alert (`alerts/+`) | `red` interrupted, `orange` limited, `sky` information | the same colours **dashed**, and rings at the stations it names: what really happens is dashed, what we provoke is solid |
 
 Titles follow SBB's wording: "Section closed: Thun – Spiez", "Limited service", "Delays possible". Causes use the SBB
 reason texts ("Overhead line fault", "Track damage", "Person accident") with their reason codes (`EG_008` …).

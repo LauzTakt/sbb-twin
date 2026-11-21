@@ -3,7 +3,7 @@ import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import type { GeoJSONSource, ImageSource, Map as LibreMap } from "maplibre-gl";
 import { Activity, CircleDot, CloudSnow, CloudSun, Crosshair, Layers, Link2, Moon, Pause, RefreshCcw, ShieldCheck, ShieldOff, Siren, Sun, Thermometer, TrainFront, Wind, X, Zap } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api, brokerUrl, connectLive, type ControlState, type Live, type Disruption, type Event, type Incident, type Status, type TemperatureGrid, type WeatherOverride, type WeatherSnapshot } from "./feed";
+import { api, brokerUrl, connectLive, type ControlState, type Live, type RealAlert, type Disruption, type Event, type Incident, type Status, type TemperatureGrid, type WeatherOverride, type WeatherSnapshot } from "./feed";
 import { applyBase, baseStyle, type Theme } from "./map";
 import { COLOURS, TrainCanvas } from "./trains";
 import { gridImage, precipImage, RAIN_LEGEND, RAMP, rampColour, SNOW_LEGEND, temperatureAt } from "./weatherLayer";
@@ -111,6 +111,7 @@ export function App() {
   const [status, setStatus] = useState<Status>();
   const [disruptions, setDisruptions] = useState<Record<string, Disruption>>({});
   const [incidents, setIncidents] = useState<Record<string, Incident>>({});
+  const [alerts, setAlerts] = useState<RealAlert[]>([]);
   const [simulated, setSimulated] = useState<Set<string>>(new Set());
   const [causes, setCauses] = useState<Record<string, string[]>>({}); // why a simulated train behaves as it does
   const [events, setEvents] = useState<Event[]>([]);
@@ -132,7 +133,7 @@ export function App() {
   const [overrides, setOverrides] = useState<Record<string, WeatherOverride>>({});
   const [protection, setProtection] = useState(true);
   const placing = useRef<Record<string, unknown> | undefined>(undefined);
-  const [picked, setPicked] = useState<{ kind: "disruption" | "incident" | "weather"; id: string }>();
+  const [picked, setPicked] = useState<{ kind: "disruption" | "incident" | "weather" | "alert"; id: string }>();
   const [placingLabel, setPlacingLabel] = useState<string>();
   // weather layer: off, temperature map, precipitation (rain/snow radar) or wind gusts
   const [wx, setWx] = useState<"off" | "temp" | "wind">("off");
@@ -201,15 +202,15 @@ export function App() {
           [e.point.x - 7, e.point.y - 7],
           [e.point.x + 7, e.point.y + 7],
         ];
-        const layers = ["disruption-point", "disruption-line", "disruption-glow", "area-fill"].filter((l) => m.getLayer(l));
+        const layers = ["disruption-point", "disruption-line", "disruption-glow", "alert-point", "alert-line", "area-fill"].filter((l) => m.getLayer(l));
         const hit = m
           .queryRenderedFeatures(box, { layers })
           .filter((f) => f.properties?.id)
           .sort((a, b) => Number(a.properties.size) - Number(b.properties.size))[0];
         if (hit) {
-          const kind = hit.properties.kind as "disruption" | "incident" | "weather";
+          const kind = hit.properties.kind as "disruption" | "incident" | "weather" | "alert";
           setPicked({ kind, id: String(hit.properties.id) });
-          setTab(kind === "incident" ? "incidents" : "control");
+          setTab(kind === "incident" || kind === "alert" ? "incidents" : "control");
           return;
         }
         const st = m.queryRenderedFeatures(box, { layers: ["stations-major", "stations-medium", "stations-minor"].filter((l) => m.getLayer(l)) })[0];
@@ -233,6 +234,7 @@ export function App() {
         state: (st) => applyState.current(st),
         event: (e) => setEvents((x) => [e, ...x].slice(0, 80)),
         events: (list) => setEvents(list.slice(0, 80)),
+        alerts: setAlerts,
         weather: setWeather,
         grid: setGrid,
         precip: setPrecip,
@@ -271,7 +273,7 @@ export function App() {
   }, [selected, following, showTrains, ready]);
 
   // ---- overlays (added once; the base map never reloads)
-  const data = useRef({ disruptions: empty as FC, weather: empty as FC, areas: empty as FC, grid: undefined as ReturnType<typeof gridImage> | undefined, precipImg: undefined as ReturnType<typeof precipImage> | undefined, temp: false });
+  const data = useRef({ alerts: empty as FC, disruptions: empty as FC, weather: empty as FC, areas: empty as FC, grid: undefined as ReturnType<typeof gridImage> | undefined, precipImg: undefined as ReturnType<typeof precipImage> | undefined, temp: false });
   const wxRef = useRef(wx);
   function addTemperature(m: LibreMap) {
     const d = data.current;
@@ -324,6 +326,11 @@ export function App() {
       m.addLayer({ id: "area-label", type: "symbol", source: "areas", layout: { "text-field": ["get", "label"], "text-size": 13, "text-font": ["Frutiger Neue Bold"], "symbol-placement": "point", "text-anchor": "bottom", "text-offset": [0, -0.4] }, paint: { "text-color": ["get", "colour"], "text-halo-color": "#ffffff", "text-halo-width": 2 } });
     }
     if (!m.getSource("disruptions")) {
+      m.addSource("alerts", { type: "geojson", data: d.alerts as never });
+      m.addLayer({ id: "alert-line", type: "line", source: "alerts", filter: ["in", ["geometry-type"], ["literal", ["LineString", "MultiLineString"]]], layout: { "line-cap": "butt", "line-join": "round" }, paint: { "line-color": ["get", "colour"], "line-width": ["interpolate", ["linear"], ["zoom"], 7, 3, 12, 5.5], "line-dasharray": [1.6, 1.1] } });
+      m.addLayer({ id: "alert-point", type: "circle", source: "alerts", filter: ["in", ["geometry-type"], ["literal", ["Point", "MultiPoint"]]], minzoom: 7, paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 7, 5, 12, 9], "circle-color": "rgba(0,0,0,0)", "circle-stroke-color": ["get", "colour"], "circle-stroke-width": 2.5 } });
+      m.addLayer({ id: "alert-picked-line", type: "line", source: "alerts", filter: ["==", ["get", "id"], ""], paint: { "line-color": "#0079c7", "line-width": 7, "line-opacity": 0.85 } });
+      m.addLayer({ id: "alert-picked-point", type: "circle", source: "alerts", filter: ["==", ["get", "id"], ""], paint: { "circle-radius": 14, "circle-color": "rgba(0,121,199,0.15)", "circle-stroke-color": "#0079c7", "circle-stroke-width": 3 } });
       m.addSource("disruptions", { type: "geojson", data: d.disruptions as never });
       m.addLayer({ id: "disruption-glow", type: "line", source: "disruptions", filter: ["in", ["geometry-type"], ["literal", ["LineString", "MultiLineString"]]], paint: { "line-color": ["get", "colour"], "line-width": ["interpolate", ["linear"], ["zoom"], 7, 9, 12, 18], "line-opacity": 0.3, "line-blur": 3 } });
       m.addLayer({ id: "disruption-line", type: "line", source: "disruptions", filter: ["in", ["geometry-type"], ["literal", ["LineString", "MultiLineString"]]], layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": ["get", "colour"], "line-width": ["interpolate", ["linear"], ["zoom"], 7, 3.5, 12, 6] } });
@@ -428,6 +435,17 @@ export function App() {
     (mapRef.current?.getSource("disruptions") as GeoJSONSource | undefined)?.setData(data.current.disruptions as never);
   }, [disruptions, incidents]);
   useEffect(() => {
+    // real SBB alerts: dashed track sections and station rings, red when service is interrupted, orange when limited
+    const colour = (a: RealAlert) => (a.severity === "major" ? "#eb0000" : a.severity === "minor" ? "#f27e00" : "#0079c7");
+    data.current.alerts = {
+      type: "FeatureCollection",
+      features: alerts
+        .filter((a) => a.geometry)
+        .map((a) => ({ type: "Feature" as const, properties: { id: a.id, kind: "alert", colour: colour(a), size: extent(a.geometry) + 1 }, geometry: a.geometry as FC["features"][number]["geometry"] })),
+    };
+    (mapRef.current?.getSource("alerts") as GeoJSONSource | undefined)?.setData(data.current.alerts as never);
+  }, [alerts]);
+  useEffect(() => {
     if (!weather) return;
     data.current.weather = {
       type: "FeatureCollection",
@@ -514,7 +532,7 @@ export function App() {
   useEffect(() => {
     const m = mapRef.current;
     const id = picked?.id ?? "";
-    for (const l of ["picked-line", "picked-point", "area-picked"]) if (m?.getLayer(l)) m.setFilter(l, ["==", ["get", "id"], id]);
+    for (const l of ["picked-line", "picked-point", "area-picked", "alert-picked-line", "alert-picked-point"]) if (m?.getLayer(l)) m.setFilter(l, ["==", ["get", "id"], id]);
     if (!picked) return;
     const t = setTimeout(() => document.querySelector(`[data-id="${picked.id}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 120);
     return () => clearTimeout(t);
@@ -701,7 +719,7 @@ export function App() {
               say={say}
             />
           )}
-          {tab === "incidents" && <Incidents incidents={Object.values(incidents)} picked={picked?.id} onUnmark={act.unmark} onCreated={(i) => upsert.incident(i)} say={say} />}
+          {tab === "incidents" && <Incidents incidents={Object.values(incidents)} alerts={alerts} picked={picked?.id} onUnmark={act.unmark} onCreated={(i) => upsert.incident(i)} say={say} />}
           {tab === "events" && <Events events={events} />}
           {tab === "connect" && <Connect />}
         </div>
@@ -732,8 +750,12 @@ export function App() {
             <div className="ramp">
               <div style={{ background: `linear-gradient(90deg, ${RAIN_LEGEND.map(([, c]) => c).join(",")})` }} />
               <small>
-                <span>rain · light</span>
-                <span>heavy</span>
+                <span>rain 0.3</span>
+                <span>2</span>
+                <span>6</span>
+                <span>15</span>
+                <span>30</span>
+                <span>60 mm/h</span>
               </small>
               <div style={{ background: `linear-gradient(90deg, ${SNOW_LEGEND.map(([, c]) => c).join(",")})`, marginTop: 4, boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.15)" }} />
               <small>
@@ -1295,7 +1317,7 @@ function ControlPanel({ disruptions, overrides, picked, act, onCreated, protecti
   );
 }
 
-function Incidents({ incidents, picked, onUnmark, onCreated, say }: { incidents: Incident[]; picked?: string; onUnmark: (id: string) => void; onCreated: (i: Incident) => void; say: (t: string) => void }) {
+function Incidents({ incidents, alerts, picked, onUnmark, onCreated, say }: { incidents: Incident[]; alerts: RealAlert[]; picked?: string; onUnmark: (id: string) => void; onCreated: (i: Incident) => void; say: (t: string) => void }) {
   const [title, setTitle] = useState("");
   const [severity, setSeverity] = useState("major");
   const [station, setStation] = useState<Station>();
@@ -1353,8 +1375,31 @@ function Incidents({ incidents, picked, onUnmark, onCreated, say }: { incidents:
             </li>
           ))}
       </ul>
+      <h3>Live from SBB</h3>
+      {!alerts.length && <p className="hint">No current alerts on the railway.</p>}
+      <ul className="items">
+        {[...alerts]
+          .sort((a, b) => rank(a) - rank(b) || a.title.localeCompare(b.title))
+          .map((a) => (
+            <li key={a.id} data-severity={a.severity} data-id={a.id} className={picked === a.id ? "picked" : undefined}>
+              <div>
+                <b>{a.title}</b>
+                {a.stations.length > 0 && <span>{a.stations.slice(0, 4).map((s) => s.name).join(", ")}{a.stations.length > 4 ? ` +${a.stations.length - 4}` : ""}</span>}
+                <small>{[a.cause !== "unknown" && a.cause !== "other" ? a.cause : "", until(a), a.trains ? `${a.trains} train${a.trains > 1 ? "s" : ""}` : ""].filter(Boolean).join(" · ")}</small>
+              </div>
+            </li>
+          ))}
+      </ul>
     </>
   );
+}
+const rank = (a: RealAlert) => (a.severity === "major" ? 0 : a.severity === "minor" ? 1 : 2);
+function until(a: RealAlert) {
+  const now = Date.now();
+  const p = a.activePeriods.find((x) => (x.start ?? 0) <= now && (x.end ?? Infinity) >= now) ?? a.activePeriods[0];
+  if (!p?.end) return p?.start ? `since ${new Date(p.start).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}` : "";
+  const end = new Date(p.end);
+  return end.toDateString() === new Date().toDateString() ? `until ${hm(p.end)}` : `until ${end.toLocaleDateString("en-GB", { day: "numeric", month: "short" })}`;
 }
 
 function Events({ events }: { events: Event[] }) {

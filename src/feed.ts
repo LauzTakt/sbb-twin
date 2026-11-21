@@ -2,6 +2,8 @@
 import { randomUUID } from "node:crypto";
 import { clear, publish, brokerStats } from "./mqtt.ts";
 import * as channel from "./channel.ts";
+import { alertsState } from "./alerts.ts";
+import { config } from "./config.ts";
 import { byTrainId, collisions, delayOf, edgeName, expectedArrival, expectedDeparture, nextCall, settings, timetableDate, trains, tripMeta, type Train } from "./engine.ts";
 import { stops } from "./timetable.ts";
 import { disruptions, incidents, type Disruption, type Incident } from "./disruptions.ts";
@@ -235,6 +237,7 @@ export function statusPayload(t = Date.now()) {
     incidentsMarked: incidents.size,
     weather: { stations: weather.stations.size, feedAgeSec: weather.fetchedAt ? Math.round((t - weather.fetchedAt) / 1000) : null, measuredAt: weather.grid?.measuredAt ?? null, error: weather.error ?? null },
     broker: { mode: brokerStats.mode, connected: brokerStats.connected, webSocketClients: brokerStats.clients },
+    alerts: { enabled: Boolean(config.gtfsSaKey), active: alertsState.alerts.size, feedAgeSec: alertsState.fetchedAt ? Math.round((t - alertsState.fetchedAt) / 1000) : null, error: alertsState.error ?? null },
     controlPages: channel.pageCount(),
   };
 }

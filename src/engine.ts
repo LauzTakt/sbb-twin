@@ -364,6 +364,8 @@ let loadedDate = "";
 const finished = new Set<string>();
 const meta: Record<string, [string, string, string]> = {};
 export const tripMeta = (tripId: string) => meta[tripId];
+/** Today's timetable (every trip of the loaded service day). */
+export const dayTrips = () => trips;
 
 export async function loadTimetable(t = Date.now()) {
   const today = zurich(t).date;

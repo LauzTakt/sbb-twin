@@ -19,6 +19,7 @@ import { incidents } from "./disruptions.ts";
 import { settings } from "./engine.ts";
 import { incidentPayload } from "./feed.ts";
 import { publish } from "./mqtt.ts";
+import { alertsState, pollAlerts } from "./alerts.ts";
 
 process.on("unhandledRejection", (e) => console.error("[sbb-twin] unhandled:", (e as Error)?.message ?? e));
 
@@ -91,6 +92,9 @@ void refreshWeather().then(() => {
   for (const o of weather.overrides.values()) publish(`truth/weather/${o.id}`, overridePayload(o), { retain: true, qos: 1 });
 });
 setInterval(refreshWeather, 5 * 60_000).unref();
+// real SBB service alerts (when a key is set): at start and every few minutes
+void pollAlerts().then(() => config.gtfsSaKey && console.log(`[sbb-twin] service alerts: ${alertsState.alerts.size} touch the railway`));
+setInterval(() => void pollAlerts(), config.saIntervalMs).unref();
 setInterval(expireWeather, 10_000).unref();
 setInterval(async () => {
   if (await loadTimetable().catch((e) => (console.error("[sbb-twin] timetable:", e.message), false))) event("system", { type: "system.timetable", note: "new service day loaded" });

@@ -19,6 +19,7 @@
     "mqtt": "^5.16.1",
     "mqtt-packet": "^9.0.2",
     "pngjs": "^7.0.0",
+    "protobufjs": "^8.8.1",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "three": "^0.187.0",

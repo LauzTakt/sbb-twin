@@ -99,6 +99,12 @@ channels:
     parameters: { overrideId: { description: Weather change id (w-…). } }
     messages: { override: { payload: { type: object } } }
     bindings: { mqtt: { qos: 1, retain: true } }
+  alert:
+    address: sbb-twin/v1/alerts/{alertId}
+    description: Real SBB service alerts that touch the railway (opentransportdata.swiss GTFS-RT service alerts), merged per event. Tombstone when withdrawn.
+    parameters: { alertId: { description: Stable id of the event (sa-…). } }
+    messages: { alert: { payload: { type: object } } }
+    bindings: { mqtt: { qos: 1, retain: true } }
   truthSettings:
     address: sbb-twin/v1/truth/settings
     description: Control switches, e.g. {"protection": true}.
@@ -125,6 +131,7 @@ operations:
   receivePrecipitationGrid: { action: receive, channel: { $ref: "#/channels/precipitationGrid" } }
   receiveTruthWeather: { action: receive, channel: { $ref: "#/channels/truthWeather" } }
   receiveTruthSettings: { action: receive, channel: { $ref: "#/channels/truthSettings" } }
+  receiveAlert: { action: receive, channel: { $ref: "#/channels/alert" } }
   sendDetection: { action: send, channel: { $ref: "#/channels/detections" } }
 components:
   parameters:

@@ -72,6 +72,7 @@ tombstone**: the entity was removed.
 | `trains/{trainId}/position` | no | 0 | every second | one train: position, speed, motion, delay, stops |
 | `trains/{trainId}/info` | yes | 1 | on start, on change, tombstone at the end | line, number, operator, origin/destination, every stop with planned/expected/actual times, status (`active` / `cancelled`) |
 | `incidents/{incidentId}` | yes | 1 | on mark, tombstone on unmark | incidents marked by staff (public flags), with geometry |
+| `alerts/{alertId}` | yes | 1 | every 3 min when changed, tombstone when withdrawn | **real SBB service alerts that touch the railway** (opentransportdata.swiss GTFS-RT service alerts): title, description, cause, `severity` (`major` = interrupted, `minor` = limited, `info`), active periods, stations, affected `trainIds`, track geometry |
 | `events/incident`, `events/train`, `events/system` | no | 0 | on occurrence | `incident.marked` / `incident.unmarked`, `train.cancelled`, `system.started` / `system.timetable` |
 | `weather/stations/{stationId}` | yes | 1 | every 10 min | one MeteoSwiss station |
 | `weather/snapshot` | yes | 1 | every 10 min | all stations in one message |
@@ -95,7 +96,7 @@ tombstone**: the entity was removed.
 | a map of every train, an incident detector | `fleet` (one message per second with every train); `trains/+/info` for timetables |
 | a passenger app following one train | `trains/{trainId}/position` and `trains/{trainId}/info` |
 | a station screen | `trains/+/info`, keeping the calls with your `stopId` (or `GET /api/stations/{id}/board`) |
-| passenger information about incidents | `incidents/+` (what staff marked as public) |
+| passenger information about incidents | `alerts/+` (real SBB alerts) and `incidents/+` (what staff marked as public) |
 | weather at a train or a station | `weather/temperature-grid` and `weather/precipitation-grid` (lookup below), `weather/stations/{id}` |
 | an evaluation of a detector | `truth/disruptions/+`, `truth/trains/+`, `truth/events` against your `detections/{team}/+` |
 
@@ -236,6 +237,7 @@ The viewer drives these; scripts can too. Base `http(s)://<host>/api`.
 | `POST /weather/overrides` `{lat, lon, radiusKm, minutes?, preset? \| tempC? \| tempDeltaC?, minTempC?, precipMm?, windKmh?, gustKmh?}` · `POST /weather/overrides/{id}/end` | change the weather over an area (presets: `heatwave`, `cold`, `storm`, `rain`, `snow`, `blizzard`; `minTempC` keeps the area at least that warm) |
 | `POST /control/protection` `{on}` · `GET /control` | train protection switch; current Control state (switches, weather presets, weather changes) |
 | `GET /control/state` | everything provoked, marked or switched, in one answer (the same state the control page receives on `/live`) |
+| `GET /alerts` | the real SBB alerts on the railway right now (as on `alerts/+`) |
 | `POST /control/reset` | **Sync all**: back to reality. Deletes every disruption, weather change and marked incident, switches train protection back on, and snaps every train back to the real data |
 | `GET /stations/{id}/board` · `GET /stations/{id}/neighbours` · `GET /stations.geojson` | a station's next departures in the twin (live delays); stations connected by track, nearest first; every station served today |
 | `GET /trains`, `GET /trains/{trainId}`, `GET /stations?q=`, `GET /weather`, `GET /status` | read helpers |
@@ -260,8 +262,8 @@ A provoked train keeps its own behaviour (it stays late) after the disruption en
 **Weather consequences** (automatic, inside the changed area, official SBB reason codes): ≥ 35 °C → *Heat: track
 buckling risk* (80 km/h, EG_006); ≤ −15 °C → *Frost: icing* (60 km/h, EG_016); gusts ≥ 100 km/h → *Storm: lines closed*
 (EG_101); gusts ≥ 75 km/h → 60 km/h; snow (precipitation where ≤ 1 °C) → *Snow on the tracks* (60 km/h, EG_023), heavy
-snow → 40 km/h and *Avalanche risk: mountain lines closed* for track above 1,100 m (EG_022); heavy rain (≥ 8 mm/10 min,
-above 1 °C) → *Landslide risk* (40 km/h, EG_018). Storms and heavy rain also cool the air (cold front) but keep it above
+snow → 40 km/h and *Avalanche risk: mountain lines closed* for track above 1,100 m (EG_022); heavy rain (≥ 4 mm/10 min,
+i.e. 24 mm/h, above 1 °C) → *Landslide risk* (40 km/h, EG_018). Storms and heavy rain also cool the air (cold front) but keep it above
 3 °C, so they rain even on a cold night; the snowfall presets set sub-zero temperatures. Rain or snow is decided once,
 when the change is placed (`phase`). The consequences end with the weather change, and the trains they held go back to
 their real timetable on their own.
@@ -283,6 +285,7 @@ npm run dev                      # page + API on :8787 (Vite dev); MQTT on the t
 | Variable | Default | |
 |---|---|---|
 | `OTD_GTFS_RT_KEY` | — | opentransportdata.swiss API key for GTFS-RT (without it trains follow the planned timetable) |
+| `OTD_GTFS_SA_KEY` | — | opentransportdata.swiss API key for the GTFS-RT service alerts (real SBB alerts on `alerts/+`) |
 | `MQTT_URL`, `MQTT_USERNAME`, `MQTT_PASSWORD` | — | publish to this broker (e.g. `mqtt://<team-broker>:1883`) instead of the own one |
 | `TOPIC_ROOT` | `sbb-twin/v1` | change it for a test instance so it never overwrites the live twin's topics |
 | `PORT`, `MQTT_PORT`, `HOST` | `8787`, `1883`, `127.0.0.1` | use `HOST=0.0.0.0` in a container |
@@ -297,7 +300,7 @@ station pair), `tools/extract_abroad_rails.mjs` (railways outside Switzerland fo
 
 ## Data sources
 
-Timetable GTFS and GTFS-RT: [opentransportdata.swiss](https://opentransportdata.swiss) · Rail network: BAV
+Timetable GTFS, GTFS-RT and GTFS-RT service alerts: [opentransportdata.swiss](https://opentransportdata.swiss) · Rail network: BAV
 [Schienennetz](https://data.geo.admin.ch/browser/index.html#/collections/ch.bav.schienennetz) · Weather: MeteoSwiss
 SwissMetNet open data via data.geo.admin.ch, Open-Meteo outside Switzerland · Terrain: Terrarium elevation tiles (AWS Open Data) · Base maps:
 © swisstopo · Railways outside Switzerland: © OpenStreetMap contributors (ODbL), via OpenFreeMap tiles. Formation
