@@ -6,6 +6,7 @@
 import { randomUUID } from "node:crypto";
 import { PNG } from "pngjs";
 import { publish, clear } from "./mqtt.ts";
+import * as channel from "./channel.ts";
 
 // MeteoSwiss layer -> field. Units are read from the feed itself and published with the snapshot.
 const FEEDS: Record<string, string> = {
@@ -38,7 +39,9 @@ export type WeatherOverride = {
   radiusKm: number;
   tempC?: number; // set the temperature
   tempDeltaC?: number; // or shift it
+  minTempC?: number; // and keep it at least this warm (heavy rain stays rain at night)
   precipMm?: number;
+  phase?: "rain" | "snow"; // what falls, decided from the temperature in the area when it is created
   windKmh?: number;
   gustKmh?: number;
   startedAt: number;
@@ -105,7 +108,7 @@ export function elevation(lon: number, lat: number) {
 }
 
 // ---------------------------------------------------------------- polling
-type Feed = { features: { id: string; geometry: { coordinates: [number, number] }; properties: { station_name: string; value: number; unit?: string; reference_ts: string; altitude: string } }[] };
+type Feed = { features: { id: string; geometry: { coordinates: [number, number] }; properties: { station_name: string; value: number; unit?: string; reference_ts: string; altitude: string; wind_direction?: number } }[] };
 async function fetchFeed(layer: string) {
   const r = await fetch(url(layer), { signal: AbortSignal.timeout(20_000) });
   if (!r.ok) throw new Error(`MeteoSwiss ${layer}: HTTP ${r.status}`);
@@ -145,11 +148,14 @@ export async function pollWeather() {
           const { lon, lat } = lv95ToWgs84(f.geometry.coordinates[0], f.geometry.coordinates[1]);
           s = { id: f.id, name: p.station_name, lat: Math.round(lat * 1e5) / 1e5, lon: Math.round(lon * 1e5) / 1e5, altitudeM: Math.round(Number(p.altitude)), measuredAt: null } as WeatherStation;
           for (const name of FIELDS) s[name] = null;
+          s.windDirDeg = null;
           stations.set(f.id, s);
         }
         if (p.unit && !weather.units[field]) weather.units[field] = p.unit;
         const valid = typeof p.value === "number" && Math.abs(p.value) < 9000; // 99999 marks a missing value
         s[field] = valid ? p.value : null;
+        // the wind layer also says where the wind comes from (degrees clockwise from north)
+        if (field === "windKmh") s.windDirDeg = typeof p.wind_direction === "number" && p.wind_direction >= 0 && p.wind_direction <= 360 ? p.wind_direction : null;
         const ts = Date.parse(p.reference_ts);
         if (valid && field === "tempC" && Number.isFinite(ts)) s.measuredAt = Math.max(s.measuredAt ?? 0, ts);
       }
@@ -228,7 +234,7 @@ function applyOverrides() {
   const { cols, rows } = weather.raw;
   const values = weather.raw.values.slice();
   for (const o of active()) {
-    if (o.tempC === undefined && o.tempDeltaC === undefined) continue;
+    if (o.tempC === undefined && o.tempDeltaC === undefined && o.minTempC === undefined) continue;
     const r0 = Math.max(0, Math.floor((GRID.north - (o.lat + o.radiusKm / 111.32)) / GRID.step));
     const r1 = Math.min(rows - 1, Math.ceil((GRID.north - (o.lat - o.radiusKm / 111.32)) / GRID.step));
     const c0 = Math.max(0, Math.floor((o.lon - o.radiusKm / KM_LON - GRID.west) / GRID.step));
@@ -240,7 +246,9 @@ function applyOverrides() {
         if (v === null) continue;
         const w = weight(km(GRID.north - r * GRID.step, GRID.west + c * GRID.step, o.lat, o.lon), o.radiusKm);
         if (!w) continue;
-        values[i] = Math.round((o.tempC !== undefined ? v * (1 - w) + o.tempC * w : v + (o.tempDeltaC ?? 0) * w) * 10) / 10;
+        let x = o.tempC !== undefined ? v * (1 - w) + o.tempC * w : v + (o.tempDeltaC ?? 0) * w;
+        if (o.minTempC !== undefined && x < o.minTempC) x += (o.minTempC - x) * w;
+        values[i] = Math.round(x * 10) / 10;
       }
   }
   weather.grid = { ...weather.raw, values };
@@ -298,6 +306,7 @@ export function addOverride(input: Omit<WeatherOverride, "id" | "startedAt" | "e
     radiusKm: Math.max(2, Math.min(150, input.radiusKm)),
     tempC: input.tempC,
     tempDeltaC: input.tempDeltaC,
+    minTempC: input.minTempC,
     precipMm: input.precipMm,
     windKmh: input.windKmh,
     gustKmh: input.gustKmh,
@@ -332,6 +341,8 @@ export function expireOverrides(t = Date.now()) {
   return ended;
 }
 export const overridePayload = (o: WeatherOverride) => ({ v: 1, ...o, status: o.endedAt ? "ended" : "active" });
+/** Only the override's own retained message (after its consequences and phase are known). */
+export const publishOverrideState = (o: WeatherOverride) => publish(`truth/weather/${o.id}`, overridePayload(o), { retain: true, qos: 1 });
 function publishOverride(o: WeatherOverride) {
   publish(`truth/weather/${o.id}`, overridePayload(o), { retain: true, qos: 1 });
   lastSig = ""; // republish the weather now
@@ -347,19 +358,20 @@ export function publishWeather() {
   const list = [...weather.stations.values()].map(effective);
   const source = "MeteoSwiss SwissMetNet (open data)";
   for (const s of list) publish(`weather/stations/${s.id}`, { v: 1, ...s, source }, { retain: true, qos: 1 });
-  const fields = ["id", "name", "lat", "lon", "altitudeM", ...FIELDS, "measuredAt"];
-  publish("weather/snapshot", { v: 1, ts: Date.now(), measuredAt: weather.grid?.measuredAt ?? null, source, units: weather.units, fields, stations: list.map((s) => fields.map((f) => s[f] ?? null)) }, { retain: true, qos: 1 });
-  if (weather.grid && weather.precip)
-    publish(
-      "weather/precipitation-grid",
-      { v: 1, ts: Date.now(), measuredAt: weather.grid.measuredAt, unit: "mm per 10 minutes", phase: "snow where the temperature-grid value of the same cell is <= 1 °C, rain above", method: "inverse-distance weighting of MeteoSwiss stations within 25 km", bbox: [GRID.west, GRID.south, GRID.east, GRID.north], step: GRID.step, cols: weather.grid.cols, rows: weather.grid.rows, order: "row-major from north-west", values: weather.precip },
-      { retain: true, qos: 1 },
-    );
-  if (weather.grid)
-    publish(
-      "weather/temperature-grid",
-      { v: 1, ts: Date.now(), measuredAt: weather.grid.measuredAt, unit: "°C", method: "inverse-distance weighting of MeteoSwiss stations (plus Open-Meteo model values outside Switzerland), corrected for altitude (6.5 °C/km, terrain model)", bbox: [GRID.west, GRID.south, GRID.east, GRID.north], step: GRID.step, cols: weather.grid.cols, rows: weather.grid.rows, order: "row-major from north-west", values: weather.grid.values },
-      { retain: true, qos: 1 },
-    );
+  const fields = ["id", "name", "lat", "lon", "altitudeM", ...FIELDS, "windDirDeg", "measuredAt"];
+  weather.units.windDirDeg = "° (where the wind comes from, clockwise from north)";
+  const snapshot = { v: 1, ts: Date.now(), measuredAt: weather.grid?.measuredAt ?? null, source, units: weather.units, fields, stations: list.map((s) => fields.map((f) => s[f] ?? null)) };
+  publish("weather/snapshot", snapshot, { retain: true, qos: 1 });
+  channel.send("weather", { type: "weather", snapshot });
+  if (weather.grid && weather.precip) {
+    const grid = { v: 1, ts: Date.now(), measuredAt: weather.grid.measuredAt, unit: "mm per 10 minutes", phase: "snow where the temperature-grid value of the same cell is <= 1 °C, rain above", method: "inverse-distance weighting of MeteoSwiss stations within 25 km", bbox: [GRID.west, GRID.south, GRID.east, GRID.north], step: GRID.step, cols: weather.grid.cols, rows: weather.grid.rows, order: "row-major from north-west", values: weather.precip };
+    publish("weather/precipitation-grid", grid, { retain: true, qos: 1 });
+    channel.send("precip", { type: "precip", grid });
+  }
+  if (weather.grid) {
+    const grid = { v: 1, ts: Date.now(), measuredAt: weather.grid.measuredAt, unit: "°C", method: "inverse-distance weighting of MeteoSwiss stations (plus Open-Meteo model values outside Switzerland), corrected for altitude (6.5 °C/km, terrain model)", bbox: [GRID.west, GRID.south, GRID.east, GRID.north], step: GRID.step, cols: weather.grid.cols, rows: weather.grid.rows, order: "row-major from north-west", values: weather.grid.values };
+    publish("weather/temperature-grid", grid, { retain: true, qos: 1 });
+    channel.send("grid", { type: "grid", grid });
+  }
 }
 export const activeOverrides = active;

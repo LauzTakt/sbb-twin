@@ -7,7 +7,7 @@ import { disruptions, incidents, type Disruption, type Incident } from "./disrup
 import { settings } from "./engine.ts";
 import { weather, type WeatherOverride } from "./weather.ts";
 
-const FILE = join(config.dataDir, "state.json");
+const FILE = process.env.RAIL_STATE_FILE ?? join(config.dataDir, "state.json"); // a private test instance uses its own
 type Saved = { disruptions: (Omit<Disruption, "edges" | "affected"> & { edges: number[]; affected: string[] })[]; overrides: WeatherOverride[]; incidents: Incident[]; settings: typeof settings };
 
 function snapshot(): Saved {

@@ -1,10 +1,9 @@
 import * as maplibregl from "maplibre-gl";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import type { GeoJSONSource, ImageSource, Map as LibreMap } from "maplibre-gl";
-import type { MqttClient } from "mqtt";
 import { Activity, CircleDot, CloudSnow, CloudSun, Crosshair, Layers, Link2, Moon, Pause, RefreshCcw, ShieldCheck, ShieldOff, Siren, Sun, Thermometer, TrainFront, Wind, X, Zap } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api, brokerUrl, connectFeed, watchTrain, type Disruption, type Event, type Incident, type Status, type TemperatureGrid, type WeatherOverride, type WeatherSnapshot } from "./feed";
+import { api, brokerUrl, connectLive, type ControlState, type Live, type Disruption, type Event, type Incident, type Status, type TemperatureGrid, type WeatherOverride, type WeatherSnapshot } from "./feed";
 import { applyBase, baseStyle, type Theme } from "./map";
 import { COLOURS, TrainCanvas } from "./trains";
 import { gridImage, precipImage, RAIN_LEGEND, RAMP, rampColour, SNOW_LEGEND, temperatureAt } from "./weatherLayer";
@@ -107,7 +106,7 @@ export function App() {
   const mapEl = useRef<HTMLDivElement>(null);
   const mapRef = useRef<LibreMap | undefined>(undefined);
   const layer = useRef<TrainCanvas | undefined>(undefined);
-  const client = useRef<MqttClient | undefined>(undefined);
+  const client = useRef<Live | undefined>(undefined);
   const [conn, setConn] = useState<"connecting" | "online" | "offline">("connecting");
   const [status, setStatus] = useState<Status>();
   const [disruptions, setDisruptions] = useState<Record<string, Disruption>>({});
@@ -169,6 +168,7 @@ export function App() {
       mapRef.current = m;
       (window as unknown as { railMap?: LibreMap }).railMap = m; // handy for debugging in the console
       particles.current = new WeatherParticles(m);
+      (window as unknown as { railParticles?: WeatherParticles }).railParticles = particles.current; // debugging handle
       layer.current = new TrainCanvas(m);
       setReady(true);
       m.on("load", () => {
@@ -224,45 +224,23 @@ export function App() {
         setFollowing(false);
       });
       m.on("dragstart", () => setFollowing(false));
-      client.current = connectFeed({
+      client.current = connectLive({
         connection: setConn,
-        snapshot: (_ts, rows) => layer.current?.update(rows),
-        status: setStatus,
-        disruption: (id, d) => setDisruptions((x) => (d ? { ...x, [id]: d } : Object.fromEntries(Object.entries(x).filter(([k]) => k !== id)))),
-        incident: (id, i) => setIncidents((x) => (i ? { ...x, [id]: i } : Object.fromEntries(Object.entries(x).filter(([k]) => k !== id)))),
-        simulated: (id, body) => {
-          setSimulated((x) => {
-            const n = new Set(x);
-            if (body) n.add(id);
-            else n.delete(id);
-            return n;
-          });
-          setCauses((x) => {
-            const n = { ...x };
-            if (body?.causes) n[id] = body.causes;
-            else delete n[id];
-            return n;
-          });
+        tick: (_ts, rows, st) => {
+          layer.current?.update(rows);
+          setStatus(st);
         },
+        state: (st) => applyState.current(st),
         event: (e) => setEvents((x) => [e, ...x].slice(0, 80)),
+        events: (list) => setEvents(list.slice(0, 80)),
         weather: setWeather,
         grid: setGrid,
         precip: setPrecip,
-        override: (id, o) => setOverrides((x) => (o ? { ...x, [id]: o } : Object.fromEntries(Object.entries(x).filter(([k]) => k !== id)))),
-        reset: () => {
-          setDisruptions({});
-          setIncidents({});
-          setOverrides({});
-          setSimulated(new Set());
-          setCauses({});
-        },
-        settings: (s) => setProtection(s.protection),
       });
-      void api<{ protection: boolean }>("/god").then((g) => setProtection(g.protection)).catch(() => {});
     })();
     return () => {
       alive = false;
-      client.current?.end(true);
+      client.current?.close();
       layer.current?.destroy();
       mapRef.current?.remove();
     };
@@ -270,6 +248,15 @@ export function App() {
   useEffect(() => {
     if (layer.current) layer.current.simulated = simulated;
   }, [simulated]);
+  // the twin sends its whole control state whenever it changes: the page shows exactly that, nothing older
+  const applyState = useRef((s: ControlState) => {
+    setDisruptions(Object.fromEntries(s.disruptions.map((d) => [d.id, d])));
+    setIncidents(Object.fromEntries(s.incidents.map((i) => [i.id, i])));
+    setOverrides(Object.fromEntries(s.overrides.map((o) => [o.id, o])));
+    setProtection(s.protection);
+    setSimulated(new Set(s.simulated.map((x) => x.trainId)));
+    setCauses(Object.fromEntries(s.simulated.map((x) => [x.trainId, x.causes])));
+  });
   useEffect(() => {
     const m = mapRef.current;
     for (const tier of ["major", "medium", "minor"])
@@ -334,19 +321,21 @@ export function App() {
       m.addLayer({ id: "area-fill", type: "fill", source: "areas", paint: { "fill-color": ["get", "colour"], "fill-opacity": 0.14 } });
       m.addLayer({ id: "area-line", type: "line", source: "areas", paint: { "line-color": ["get", "colour"], "line-width": 2, "line-dasharray": [3, 2] } });
       m.addLayer({ id: "area-picked", type: "line", source: "areas", filter: ["==", ["get", "id"], ""], paint: { "line-color": "#0079c7", "line-width": 4 } });
-      m.addLayer({ id: "area-label", type: "symbol", source: "areas", layout: { "text-field": ["get", "label"], "text-size": 13, "text-font": ["Frutiger Neue Bold"], "symbol-placement": "point" }, paint: { "text-color": ["get", "colour"], "text-halo-color": "#ffffff", "text-halo-width": 2 } });
+      m.addLayer({ id: "area-label", type: "symbol", source: "areas", layout: { "text-field": ["get", "label"], "text-size": 13, "text-font": ["Frutiger Neue Bold"], "symbol-placement": "point", "text-anchor": "bottom", "text-offset": [0, -0.4] }, paint: { "text-color": ["get", "colour"], "text-halo-color": "#ffffff", "text-halo-width": 2 } });
     }
     if (!m.getSource("disruptions")) {
       m.addSource("disruptions", { type: "geojson", data: d.disruptions as never });
-      m.addLayer({ id: "disruption-glow", type: "line", source: "disruptions", filter: ["==", ["geometry-type"], "MultiLineString"], paint: { "line-color": ["get", "colour"], "line-width": 12, "line-opacity": 0.25, "line-blur": 4 } });
-      m.addLayer({ id: "disruption-line", type: "line", source: "disruptions", filter: ["==", ["geometry-type"], "MultiLineString"], paint: { "line-color": ["get", "colour"], "line-width": 3.5, "line-dasharray": [2, 1.2] } });
-      m.addLayer({ id: "disruption-point", type: "circle", source: "disruptions", filter: ["==", ["geometry-type"], "Point"], paint: { "circle-radius": 11, "circle-color": "rgba(0,0,0,0)", "circle-stroke-color": ["get", "colour"], "circle-stroke-width": 3 } });
+      m.addLayer({ id: "disruption-glow", type: "line", source: "disruptions", filter: ["in", ["geometry-type"], ["literal", ["LineString", "MultiLineString"]]], paint: { "line-color": ["get", "colour"], "line-width": ["interpolate", ["linear"], ["zoom"], 7, 9, 12, 18], "line-opacity": 0.3, "line-blur": 3 } });
+      m.addLayer({ id: "disruption-line", type: "line", source: "disruptions", filter: ["in", ["geometry-type"], ["literal", ["LineString", "MultiLineString"]]], layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": ["get", "colour"], "line-width": ["interpolate", ["linear"], ["zoom"], 7, 3.5, 12, 6] } });
+      m.addLayer({ id: "disruption-point", type: "circle", source: "disruptions", filter: ["in", ["geometry-type"], ["literal", ["Point", "MultiPoint"]]], paint: { "circle-radius": 11, "circle-color": "rgba(0,0,0,0)", "circle-stroke-color": ["get", "colour"], "circle-stroke-width": 3 } });
       m.addLayer({ id: "picked-line", type: "line", source: "disruptions", filter: ["==", ["get", "id"], ""], paint: { "line-color": "#0079c7", "line-width": 7, "line-opacity": 0.85 } });
       m.addLayer({ id: "picked-point", type: "circle", source: "disruptions", filter: ["==", ["get", "id"], ""], paint: { "circle-radius": 16, "circle-color": "rgba(0,121,199,0.15)", "circle-stroke-color": "#0079c7", "circle-stroke-width": 3 } });
     }
     if (!m.getSource("weather")) {
       m.addSource("weather", { type: "geojson", data: d.weather as never });
-      m.addLayer({ id: "wind-label", type: "symbol", source: "weather", filter: [">=", ["get", "gust"], 0], layout: { visibility: "none", "text-field": ["get", "gustLabel"], "text-size": ["interpolate", ["linear"], ["zoom"], 7, 10.5, 10, 13], "text-font": ["Frutiger Neue Bold"], "text-allow-overlap": false, "text-padding": 6, "symbol-sort-key": ["-", 0, ["get", "gust"]] }, paint: { "text-color": ["step", ["get", "gust"], "#2d327d", 50, "#0079c7", 75, "#f27e00", 100, "#eb0000"], "text-halo-color": "rgba(255,255,255,0.95)", "text-halo-width": 2 } });
+      if (!m.hasImage("wind-arrow")) m.addImage("wind-arrow", windArrow(), { sdf: true });
+      m.addLayer({ id: "wind-arrow", type: "symbol", source: "weather", filter: [">=", ["get", "dir"], 0], layout: { visibility: "none", "icon-image": "wind-arrow", "icon-rotate": ["get", "dir"], "icon-rotation-alignment": "map", "icon-allow-overlap": true, "icon-ignore-placement": true, "icon-size": ["interpolate", ["linear"], ["get", "wind"], 0, 0.3, 20, 0.45, 50, 0.65, 90, 0.85], "symbol-sort-key": ["get", "wind"] }, paint: { "icon-color": ["step", ["get", "gust"], "#2d327d", 50, "#0079c7", 75, "#f27e00", 100, "#eb0000"], "icon-halo-color": "rgba(255,255,255,0.95)", "icon-halo-width": 1.5 } });
+      m.addLayer({ id: "wind-label", type: "symbol", source: "weather", filter: [">=", ["get", "wind"], 0], layout: { visibility: "none", "text-field": ["step", ["zoom"], ["case", [">=", ["get", "gust"], 30], ["get", "windLabel"], ""], 9, ["get", "windLabel"]], "text-anchor": "top", "text-offset": [0, 1.1], "text-size": ["interpolate", ["linear"], ["zoom"], 7, 10.5, 10, 13], "text-font": ["Frutiger Neue Bold"], "text-allow-overlap": false, "text-padding": 6, "symbol-sort-key": ["-", 0, ["get", "gust"]] }, paint: { "text-color": ["step", ["get", "gust"], "#2d327d", 50, "#0079c7", 75, "#f27e00", 100, "#eb0000"], "text-halo-color": "rgba(255,255,255,0.95)", "text-halo-width": 2 } });
       m.addLayer({ id: "weather-label", type: "symbol", source: "weather", layout: { visibility: d.temp ? "visible" : "none", "text-field": ["get", "label"], "text-size": ["interpolate", ["linear"], ["zoom"], 7, 11, 10, 13.5], "text-font": ["Frutiger Neue Bold"], "text-allow-overlap": false, "text-padding": 6 }, paint: { "text-color": "#212121", "text-halo-color": "rgba(255,255,255,0.92)", "text-halo-width": 2 } });
     }
   }
@@ -379,6 +368,7 @@ export function App() {
     if (layer.current) layer.current.theme = dark ? "dark" : "light";
     if (particles.current) particles.current.dark = dark;
     if (m.getLayer("wind-label")) m.setPaintProperty("wind-label", "text-halo-color", dark ? "rgba(16,20,24,0.92)" : "rgba(255,255,255,0.95)");
+    if (m.getLayer("wind-arrow")) m.setPaintProperty("wind-arrow", "icon-halo-color", dark ? "rgba(16,20,24,0.92)" : "rgba(255,255,255,0.95)");
   }
   useEffect(() => {
     look.current = { theme, satellite };
@@ -420,7 +410,7 @@ export function App() {
       type: "FeatureCollection",
       features: list.flatMap((o) => [
         { type: "Feature" as const, properties: { colour: colour(o), label: "", id: o.id, kind: "weather", size: o.radiusKm * 2 }, geometry: { type: "Polygon", coordinates: [circle(o)] } },
-        { type: "Feature" as const, properties: { colour: colour(o), label: `${o.label}\n${describe(o)}` }, geometry: { type: "Point", coordinates: [o.lon, o.lat] } },
+        { type: "Feature" as const, properties: { colour: colour(o), label: `${o.label}\n${describe(o)}` }, geometry: { type: "Point", coordinates: [o.lon, o.lat + o.radiusKm / 111.32] } },
       ]),
     };
     (mapRef.current?.getSource("areas") as GeoJSONSource | undefined)?.setData(data.current.areas as never);
@@ -428,8 +418,8 @@ export function App() {
   useEffect(() => {
     const features = [
       ...Object.values(disruptions)
-        .filter((d) => d.status === "active" && d.geometry)
-        .map((d) => ({ type: "Feature" as const, properties: { colour: "#eb0000", id: d.id, kind: "disruption", size: extent(d.geometry) }, geometry: d.geometry as FC["features"][number]["geometry"] })),
+        .filter((d) => d.status === "active" && d.geometry && d.geometry.type !== "Polygon")
+        .map((d) => ({ type: "Feature" as const, properties: { colour: d.effect === "speed_restriction" || d.effect === "signal_failure" ? "#f27e00" : "#eb0000", id: d.id, kind: "disruption", size: extent(d.geometry) }, geometry: d.geometry as FC["features"][number]["geometry"] })),
       ...Object.values(incidents)
         .filter((i) => i.geometry)
         .map((i) => ({ type: "Feature" as const, properties: { colour: "#f27e00", id: i.id, kind: "incident", size: extent(i.geometry) }, geometry: i.geometry as FC["features"][number]["geometry"] })),
@@ -452,7 +442,9 @@ export function App() {
             colour: typeof s.tempC === "number" ? rampColour(s.tempC) : "#999",
             label: typeof s.tempC === "number" ? `${s.tempC.toFixed(1)}°` : "",
             gust: typeof s.gustKmh === "number" ? Math.round(s.gustKmh) : -1,
-            gustLabel: typeof s.gustKmh === "number" ? `${Math.round(s.gustKmh)} km/h` : "",
+            wind: typeof s.windKmh === "number" ? Math.round(s.windKmh) : -1,
+            dir: typeof s.windDirDeg === "number" ? (s.windDirDeg + 180) % 360 : -1,
+            windLabel: typeof s.windKmh === "number" ? `${Math.round(s.windKmh)}${typeof s.gustKmh === "number" && s.gustKmh >= s.windKmh + 5 ? `–${Math.round(s.gustKmh)}` : ""} km/h` : "",
           },
           geometry: { type: "Point" as const, coordinates: [s.lon as number, s.lat as number] },
         })),
@@ -481,7 +473,7 @@ export function App() {
     if (m && showTemp && !m.getSource("temperature")) addTemperature(m);
     precipRef.current = showPrecip;
     if (m && showPrecip && !m.getSource("precipitation")) addPrecip(m);
-    const show: Record<string, boolean> = { temperature: wx === "temp", "weather-label": wx === "temp", precipitation: showPrecip, "wind-label": wx === "wind" };
+    const show: Record<string, boolean> = { temperature: wx === "temp", "weather-label": wx === "temp", precipitation: showPrecip, "wind-label": wx === "wind", "wind-arrow": wx === "wind" };
     for (const [id, on] of Object.entries(show)) if (m?.getLayer(id)) m.setLayoutProperty(id, "visibility", on ? "visible" : "none");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wx, showPrecip]);
@@ -502,15 +494,21 @@ export function App() {
   }, [precip, grid]);
   useEffect(() => {
     // falling rain / drifting snow / wind streaks inside the active god-mode weather areas
-    particles.current?.set(
-      Object.values(overrides)
-        .filter((o) => o.status === "active")
-        .map((o) => {
-          const t = o.tempC ?? (grid ? (temperatureAt(grid, o.lon, o.lat) ?? 5) + (o.tempDeltaC ?? 0) : 5);
-          return { id: o.id, lon: o.lon, lat: o.lat, radiusKm: o.radiusKm, precipMm: o.precipMm ?? 0, gustKmh: o.gustKmh ?? 0, snow: t <= 1 };
-        }),
-    );
-  }, [overrides, grid]);
+    const made = Object.values(overrides)
+      .filter((o) => o.status === "active")
+      .map((o) => {
+        const t = o.tempC ?? (grid ? (temperatureAt(grid, o.lon, o.lat) ?? 5) : 5);
+        return { id: o.id, lon: o.lon, lat: o.lat, radiusKm: o.radiusKm, precipMm: o.precipMm ?? 0, gustKmh: o.gustKmh ?? 0, snow: o.phase ? o.phase === "snow" : t <= 1 };
+      });
+    // real rain and snow where MeteoSwiss stations measure it (at least 0.3 mm in 10 minutes)
+    const f = weather?.fields ?? [];
+    const [pi, ti, gi, li, oi, ii] = ["precipMm", "tempC", "gustKmh", "lat", "lon", "id"].map((k) => f.indexOf(k));
+    const inside = (lat: number, lon: number) => made.some((a) => Math.hypot((lat - a.lat) * 111.32, (lon - a.lon) * 111.32 * Math.cos((lat * Math.PI) / 180)) < a.radiusKm + 8);
+    const real = (weather?.stations ?? [])
+      .filter((r) => typeof r[pi] === "number" && (r[pi] as number) >= 0.3 && !inside(r[li] as number, r[oi] as number))
+      .map((r) => ({ id: `station-${r[ii]}`, lon: r[oi] as number, lat: r[li] as number, radiusKm: 8, precipMm: r[pi] as number, gustKmh: typeof r[gi] === "number" ? (r[gi] as number) : 0, snow: typeof r[ti] === "number" && (r[ti] as number) <= 1 }));
+    particles.current?.set([...made, ...real]);
+  }, [overrides, grid, weather]);
 
   // the picked event: highlighted on the map, scrolled to in the list
   useEffect(() => {
@@ -579,10 +577,15 @@ export function App() {
 
   // ---- actions
   const syncAll = async () => {
-    const r = await api<{ removed: number; synced: number }>("/god/reset", { method: "POST", json: {} }).catch((e) => (say(e.message), null));
+    const r = await api<{ removed: number; synced: number }>("/control/reset", { method: "POST", json: {} }).catch((e) => (say(e.message), null));
     if (!r) return;
     setPicked(undefined);
     setProtection(true);
+    setDisruptions({});
+    setIncidents({});
+    setOverrides({});
+    setSimulated(new Set());
+    setCauses({});
     say(r.removed || r.synced ? `Back to reality: ${r.removed} changes removed, ${r.synced} trains synced` : "Already on the real data");
   };
   const active = Object.values(disruptions).filter((d) => d.status === "active");
@@ -818,16 +821,22 @@ export function App() {
   );
 }
 
-function TrainCard({ id, client, simulated, mods, onEnd, onCreated, holds, onPick, following, grid, onFollow, onClose, say }: { id: string; client: MqttClient; simulated: boolean; mods: Disruption[]; onEnd: (id: string) => void; onCreated: Created; holds: { id: string; label: string }[]; onPick: (id: string) => void; following: boolean; grid?: TemperatureGrid; onFollow: () => void; onClose: () => void; say: (t: string) => void }) {
+function TrainCard({ id, client, simulated, mods, onEnd, onCreated, holds, onPick, following, grid, onFollow, onClose, say }: { id: string; client: Live; simulated: boolean; mods: Disruption[]; onEnd: (id: string) => void; onCreated: Created; holds: { id: string; label: string }[]; onPick: (id: string) => void; following: boolean; grid?: TemperatureGrid; onFollow: () => void; onClose: () => void; say: (t: string) => void }) {
   const [pos, setPos] = useState<Pos>();
   const [info, setInfo] = useState<Info>();
-  const [maxKmh, setMaxKmh] = useState("60");
   const [cruise, setCruise] = useState("120");
   const [hold, setHold] = useState("8");
   const [obstacle, setObstacle] = useState("400");
   const stopped = mods.find((d) => d.effect === "train_breakdown" || (d.effect === "obstacle" && d.params?.collidedAt));
   const crashed = mods.find((d) => d.effect === "obstacle" && d.params?.collidedAt);
-  useEffect(() => watchTrain(client, id, (p) => setPos(p as unknown as Pos), (i) => setInfo(i as unknown as Info)), [client, id]);
+  useEffect(
+    () =>
+      client.watch(id, (p, i) => {
+        if (p) setPos(p as unknown as Pos);
+        if (i) setInfo(i as unknown as Info);
+      }),
+    [client, id],
+  );
   const provoke = async (type: string, params?: Record<string, number>) => {
     const r = await api<{ disruption: Disruption }>("/disruptions", { method: "POST", json: { type, scope: { kind: "train", trainId: id }, params } }).catch((e) => (say(e.message), null));
     onCreated(r);
@@ -896,13 +905,6 @@ function TrainCard({ id, client, simulated, mods, onEnd, onCreated, holds, onPic
         <button aria-pressed={following} onClick={onFollow}>
           <Crosshair size={15} /> {following ? "Following" : "Follow"}
         </button>
-        <button
-          onClick={() => void api<{ ended: string[] }>(`/trains/${id}/release`, { method: "POST", json: {} }).then((r) => say(r.ended.length ? "Released: the train moves on (late until synced)" : "Nothing to release"))}
-          disabled={!mods.length}
-          title="End every change on this train: it moves on, keeping its delay"
-        >
-          Release
-        </button>
         <button onClick={() => void sync()} disabled={!simulated && !mods.length} title="Drop every change: the train reads the real data again">
           <RefreshCcw size={15} /> Sync to real data
         </button>
@@ -956,15 +958,6 @@ function TrainCard({ id, client, simulated, mods, onEnd, onCreated, holds, onPic
             <input value={cruise} onChange={(e) => setCruise(e.target.value.replace(/\D/g, ""))} inputMode="numeric" /> km/h
           </label>
           <button disabled={!cruise} onClick={() => void provoke("target_speed", { kmh: Number(cruise) })}>
-            Apply
-          </button>
-        </div>
-        <div className="mod-row">
-          <label>
-            Max speed
-            <input value={maxKmh} onChange={(e) => setMaxKmh(e.target.value.replace(/\D/g, ""))} inputMode="numeric" /> km/h
-          </label>
-          <button disabled={!maxKmh} onClick={() => void provoke("train_speed_limit", { maxKmh: Number(maxKmh) })}>
             Apply
           </button>
         </div>
@@ -1080,6 +1073,13 @@ function ControlPanel({ disruptions, overrides, picked, act, onCreated, protecti
   const [types, setTypes] = useState<DType[]>([]);
   const [presets, setPresets] = useState<Preset[]>([]);
   const [typeId, setTypeId] = useState("overhead_line_fault");
+  const EFFECTS: [string, string][] = [
+    ["section_closure", "Section closed"],
+    ["speed_restriction", "Speed restriction"],
+    ["signal_failure", "Signal box failure"],
+    ["station_closure", "Station closed"],
+  ];
+  const effectOf = (id: string) => types.find((t) => t.id === id)?.effect ?? "section_closure";
   const [from, setFrom] = useState<Station>();
   const [to, setTo] = useState<Station>();
   const [station, setStation] = useState<Station>();
@@ -1108,7 +1108,7 @@ function ControlPanel({ disruptions, overrides, picked, act, onCreated, protecti
   const [wMinutes, setWMinutes] = useState("60");
   useEffect(() => {
     void api<DType[]>("/disruption-types").then((t) => setTypes(t.filter(NETWORK_TYPES)));
-    void api<{ presets: Preset[] }>("/god").then((g) => setPresets(g.presets));
+    void api<{ presets: Preset[] }>("/control").then((g) => setPresets(g.presets));
   }, []);
   const type = types.find((t) => t.id === typeId);
   useEffect(() => setMinutes(type?.defaultMinutes ? String(type.defaultMinutes) : ""), [type]);
@@ -1133,15 +1133,11 @@ function ControlPanel({ disruptions, overrides, picked, act, onCreated, protecti
   const toggleProtection = async () => {
     const want = !protection;
     setProtection(want); // show it at once; the server confirms over MQTT
-    const r = await api<{ protection: boolean }>("/god/protection", { method: "POST", json: { on: want } }).catch((e) => (say(e.message), null));
+    const r = await api<{ protection: boolean }>("/control/protection", { method: "POST", json: { on: want } }).catch((e) => (say(e.message), null));
     if (r) {
       setProtection(r.protection);
       say(r.protection ? "Train protection on: trains never run into each other" : "Train protection off: drivers only see what is ahead");
     } else setProtection(!want);
-  };
-  const releaseAll = async () => {
-    const r = await api<{ ended: number }>("/god/release-all", { method: "POST", json: {} }).catch((e) => (say(e.message), null));
-    if (r) say(`${r.ended} changes ended`);
   };
   const live = disruptions.filter((d) => d.status === "active").sort((a, b) => b.startedAt - a.startedAt);
   const weatherLive = overrides.filter((o) => o.status === "active");
@@ -1149,16 +1145,32 @@ function ControlPanel({ disruptions, overrides, picked, act, onCreated, protecti
   return (
     <>
       <h3>Network</h3>
-      <label className="field">
-        <span>Type</span>
-        <select value={typeId} onChange={(e) => setTypeId(e.target.value)}>
-          {types.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.label} ({t.reasonCode})
-            </option>
-          ))}
-        </select>
-      </label>
+      <div className="row">
+        <label className="field">
+          <span>What happens</span>
+          <select value={effectOf(typeId)} onChange={(e) => setTypeId(types.find((t) => t.effect === e.target.value)?.id ?? typeId)}>
+            {EFFECTS.filter(([e]) => types.some((t) => t.effect === e)).map(([e, label]) => (
+              <option key={e} value={e}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+        {types.filter((t) => t.effect === effectOf(typeId)).length > 1 && (
+          <label className="field">
+            <span>Cause</span>
+            <select value={typeId} onChange={(e) => setTypeId(e.target.value)}>
+              {types
+                .filter((t) => t.effect === effectOf(typeId))
+                .map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.label} ({t.reasonCode})
+                  </option>
+                ))}
+            </select>
+          </label>
+        )}
+      </div>
       {type?.scope === "section" && (
         <div className="row">
           <StationPicker label="From" value={from} onChange={setFrom} />
@@ -1279,11 +1291,6 @@ function ControlPanel({ disruptions, overrides, picked, act, onCreated, protecti
           </li>
         ))}
       </ul>
-      <div className="row actions">
-        <button className="secondary" onClick={() => void releaseAll()}>
-          End everything
-        </button>
-      </div>
     </>
   );
 }
@@ -1396,4 +1403,24 @@ function Connect() {
       <code className="block">{`const c = mqtt.connect("${url}")\nc.on("connect", () => c.subscribe("sbb-twin/v1/fleet"))\nc.on("message", (_, b) => console.log(JSON.parse(b).trains.length))`}</code>
     </>
   );
+}
+
+/** An arrow pointing north (rotated by the map to where the wind blows), as a signed-distance icon. */
+function windArrow() {
+  const n = 48;
+  const c = document.createElement("canvas");
+  c.width = c.height = n;
+  const g = c.getContext("2d")!;
+  g.fillStyle = "#000";
+  g.beginPath();
+  g.moveTo(24, 3);
+  g.lineTo(37, 21);
+  g.lineTo(28, 19);
+  g.lineTo(28, 45);
+  g.lineTo(20, 45);
+  g.lineTo(20, 19);
+  g.lineTo(11, 21);
+  g.closePath();
+  g.fill();
+  return { width: n, height: n, data: new Uint8Array(g.getImageData(0, 0, n, n).data.buffer) };
 }

@@ -1,11 +1,12 @@
 // What sbb-twin publishes on MQTT: payload builders and the per-tick publication.
 import { randomUUID } from "node:crypto";
 import { clear, publish, brokerStats } from "./mqtt.ts";
-import { byTrainId, collisions, delayOf, edgeName, expectedArrival, expectedDeparture, nextCall, timetableDate, trains, tripMeta, type Train } from "./engine.ts";
+import * as channel from "./channel.ts";
+import { byTrainId, collisions, delayOf, edgeName, expectedArrival, expectedDeparture, nextCall, settings, timetableDate, trains, tripMeta, type Train } from "./engine.ts";
 import { stops } from "./timetable.ts";
 import { disruptions, incidents, type Disruption, type Incident } from "./disruptions.ts";
 import { live } from "./realtime.ts";
-import { weather } from "./weather.ts";
+import { overridePayload, weather } from "./weather.ts";
 
 export const VERSION = "1.0.0";
 export const startedAt = Date.now();
@@ -114,14 +115,43 @@ export const incidentPayload = (i: Incident) => ({ v: 1, ...i, status: "active" 
 /** Public events (observable facts) go to events/{kind}; what we provoked goes to truth/events. */
 export function event(kind: "disruption" | "incident" | "train" | "sync" | "system", data: Record<string, unknown>) {
   const body = { v: 1, ts: Date.now(), kind, ...data };
-  if (kind === "disruption" || kind === "sync") publish("truth/events", body, { qos: 1 });
-  else publish(`events/${kind}`, body, { qos: 1 });
+  // events are fire-and-forget: QoS 0, not retained
+  if (kind === "disruption" || kind === "sync") publish("truth/events", body, { qos: 0 });
+  else publish(`events/${kind}`, body, { qos: 0 });
+  channel.sendEvent(body);
+}
+
+/** Everything the control page shows besides trains and weather: what was provoked, marked or switched. */
+export function controlState() {
+  return {
+    disruptions: [...disruptions.values()].map(disruptionPayload),
+    incidents: [...incidents.values()].map(incidentPayload),
+    overrides: [...weather.overrides.values()].map(overridePayload),
+    protection: settings.protection,
+    simulated: [...trains.values()].filter((tr) => tr.mode === "sim").map((tr) => ({ trainId: tr.trip.trainId, causes: [...tr.causes] })),
+  };
+}
+let stateCore = "";
+let stateFull = "";
+let stateAt = 0;
+/** Send the control state to the pages when it changed: at once for changes, every 5 s at most for affected-train lists. */
+export function pushState(t = Date.now()) {
+  const s = controlState();
+  const full = JSON.stringify(s);
+  if (full === stateFull) return;
+  const core = JSON.stringify({ ...s, disruptions: s.disruptions.map((d) => ({ ...d, affectedTrains: d.affectedTrains.length })) });
+  if (core === stateCore && t - stateAt < 5000) return;
+  stateCore = core;
+  stateFull = full;
+  stateAt = t;
+  channel.send("state", { type: "state", ts: t, ...s });
 }
 
 // ---------------------------------------------------------------- per tick
 export const FLEET_FIELDS = ["trainId", "lat", "lon", "bearing", "speedKmh", "motion", "delaySec", "line", "category", "atStopId", "continuity"];
 const truthPublished = new Map<string, string>(); // trainId -> causes signature
 const disruptionSig = new Map<string, string>();
+const disruptionAt = new Map<string, number>();
 let lastStatus = 0;
 
 export function publishTick(t: number, removed: Train[]) {
@@ -154,15 +184,26 @@ export function publishTick(t: number, removed: Train[]) {
     if (truthPublished.delete(id)) clear(`truth/trains/${id}`);
   }
   publish("fleet", { v: 1, streamId, tick: tickNo, ts: t, fields: FLEET_FIELDS, trains: fleet });
+  channel.send("tick", { type: "tick", ts: t, trains: fleet, status: statusPayload(t) }, { droppable: true });
+  for (const id of channel.watched()) {
+    const tr = byTrainId.get(id);
+    channel.sendToWatchers(id, { type: "train", trainId: id, position: tr ? positionPayload(tr, t) : null, info: tr ? infoPayload(tr, t) : null });
+  }
   for (const d of disruptions.values()) {
-    const sig = `${d.endedAt ?? ""}|${d.affected.size}|${d.params.collidedAt ?? ""}`;
-    if (disruptionSig.get(d.id) === sig) continue;
-    if (d.endedAt && disruptionSig.get(d.id) && !disruptionSig.get(d.id)!.startsWith(String(d.endedAt))) event("disruption", { type: "disruption.ended", id: d.id, label: d.label, where: d.where });
+    // state changes go out at once; a growing list of affected trains at most every 15 s
+    const state = `${d.endedAt ?? ""}|${d.params.collidedAt ?? ""}`;
+    const prev = disruptionSig.get(d.id);
+    const sig = `${state}|${d.affected.size}`;
+    if (prev === sig) continue;
+    if (prev && prev.startsWith(`${state}|`) && t - (disruptionAt.get(d.id) ?? 0) < 15_000) continue;
+    disruptionAt.set(d.id, t);
+    if (d.endedAt && prev && !prev.startsWith(String(d.endedAt))) event("disruption", { type: "disruption.ended", id: d.id, label: d.label, where: d.where });
     disruptionSig.set(d.id, sig);
     publish(`truth/disruptions/${d.id}`, disruptionPayload(d), { retain: true, qos: 1 });
   }
   // ended disruptions stay visible for 30 minutes
   for (const d of [...disruptions.values()]) if (d.endedAt && t - d.endedAt > 30 * 60_000) removeDisruption(d.id);
+  pushState(t);
   if (t - lastStatus >= 10_000) {
     lastStatus = t;
     publish("status", statusPayload(t), { retain: true, qos: 1 });
@@ -193,7 +234,8 @@ export function statusPayload(t = Date.now()) {
     disruptionsActive: [...disruptions.values()].filter((d) => !d.endedAt).length,
     incidentsMarked: incidents.size,
     weather: { stations: weather.stations.size, feedAgeSec: weather.fetchedAt ? Math.round((t - weather.fetchedAt) / 1000) : null, measuredAt: weather.grid?.measuredAt ?? null, error: weather.error ?? null },
-    brokerClients: brokerStats.clients,
+    broker: { mode: brokerStats.mode, connected: brokerStats.connected, webSocketClients: brokerStats.clients },
+    controlPages: channel.pageCount(),
   };
 }
 export const trainById = (id: string) => byTrainId.get(id);

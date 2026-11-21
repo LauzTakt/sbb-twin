@@ -383,16 +383,28 @@ textarea:focus-visible {
   justify-content: space-between;
   background: var(--white);
   border: 1px solid var(--cloud);
-  border-left: 4px solid var(--red);
   border-radius: 10px;
   padding: 10px 12px;
 }
-.items li[data-status="ended"] {
-  border-left-color: var(--cement);
-  background: var(--milk);
+.items li b::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--red);
+  margin-right: 7px;
+  vertical-align: 1px;
 }
-.items li[data-severity] {
-  border-left-color: var(--orange);
+.items li[data-status="ended"] {
+  background: var(--milk);
+  color: var(--metal);
+}
+.items li[data-status="ended"] b::before {
+  background: var(--cement);
+}
+.items li[data-severity] b::before {
+  background: var(--orange);
 }
 .items li div {
   display: grid;
@@ -814,22 +826,27 @@ textarea:focus-visible {
   align-items: center;
   gap: 12px;
   text-align: left;
-  border: 1px solid var(--cloud);
-  border-left: 4px solid var(--green);
-  background: var(--white);
-  border-radius: 10px;
-  padding: 11px 12px;
+  border: 0;
+  background: transparent;
+  padding: 4px 0;
   color: var(--charcoal);
 }
-.switch.off {
-  border-left-color: var(--red);
-}
 .switch svg {
-  flex: none;
-  color: var(--green);
+  display: none;
 }
-.switch.off svg {
-  color: var(--red);
+.switch::after {
+  content: "";
+  order: 2;
+  margin-left: auto;
+  flex: none;
+  width: 44px;
+  height: 26px;
+  border-radius: 999px;
+  background: var(--green) radial-gradient(circle at calc(100% - 13px) 50%, #fff 0 9px, transparent 10px);
+  transition: background 0.25s ease;
+}
+.switch.off::after {
+  background: var(--cement) radial-gradient(circle at 13px 50%, #fff 0 9px, transparent 10px);
 }
 .switch span {
   display: grid;
@@ -839,8 +856,8 @@ textarea:focus-visible {
   color: var(--metal);
   font-size: 13px;
 }
-.items li[data-kind="weather"] {
-  border-left-color: var(--sky);
+.items li[data-kind="weather"] b::before {
+  background: var(--sky);
 }
 .row.actions {
   margin-top: 12px;
@@ -861,9 +878,8 @@ textarea:focus-visible {
 }
 
 .items li.picked {
-  outline: 2px solid var(--sky);
-  outline-offset: 1px;
-  background: color-mix(in srgb, var(--sky) 7%, var(--white));
+  border-color: var(--sky);
+  box-shadow: 0 0 0 1px var(--sky);
 }
 
 .holds {

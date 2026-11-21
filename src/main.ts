@@ -7,6 +7,7 @@ import { getRequestListener } from "@hono/node-server";
 import { config } from "./config.ts";
 import { api } from "./api.ts";
 import { startBroker } from "./mqtt.ts";
+import { startChannel } from "./channel.ts";
 import { loadGeometry } from "./geometry.ts";
 import { applyRealtime, loadTimetable, tick, trains } from "./engine.ts";
 import { live, pollRealtime } from "./realtime.ts";
@@ -50,6 +51,7 @@ if (!config.production) {
   const { createServer: createVite } = await import("vite");
   vite = await createVite({ configFile: join(config.viewerDir, "vite.config.ts"), server: { middlewareMode: true, hmr: { server }, allowedHosts: true }, appType: "spa" });
 }
+startChannel(server);
 await startBroker(server);
 // god-mode state from before a restart: disruptions republish on the first tick, the rest here
 const restored = loadState();
@@ -58,7 +60,7 @@ for (const i of incidents.values()) publish(`incidents/${i.id}`, incidentPayload
 publish("truth/settings", { v: 1, ...settings, ts: Date.now() }, { retain: true, qos: 1 });
 setInterval(saveState, 2000).unref();
 server.listen(config.port, config.host, () =>
-  console.log(`[sbb-twin] viewer + API http://${config.host}:${config.port}/ · MQTT tcp://${config.host}:${config.mqttPort} · MQTT/WebSocket ws://${config.host}:${config.port}/mqtt`),
+  console.log(`[sbb-twin] viewer + API http://${config.host}:${config.port}/ · MQTT ${config.mqttUrl ? `on ${new URL(config.mqttUrl).host} (read-only WebSocket proxy at /mqtt)` : `tcp://${config.host}:${config.mqttPort} + ws://${config.host}:${config.port}/mqtt`}`),
 );
 event("system", { type: "system.started" });
 

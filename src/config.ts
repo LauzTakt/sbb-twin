@@ -16,6 +16,10 @@ export const config = {
   port: Number(process.env.PORT ?? 8787),
   host: process.env.HOST ?? "127.0.0.1",
   mqttPort: Number(process.env.MQTT_PORT ?? 1883),
+  // external broker (the team's): when set, everything is published there instead of the embedded broker
+  mqttUrl: process.env.MQTT_URL ?? "",
+  mqttUsername: process.env.MQTT_USERNAME ?? undefined,
+  mqttPassword: process.env.MQTT_PASSWORD ?? undefined,
   dataDir: process.env.RAIL_DATA_DIR ?? here("../data/"),
   daysDir: process.env.RAIL_DAYS_DIR ?? (existsSync(here("../data/days/")) ? here("../data/days/") : "/workspace/sbb/gtfs/"),
   gtfsRtKey: process.env.OTD_GTFS_RT_KEY ?? "",

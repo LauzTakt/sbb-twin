@@ -59,7 +59,7 @@ export type Disruption = {
   geometry: GeoJsonGeometry | null; // where it is, for maps
   affected: Set<string>; // trains whose behaviour it changed
 };
-export type GeoJsonGeometry = { type: "MultiLineString"; coordinates: number[][][] } | { type: "Point"; coordinates: number[] } | { type: "LineString"; coordinates: number[][] };
+export type GeoJsonGeometry = { type: "MultiLineString"; coordinates: number[][][] } | { type: "Point"; coordinates: number[] } | { type: "LineString"; coordinates: number[][] } | { type: "Polygon"; coordinates: number[][][] };
 
 export type Incident = {
   id: string;
@@ -102,11 +102,20 @@ export function addSystemDisruption(input: { type: string; label: string; reason
     endsAt: input.endsAt ?? null,
     note: input.origin,
     edges: input.edges ?? new Set(),
-    geometry: input.edges?.size ? edgesGeometry(input.edges) : null,
+    geometry: input.scope.kind === "area" ? circle(input.scope.lat, input.scope.lon, input.scope.radiusKm) : input.edges?.size ? edgesGeometry(input.edges) : null,
     affected: new Set(),
   };
   disruptions.set(d.id, d);
   return d;
+}
+/** A light polygon for an area (a disruption over an area sends its circle, not every track inside it). */
+function circle(lat: number, lon: number, radiusKm: number): GeoJsonGeometry {
+  const ring: number[][] = [];
+  for (let k = 0; k <= 48; k++) {
+    const a = (k / 48) * 2 * Math.PI;
+    ring.push([Math.round((lon + (radiusKm / (111.32 * Math.cos((lat * Math.PI) / 180))) * Math.cos(a)) * 1e5) / 1e5, Math.round((lat + (radiusKm / 111.32) * Math.sin(a)) * 1e5) / 1e5]);
+  }
+  return { type: "Polygon", coordinates: [ring] };
 }
 
 export class InputError extends Error {}

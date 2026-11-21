@@ -4,7 +4,7 @@ import { InputError, TYPES, createDisruption, createIncident, disruptions, incid
 import { byTrainId, neighbours, obstacleAhead, servedStations, stationBoard, sync, trains } from "./engine.ts";
 import { searchStations, stationIndex } from "./timetable.ts";
 import { abroadGeoJson, networkGeoJson } from "./geometry.ts";
-import { disruptionPayload, event, incidentPayload, infoPayload, positionPayload, removeDisruption, statusPayload } from "./feed.ts";
+import { controlState, disruptionPayload, event, incidentPayload, infoPayload, positionPayload, pushState, removeDisruption, statusPayload } from "./feed.ts";
 import { clear, publish } from "./mqtt.ts";
 import { GRID, overridePayload, removeOverride, weather } from "./weather.ts";
 import { WEATHER_PRESETS, endWeather, releaseAll, releaseTrain, setProtection, setWeather } from "./god.ts";
@@ -45,6 +45,11 @@ function endDisruption(id: string) {
 
 export function api() {
   const app = new Hono().basePath("/api");
+  // every change reaches the control pages at once (the engine also checks every tick)
+  app.use("*", async (c, next) => {
+    await next();
+    if (c.req.method !== "GET") pushState();
+  });
   app.onError((err, c) => {
     if (err instanceof InputError) return c.json({ error: err.message }, 422);
     console.error("[api]", err);
@@ -134,8 +139,9 @@ export function api() {
   });
 
   // God mode: weather over an area, train protection, releasing trains
-  app.get("/god", (c) => c.json({ protection: settings.protection, presets: WEATHER_PRESETS, overrides: [...weather.overrides.values()].map(overridePayload) }));
-  app.post("/god/protection", async (c) => {
+  app.get("/control/state", (c) => c.json({ ...controlState(), status: statusPayload() }));
+  app.get("/control", (c) => c.json({ protection: settings.protection, presets: WEATHER_PRESETS, overrides: [...weather.overrides.values()].map(overridePayload) }));
+  app.post("/control/protection", async (c) => {
     const b = await body(c);
     const s = setProtection(Boolean(b.on));
     publish("truth/settings", { v: 1, ...s, ts: Date.now() }, { retain: true, qos: 1 });
@@ -144,7 +150,7 @@ export function api() {
   });
   // Back to reality: delete everything we created (disruptions, weather changes, marked incidents), protection on,
   // and every train snaps back to the real data.
-  app.post("/god/reset", (c) => {
+  app.post("/control/reset", (c) => {
     const t = Date.now();
     let removed = 0;
     for (const d of [...disruptions.values()]) {
@@ -168,7 +174,7 @@ export function api() {
     event("sync", { type: "reset", removed, trainIds: synced });
     return c.json({ removed, synced: synced.length });
   });
-  app.post("/god/release-all", (c) => {
+  app.post("/control/release-all", (c) => {
     const n = releaseAll();
     event("disruption", { type: "release.all", count: n });
     return c.json({ ended: n });
@@ -186,7 +192,7 @@ export function api() {
     const lat = Number(b.lat);
     const lon = Number(b.lon);
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) throw new InputError("A weather change needs a place (lat, lon)");
-    const values = { tempC: num("tempC"), tempDeltaC: num("tempDeltaC"), precipMm: num("precipMm"), windKmh: num("windKmh"), gustKmh: num("gustKmh") };
+    const values = { tempC: num("tempC"), tempDeltaC: num("tempDeltaC"), minTempC: num("minTempC"), precipMm: num("precipMm"), windKmh: num("windKmh"), gustKmh: num("gustKmh") };
     if (Object.values(values).every((v) => v === undefined)) throw new InputError("Set at least one value (temperature, rain or wind)");
     const label = String(b.label ?? preset?.label ?? "Weather change");
     const { override, consequences } = setWeather({ label, lat, lon, radiusKm: Number(b.radiusKm ?? 20), minutes: b.minutes === undefined ? null : Number(b.minutes) || null, endsAt: null, ...values });

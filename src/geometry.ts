@@ -192,7 +192,8 @@ export function edgesGeometry(refs: Set<number>) {
     const e = network?.edges[Math.abs(ref) - 1];
     if (!e) continue;
     const line: number[][] = [];
-    for (let i = 0; i < e[5].length; i += 2) if (i % 6 === 0 || i === e[5].length - 2) line.push([e[5][i], e[5][i + 1]]);
+    // every 5th vertex (about every 100 m): enough to draw a section, small on the wire
+    for (let i = 0; i < e[5].length; i += 2) if (i % 10 === 0 || i === e[5].length - 2) line.push([Math.round(e[5][i] * 1e5) / 1e5, Math.round(e[5][i + 1] * 1e5) / 1e5]);
     lines.push(line);
   }
   return lines.length ? { type: "MultiLineString" as const, coordinates: lines } : null;

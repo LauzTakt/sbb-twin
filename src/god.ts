@@ -2,17 +2,15 @@
 import { addSystemDisruption, disruptions, type Disruption } from "./disruptions.ts";
 import { edgeMidpoint, edgesWithin } from "./geometry.ts";
 import { settings } from "./engine.ts";
-import { addOverride, elevation, endOverride, expireOverrides, temperatureAt, weather, type WeatherOverride } from "./weather.ts";
+import { addOverride, elevation, endOverride, expireOverrides, publishOverrideState, temperatureAt, weather, type WeatherOverride } from "./weather.ts";
 
 export const WEATHER_PRESETS = [
   { id: "heatwave", label: "Heatwave", tempC: 38 },
   { id: "cold", label: "Cold snap", tempC: -18 },
-  { id: "storm", label: "Storm", windKmh: 70, gustKmh: 120, precipMm: 6, tempDeltaC: -4 }, // a cold front: it also cools
-  { id: "rain", label: "Heavy rain", precipMm: 12, tempDeltaC: -2 },
+  { id: "storm", label: "Storm", windKmh: 70, gustKmh: 120, precipMm: 6, tempDeltaC: -4, minTempC: 3 }, // a cold front: it cools, but it rains
+  { id: "rain", label: "Heavy rain", precipMm: 12, tempDeltaC: -2, minTempC: 3 },
   { id: "snow", label: "Snowfall", tempC: -3, precipMm: 3 },
   { id: "blizzard", label: "Heavy snowfall", tempC: -6, precipMm: 6, windKmh: 40, gustKmh: 70 },
-  { id: "warmer", label: "Warmer (+5 °C)", tempDeltaC: 5 },
-  { id: "colder", label: "Colder (−5 °C)", tempDeltaC: -5 },
 ] as const;
 
 /** What extreme weather does to the railway inside the area (the network reacts on its own). */
@@ -27,7 +25,8 @@ function consequences(o: WeatherOverride): Disruption[] {
   // the temperature in the area decides rain or snow (the same storm can rain in valleys and snow higher up)
   const temp = o.tempC ?? temperatureAt(o.lon, o.lat) ?? 5;
   const precip = o.precipMm ?? 0;
-  const snow = precip >= 1 && temp <= 1;
+  o.phase = precip > 0 ? (temp <= 1 ? "snow" : "rain") : undefined;
+  const snow = precip >= 1 && o.phase === "snow";
   if (temp >= 35) out.push(add("heat", "Heat: track buckling risk", "EG_006", "speed_restriction", { maxKmh: 80 }));
   if (temp <= -15) out.push(add("frost", "Frost: icing of points and overhead lines", "EG_016", "speed_restriction", { maxKmh: 60 }));
   if ((o.gustKmh ?? 0) >= 100) out.push(add("storm", "Storm: lines closed", "EG_101", "section_closure", {}));
@@ -49,6 +48,7 @@ function consequences(o: WeatherOverride): Disruption[] {
 export function setWeather(input: Parameters<typeof addOverride>[0]) {
   const o = addOverride(input);
   o.disruptionIds = consequences(o).map((d) => d.id);
+  publishOverrideState(o);
   return { override: o, consequences: o.disruptionIds.map((id) => disruptions.get(id)!) };
 }
 export function endWeather(id: string) {

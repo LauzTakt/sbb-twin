@@ -5,44 +5,52 @@ A live digital twin of every Swiss train, published on MQTT.
 - **Trains**: every train in service (≈ 900–1,900 depending on the hour), one precise position per second. Positions are
   computed from the official timetable (GTFS) and the official real-time predictions (GTFS-RT delays, cancellations,
   skipped stops), along the **real track geometry** of the federal rail network (BAV), with realistic acceleration and braking.
-- **Weather**: live MeteoSwiss measurements at ~300 stations (temperature, precipitation, wind, gusts, humidity, dew
-  point, pressure, sunshine, radiation, foehn, snow) and a **temperature map** of Switzerland corrected for altitude.
-- **God mode** (our team): change the world and watch it react. Provoke network disruptions (closures, speed
+- **Weather**: live MeteoSwiss measurements at ~470 stations (temperature, precipitation, wind speed and direction,
+  gusts, humidity, dew point, pressure, sunshine, radiation, foehn, snow), a **temperature map** of Switzerland corrected
+  for altitude and a **precipitation map** (rain or snow).
+- **Control** (our team): change the world and watch it react. Provoke network disruptions (closures, speed
   restrictions, signal failures, station closures), drive or stop any single train (target speed, service or emergency
   braking, obstacles and collisions), change the weather over an area (heatwaves, cold snaps, storms, heavy rain: the
   railway reacts with speed restrictions and closures), switch train protection off (rear-end collisions become
   possible), mark/unmark incidents, and **sync** trains back to the real data.
 
 Other teams consume the MQTT feed (e.g. incident detection from positions, passenger or station UIs).
-The viewer at `/` shows everything and is only for watching; it reads the same MQTT feed as everybody else.
+The control page at `/` is the twin's own console: it reads the twin directly (WebSocket `/live`, the whole state
+again after every change), so it always shows exactly what the twin holds. MQTT is the twin's output for everybody else.
+
+Apps built on this data follow one look: **[docs/sbb-style.md](docs/sbb-style.md)** (SBB type, colours, train and
+disruption colours, map conventions, components).
 
 ## Connect
 
-| | Address |
-|---|---|
-| MQTT over WebSocket (public) | `wss://<public-host>/mqtt` (the viewer's *Connect* tab shows the current host) |
-| MQTT over WebSocket (local) | `ws://127.0.0.1:8787/mqtt` |
-| MQTT over TCP (local / Docker) | `mqtt://127.0.0.1:1883` |
+sbb-twin publishes to the **team broker** (`MQTT_URL`); its address and credentials are shared in the team channel,
+not in this public repository. Without `MQTT_URL` it runs its own broker (local and Docker).
 
-MQTT 3.1.1 or 5, anonymous, **read-only**. You may publish only under `sbb-twin/v1/detections/{team}/…` and
-`sbb-twin/v1/ext/{team}/…`. Use a unique client id and a clean session.
+| | Address | Credentials |
+|---|---|---|
+| Team broker, MQTT over TCP | `mqtt://<team-broker>:1883` | team user and password |
+| Team broker through sbb-twin, MQTT over WebSocket | `wss://<public-host>/mqtt` (the page's *Connect* tab shows it) | none: a **read-only** proxy limited to `sbb-twin/v1/#` |
+| Own broker (no `MQTT_URL`) | `mqtt://127.0.0.1:1883` and `ws://127.0.0.1:8787/mqtt` | none (anonymous, read-only) |
+
+MQTT 3.1.1 or 5. Publish only under `sbb-twin/v1/detections/{team}/…` and `sbb-twin/v1/ext/{team}/…` (the own broker
+enforces it; on the team broker it is the rule). Use a unique client id and a clean session. Retained messages survive
+restarts on the team broker: sbb-twin republishes its state when it starts and removes its stale ones within a minute.
 
 ```python
 # pip install paho-mqtt==2.1.0
-import json, paho.mqtt.client as mqtt
-c = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, transport="websockets")
-c.tls_set()                                   # wss; drop for ws://
-c.ws_set_options(path="/mqtt")
+import json, os, paho.mqtt.client as mqtt
+c = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
+c.username_pw_set(os.environ["MQTT_USERNAME"], os.environ["MQTT_PASSWORD"])
 c.on_connect = lambda c, u, f, rc, p: c.subscribe("sbb-twin/v1/fleet")
 c.on_message = lambda c, u, m: print(len(json.loads(m.payload)["trains"]), "trains")
-c.connect("<public-host>", 443)
+c.connect(os.environ["MQTT_HOST"], 1883)
 c.loop_forever()
 ```
 
 ```js
 // npm i mqtt   (browsers: <script src="https://unpkg.com/mqtt@5.10.4/dist/mqtt.min.js"></script>)
 const mqtt = require("mqtt");
-const c = mqtt.connect("wss://<public-host>/mqtt");
+const c = mqtt.connect("wss://<public-host>/mqtt");     // read-only, no credentials
 c.on("connect", () => c.subscribe(["sbb-twin/v1/fleet", "sbb-twin/v1/trains/+/info"]));
 c.on("message", (topic, bytes) => {
   if (!bytes.length) return;                  // empty payload = retained message deleted
@@ -64,20 +72,32 @@ tombstone**: the entity was removed.
 | `trains/{trainId}/position` | no | 0 | every second | one train: position, speed, motion, delay, stops |
 | `trains/{trainId}/info` | yes | 1 | on start, on change, tombstone at the end | line, number, operator, origin/destination, every stop with planned/expected/actual times, status (`active` / `cancelled`) |
 | `incidents/{incidentId}` | yes | 1 | on mark, tombstone on unmark | incidents marked by staff (public flags), with geometry |
-| `events/incident`, `events/train`, `events/system` | no | 1 | on occurrence | `incident.marked` / `incident.unmarked`, `train.cancelled`, `system.started` / `system.timetable` |
+| `events/incident`, `events/train`, `events/system` | no | 0 | on occurrence | `incident.marked` / `incident.unmarked`, `train.cancelled`, `system.started` / `system.timetable` |
 | `weather/stations/{stationId}` | yes | 1 | every 10 min | one MeteoSwiss station |
 | `weather/snapshot` | yes | 1 | every 10 min | all stations in one message |
 | `weather/temperature-grid` | yes | 1 | every 10 min | **temperature map** (grid, see below) |
 | `truth/disruptions/{id}` | yes | 1 | on change | **ground truth**: disruptions we provoked, the trains they affected, geometry |
 | `truth/trains/{trainId}` | yes | 1 | while simulated | ground truth: this train is following a provoked behaviour, not the real data |
-| `truth/weather/{id}` | yes | 1 | on change | ground truth: weather changed in god mode (area, values, consequences) |
-| `truth/settings` | yes | 1 | on change | ground truth: god-mode switches (`protection`) |
-| `truth/events` | no | 1 | on occurrence | `disruption.started` / `disruption.ended`, `train.collision` (with `impactKmh`), `weather.override`, `train.released`, `release.all`, `protection.on` / `protection.off`, `sync.trains` / `sync.all` |
+| `weather/precipitation-grid` | yes | 1 | every 10 min | **precipitation map** (mm per 10 min, same grid as the temperature map); snow where the temperature map is ≤ 1 °C, rain above |
+| `truth/weather/{id}` | yes | 1 | on change | ground truth: weather changed from Control (area, values, `phase` rain/snow, consequences) |
+| `truth/settings` | yes | 1 | on change | ground truth: Control switches (`protection`) |
+| `truth/events` | no | 0 | on occurrence | `disruption.started` / `disruption.ended`, `train.collision` (with `impactKmh`), `weather.override`, `train.released`, `release.all`, `protection.on` / `protection.off`, `sync.trains` / `sync.all` |
 | `detections/{team}/{id}` | yes (yours) | 1 | yours | **reserved for the detection team**; tombstone when withdrawn |
 | `ext/{team}/…` | yours | yours | yours | free namespace for other teams |
 
 > **`truth/` is for evaluation and staff only.** A detector must infer incidents from `fleet`/`position`/`info`;
 > reading `truth/` would be cheating. Positions never reveal whether a train is simulated.
+
+**Which topic for what**
+
+| You build | Subscribe to |
+|---|---|
+| a map of every train, an incident detector | `fleet` (one message per second with every train); `trains/+/info` for timetables |
+| a passenger app following one train | `trains/{trainId}/position` and `trains/{trainId}/info` |
+| a station screen | `trains/+/info`, keeping the calls with your `stopId` (or `GET /api/stations/{id}/board`) |
+| passenger information about incidents | `incidents/+` (what staff marked as public) |
+| weather at a train or a station | `weather/temperature-grid` and `weather/precipitation-grid` (lookup below), `weather/stations/{id}` |
+| an evaluation of a detector | `truth/disruptions/+`, `truth/trains/+`, `truth/events` against your `detections/{team}/+` |
 
 ### `fleet` (every second)
 
@@ -180,9 +200,14 @@ function temperatureAt(g, lon, lat) {
 ```
 
 `weather/snapshot` (also `weather/stations/{id}` one by one): `fields` = `id, name, lat, lon, altitudeM, tempC, precipMm,
-windKmh, gustKmh, humidityPct, dewPointC, pressureHpa, sunshineMin, radiationWm2, foehn, snowCm, newSnowCm, measuredAt`;
+windKmh, gustKmh, humidityPct, dewPointC, pressureHpa, sunshineMin, radiationWm2, foehn, snowCm, newSnowCm, windDirDeg,
+measuredAt`; `windDirDeg` is where the wind comes from, in degrees clockwise from north (meteorological convention);
 `units` gives each unit as MeteoSwiss publishes it. 10-minute values (precipitation and sunshine per 10 minutes), snow
-daily. `null` = not measured at that station. Weather changed in god mode is published here like real weather.
+daily. `null` = not measured at that station. Weather changed from Control is published here like real weather.
+
+Rain and snow are real: precipitation measured every 10 minutes at ~290 stations, interpolated into
+`weather/precipitation-grid` (25 km reach). A cell is snow when the temperature map's cell is ≤ 1 °C, so one storm rains in
+the valleys and snows higher up. To read it at a train, use the same lookup as for the temperature.
 
 ### Incidents (`incidents/{id}`)
 
@@ -208,8 +233,11 @@ The viewer drives these; scripts can too. Base `http(s)://<host>/api`.
 | `POST /incidents` `{title, severity?, description?, scope?}` · `DELETE /incidents/{id}` | mark / unmark |
 | `POST /sync` `{trainIds?}` | trains read the real data again (all trains if omitted) |
 | `POST /trains/{trainId}/release` | end every change on that train (it moves on, still late until synced) |
-| `POST /weather/overrides` `{lat, lon, radiusKm, minutes?, preset? \| tempC? \| tempDeltaC?, precipMm?, windKmh?, gustKmh?}` · `POST /weather/overrides/{id}/end` | change the weather over an area (presets: `heatwave`, `cold`, `storm`, `rain`, `warmer`, `colder`) |
-| `POST /god/protection` `{on}` · `POST /god/release-all` · `GET /god` | train protection switch; end every change; current god-mode state |
+| `POST /weather/overrides` `{lat, lon, radiusKm, minutes?, preset? \| tempC? \| tempDeltaC?, minTempC?, precipMm?, windKmh?, gustKmh?}` · `POST /weather/overrides/{id}/end` | change the weather over an area (presets: `heatwave`, `cold`, `storm`, `rain`, `snow`, `blizzard`; `minTempC` keeps the area at least that warm) |
+| `POST /control/protection` `{on}` · `GET /control` | train protection switch; current Control state (switches, weather presets, weather changes) |
+| `GET /control/state` | everything provoked, marked or switched, in one answer (the same state the control page receives on `/live`) |
+| `POST /control/reset` | **Sync all**: back to reality. Deletes every disruption, weather change and marked incident, switches train protection back on, and snaps every train back to the real data |
+| `GET /stations/{id}/board` · `GET /stations/{id}/neighbours` · `GET /stations.geojson` | a station's next departures in the twin (live delays); stations connected by track, nearest first; every station served today |
 | `GET /trains`, `GET /trains/{trainId}`, `GET /stations?q=`, `GET /weather`, `GET /status` | read helpers |
 
 | Type | SBB reason | Scope | What trains do |
@@ -229,11 +257,18 @@ The viewer drives these; scripts can too. Base `http(s)://<host>/api`.
 
 A provoked train keeps its own behaviour (it stays late) after the disruption ends, until it is **synced**.
 
-**Weather consequences** (automatic, inside the changed area): ≥ 35 °C → *Heat: track buckling risk* (80 km/h);
-≤ −15 °C → *Frost* (60 km/h); gusts ≥ 100 km/h → *Storm: lines closed*; gusts ≥ 75 km/h → 60 km/h; precipitation
-≥ 8 mm/10 min → *Heavy rain: landslide risk* (40 km/h). They end with the weather change.
+**Weather consequences** (automatic, inside the changed area, official SBB reason codes): ≥ 35 °C → *Heat: track
+buckling risk* (80 km/h, EG_006); ≤ −15 °C → *Frost: icing* (60 km/h, EG_016); gusts ≥ 100 km/h → *Storm: lines closed*
+(EG_101); gusts ≥ 75 km/h → 60 km/h; snow (precipitation where ≤ 1 °C) → *Snow on the tracks* (60 km/h, EG_023), heavy
+snow → 40 km/h and *Avalanche risk: mountain lines closed* for track above 1,100 m (EG_022); heavy rain (≥ 8 mm/10 min,
+above 1 °C) → *Landslide risk* (40 km/h, EG_018). Storms and heavy rain also cool the air (cold front) but keep it above
+3 °C, so they rain even on a cold night; the snowfall presets set sub-zero temperatures. Rain or snow is decided once,
+when the change is placed (`phase`). The consequences end with the weather change, and the trains they held go back to
+their real timetable on their own.
 
-**Train protection** (signalling) is on by default: a train never runs into one stopped ahead. Switched off, a
+**Train protection** is part of the real Swiss railway (ETCS, ZUB/Integra-Signum) and is on by default: like ETCS, a
+train's movement authority ends behind the train ahead on its track, and it brakes on its service curve (0.7 m/s²) to
+stay behind it, so delays spread to the trains behind. Switched off, a
 driver only sees a stopped train 500 m ahead and emergency-brakes; without enough distance it is a **rear-end
 collision** at the remaining speed (a `train.collision` event, both trains immobilised until released).
 
@@ -241,23 +276,29 @@ collision** at the remaining speed (a `train.collision` event, both trains immob
 
 ```sh
 npm install
-npm run dev                      # viewer + API on :8787 (Vite dev), MQTT tcp :1883 and ws :8787/mqtt
+npm run dev                      # page + API on :8787 (Vite dev); MQTT on the team broker if MQTT_URL is set,
+                                 # else its own broker on tcp :1883 and ws :8787/mqtt
 ```
 
 | Variable | Default | |
 |---|---|---|
 | `OTD_GTFS_RT_KEY` | — | opentransportdata.swiss API key for GTFS-RT (without it trains follow the planned timetable) |
+| `MQTT_URL`, `MQTT_USERNAME`, `MQTT_PASSWORD` | — | publish to this broker (e.g. `mqtt://<team-broker>:1883`) instead of the own one |
+| `TOPIC_ROOT` | `sbb-twin/v1` | change it for a test instance so it never overwrites the live twin's topics |
 | `PORT`, `MQTT_PORT`, `HOST` | `8787`, `1883`, `127.0.0.1` | use `HOST=0.0.0.0` in a container |
+| `RAIL_STATE_FILE` | `data/state.json` | where provoked changes are saved across restarts |
 | `RAIL_DATA_DIR`, `RAIL_DAYS_DIR` | `data/`, `data/days/` | prepared geometry and one timetable file per service day |
 
 Docker: `docker compose up --build` (see `compose.yaml`; set `OTD_GTFS_RT_KEY` in `.env`).
 
 Data preparation (only to regenerate `data/`): `tools/prepare_network.py` (BAV track graph and the track path of every
-station pair) and the day timetables (`day-YYYY-MM-DD.json.gz`) from the official GTFS.
+station pair), `tools/extract_abroad_rails.mjs` (railways outside Switzerland for the map) and the day timetables
+(`day-YYYY-MM-DD.json.gz`) from the official GTFS.
 
 ## Data sources
 
 Timetable GTFS and GTFS-RT: [opentransportdata.swiss](https://opentransportdata.swiss) · Rail network: BAV
 [Schienennetz](https://data.geo.admin.ch/browser/index.html#/collections/ch.bav.schienennetz) · Weather: MeteoSwiss
 SwissMetNet open data via data.geo.admin.ch, Open-Meteo outside Switzerland · Terrain: Terrarium elevation tiles (AWS Open Data) · Base maps:
-© swisstopo. Formation details and occupancy are not modelled.
+© swisstopo · Railways outside Switzerland: © OpenStreetMap contributors (ODbL), via OpenFreeMap tiles. Formation
+details and occupancy are not modelled.

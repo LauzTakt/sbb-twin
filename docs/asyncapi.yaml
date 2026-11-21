@@ -8,13 +8,21 @@ info:
     `truth/*` is ground truth for staff and evaluation only.
 defaultContentType: application/json
 servers:
+  team:
+    host: "{host}:1883"
+    protocol: mqtt
+    description: The team broker sbb-twin publishes to (MQTT_URL). Address and credentials are shared privately.
+    variables:
+      host:
+        description: Team broker address (not published in this repository).
   public:
     host: "{host}"
     pathname: /mqtt
     protocol: wss
+    description: Read-only WebSocket proxy to the team broker through sbb-twin, no credentials, limited to sbb-twin/v1/#.
     variables:
       host:
-        description: Public host shown in the viewer's Connect tab.
+        description: Public host shown on the control page's Connect tab.
   local-ws:
     host: 127.0.0.1:8787
     pathname: /mqtt
@@ -22,6 +30,7 @@ servers:
   local-tcp:
     host: 127.0.0.1:1883
     protocol: mqtt
+    description: sbb-twin's own broker, used when MQTT_URL is not set (also served over WebSocket as local-ws).
 channels:
   status:
     address: sbb-twin/v1/status
@@ -48,9 +57,10 @@ channels:
     bindings: { mqtt: { qos: 1, retain: true } }
   events:
     address: sbb-twin/v1/events/{kind}
+    description: Fire-and-forget (QoS 0).
     parameters: { kind: { enum: [incident, train, system] } }
     messages: { event: { $ref: "#/components/messages/event" } }
-    bindings: { mqtt: { qos: 1, retain: false } }
+    bindings: { mqtt: { qos: 0, retain: false } }
   weatherStation:
     address: sbb-twin/v1/weather/stations/{stationId}
     parameters: { stationId: { description: MeteoSwiss station abbreviation, e.g. SMA. } }
@@ -77,7 +87,23 @@ channels:
   truthEvents:
     address: sbb-twin/v1/truth/events
     messages: { event: { $ref: "#/components/messages/event" } }
-    bindings: { mqtt: { qos: 1, retain: false } }
+    bindings: { mqtt: { qos: 0, retain: false } }
+  precipitationGrid:
+    address: sbb-twin/v1/weather/precipitation-grid
+    description: Precipitation in mm per 10 minutes on the temperature grid; snow where that cell is <= 1 °C, rain above.
+    messages: { grid: { $ref: "#/components/messages/temperatureGrid" } }
+    bindings: { mqtt: { qos: 1, retain: true } }
+  truthWeather:
+    address: sbb-twin/v1/truth/weather/{overrideId}
+    description: Weather changed from Control (area, values, phase rain/snow, consequence disruption ids). Tombstone when removed.
+    parameters: { overrideId: { description: Weather change id (w-…). } }
+    messages: { override: { payload: { type: object } } }
+    bindings: { mqtt: { qos: 1, retain: true } }
+  truthSettings:
+    address: sbb-twin/v1/truth/settings
+    description: Control switches, e.g. {"protection": true}.
+    messages: { settings: { payload: { type: object } } }
+    bindings: { mqtt: { qos: 1, retain: true } }
   detections:
     address: sbb-twin/v1/detections/{team}/{detectionId}
     description: Reserved for the detection team (publish allowed). Tombstone when withdrawn.
@@ -96,6 +122,9 @@ operations:
   receiveTruthDisruption: { action: receive, channel: { $ref: "#/channels/truthDisruption" } }
   receiveTruthTrain: { action: receive, channel: { $ref: "#/channels/truthTrain" } }
   receiveTruthEvents: { action: receive, channel: { $ref: "#/channels/truthEvents" } }
+  receivePrecipitationGrid: { action: receive, channel: { $ref: "#/channels/precipitationGrid" } }
+  receiveTruthWeather: { action: receive, channel: { $ref: "#/channels/truthWeather" } }
+  receiveTruthSettings: { action: receive, channel: { $ref: "#/channels/truthSettings" } }
   sendDetection: { action: send, channel: { $ref: "#/channels/detections" } }
 components:
   parameters:
