@@ -376,6 +376,12 @@ export async function loadTimetable(t = Date.now()) {
   return true;
 }
 export const timetableDate = () => loadedDate;
+/** Stations served today with the number of trains calling there (for the map). */
+export function servedStations() {
+  const calls = new Map<number, number>();
+  for (const trip of trips) for (let i = 0; i < trip.stops.length; i++) calls.set(trip.stops[i], (calls.get(trip.stops[i]) ?? 0) + 1);
+  return [...calls].map(([i, n]) => ({ ...stops[i], trains: n })).sort((a, b) => b.trains - a.trains);
+}
 let adjacency: Map<number, Set<number>> | undefined;
 /** Stations a train reaches from this one (along consecutive stops), nearest first by distance, up to `maxKm`. */
 export function neighbours(station: number, maxKm = 40) {

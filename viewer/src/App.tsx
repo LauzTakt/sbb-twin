@@ -248,6 +248,19 @@ export function App() {
       m.addSource("network", { type: "geojson", data: "/api/network.geojson" });
       m.addLayer({ id: "network", type: "line", source: "network", paint: { "line-color": "#686868", "line-width": ["interpolate", ["linear"], ["zoom"], 6, 0.7, 10, 1.5, 14, 2.6], "line-opacity": 0.75 } });
     }
+    if (!m.getSource("stations")) {
+      // stops: busy stations from far out, small ones as you zoom in (SBB style: white dot, dark ring)
+      m.addSource("stations", { type: "geojson", data: "/api/stations.geojson" });
+      const tiers: [string, unknown[], number, number][] = [
+        ["major", [">=", ["get", "trains"], 300], 6, 8],
+        ["medium", ["all", ["<", ["get", "trains"], 300], [">=", ["get", "trains"], 60]], 9, 10.5],
+        ["minor", ["<", ["get", "trains"], 60], 11, 12.5],
+      ];
+      for (const [tier, filter, dotZoom, labelZoom] of tiers) {
+        m.addLayer({ id: `stations-${tier}`, type: "circle", source: "stations", minzoom: dotZoom, filter: filter as never, paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 6, tier === "major" ? 3 : 2, 12, tier === "major" ? 6 : tier === "medium" ? 4.5 : 3.5], "circle-color": "#ffffff", "circle-stroke-color": "#212121", "circle-stroke-width": ["interpolate", ["linear"], ["zoom"], 6, 1, 12, 1.8] } });
+        m.addLayer({ id: `station-labels-${tier}`, type: "symbol", source: "stations", minzoom: labelZoom, filter: filter as never, layout: { "text-field": ["get", "name"], "text-font": [tier === "major" ? "Frutiger Neue Bold" : "Frutiger Neue Regular"], "text-size": tier === "major" ? 13 : 12, "text-offset": [0, 0.9], "text-anchor": "top", "text-optional": true, "symbol-sort-key": ["-", 0, ["get", "trains"]], "text-padding": 4 }, paint: { "text-color": "#212121", "text-halo-color": "rgba(255,255,255,0.95)", "text-halo-width": 1.8 } });
+      }
+    }
     if (!m.getSource("areas")) {
       m.addSource("areas", { type: "geojson", data: d.areas as never });
       m.addLayer({ id: "area-fill", type: "fill", source: "areas", paint: { "fill-color": ["get", "colour"], "fill-opacity": 0.14 } });
@@ -284,6 +297,12 @@ export function App() {
       m.setPaintProperty("weather-label", "text-halo-color", dark ? "rgba(16,20,24,0.9)" : "rgba(255,255,255,0.92)");
     }
     if (m.getLayer("area-label")) m.setPaintProperty("area-label", "text-halo-color", dark ? "#101418" : "#ffffff");
+    for (const tier of ["major", "medium", "minor"]) {
+      if (!m.getLayer(`station-labels-${tier}`)) continue;
+      m.setPaintProperty(`station-labels-${tier}`, "text-color", dark ? "#f1f2f4" : "#212121");
+      m.setPaintProperty(`station-labels-${tier}`, "text-halo-color", dark ? "rgba(16,20,24,0.92)" : "rgba(255,255,255,0.95)");
+      m.setPaintProperty(`stations-${tier}`, "circle-stroke-color", dark ? "#0b0e11" : "#212121");
+    }
     if (layer.current) layer.current.theme = dark ? "dark" : "light";
   }
   useEffect(() => {

@@ -3,6 +3,8 @@ import type { Map as LibreMap } from "maplibre-gl";
 import type { SnapshotRow } from "./feed";
 
 type T = { id: string; from: [number, number]; to: [number, number]; bearing: number; speed: number; state: string; delay: number; line: string; cat: string; atStop: string | null; continuity: number };
+/** One train as last received (read-only view for the 3D mode). */
+export type TrainState = Readonly<T>;
 // SBB palette: green on time, orange late, blue at a station, red stopped on the line, grey cancelled, charcoal selected
 export const COLOURS = { moving: "#00973b", late: "#f27e00", station: "#2d327d", stoppedOnLine: "#eb0000", cancelled: "#8d8d8d", selected: "#212121" };
 /** Colour from observable facts only: moving / at a station / stopped on the open line, and lateness. */
@@ -15,6 +17,9 @@ export function colourOf(motion: string, delay: number, atStop: string | null, p
   return motion === "moving" ? pal.moving : pal.station;
 }
 const lerp = (a: [number, number], b: [number, number], k: number): [number, number] => [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k];
+
+/** The most recently created TrainCanvas, so the 3D mode (and tests) can reach it without App. */
+export let lastTrainCanvas: TrainCanvas | undefined;
 
 export class TrainCanvas {
   private canvas = document.createElement("canvas");
@@ -30,6 +35,7 @@ export class TrainCanvas {
   theme: "light" | "dark" = "light";
 
   constructor(private map: LibreMap) {
+    lastTrainCanvas = this;
     this.canvas.className = "trains-canvas";
     map.getCanvasContainer().appendChild(this.canvas);
     const resize = () => {
@@ -81,6 +87,11 @@ export class TrainCanvas {
   }
   info(id: string) {
     return this.trains.get(id);
+  }
+  /** Read-only, for the 3D mode: every train with its interpolated position, without allocating per train. */
+  forEachTrain(fn: (t: TrainState, lon: number, lat: number) => void) {
+    const k = this.k();
+    for (const t of this.trains.values()) fn(t, t.from[0] + (t.to[0] - t.from[0]) * k, t.from[1] + (t.to[1] - t.from[1]) * k);
   }
   hit(x: number, y: number) {
     let best: string | undefined;
