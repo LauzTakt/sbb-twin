@@ -1,0 +1,275 @@
+asyncapi: 3.0.0
+info:
+  title: rail-twin
+  version: 1.0.0
+  description: |
+    Live digital twin of every Swiss train (GTFS + GTFS-RT on BAV track geometry), MeteoSwiss weather and a
+    temperature map, published on MQTT. Times are epoch milliseconds (UTC). An empty retained payload is a tombstone.
+    `truth/*` is ground truth for staff and evaluation only.
+defaultContentType: application/json
+servers:
+  public:
+    host: "{host}"
+    pathname: /mqtt
+    protocol: wss
+    variables:
+      host:
+        description: Public host shown in the viewer's Connect tab.
+  local-ws:
+    host: 127.0.0.1:8787
+    pathname: /mqtt
+    protocol: ws
+  local-tcp:
+    host: 127.0.0.1:1883
+    protocol: mqtt
+channels:
+  status:
+    address: rail/v1/status
+    messages: { status: { $ref: "#/components/messages/status" } }
+    bindings: { mqtt: { qos: 1, retain: true } }
+  fleet:
+    address: rail/v1/fleet
+    messages: { fleet: { $ref: "#/components/messages/fleet" } }
+    bindings: { mqtt: { qos: 0, retain: false } }
+  trainPosition:
+    address: rail/v1/trains/{trainId}/position
+    parameters: { trainId: { $ref: "#/components/parameters/trainId" } }
+    messages: { position: { $ref: "#/components/messages/position" } }
+    bindings: { mqtt: { qos: 0, retain: false } }
+  trainInfo:
+    address: rail/v1/trains/{trainId}/info
+    parameters: { trainId: { $ref: "#/components/parameters/trainId" } }
+    messages: { info: { $ref: "#/components/messages/info" } }
+    bindings: { mqtt: { qos: 1, retain: true } }
+  incident:
+    address: rail/v1/incidents/{incidentId}
+    parameters: { incidentId: { description: Incident id. } }
+    messages: { incident: { $ref: "#/components/messages/incident" } }
+    bindings: { mqtt: { qos: 1, retain: true } }
+  events:
+    address: rail/v1/events/{kind}
+    parameters: { kind: { enum: [incident, train, system] } }
+    messages: { event: { $ref: "#/components/messages/event" } }
+    bindings: { mqtt: { qos: 1, retain: false } }
+  weatherStation:
+    address: rail/v1/weather/stations/{stationId}
+    parameters: { stationId: { description: MeteoSwiss station abbreviation, e.g. SMA. } }
+    messages: { station: { $ref: "#/components/messages/weatherStation" } }
+    bindings: { mqtt: { qos: 1, retain: true } }
+  weatherSnapshot:
+    address: rail/v1/weather/snapshot
+    messages: { snapshot: { $ref: "#/components/messages/weatherSnapshot" } }
+    bindings: { mqtt: { qos: 1, retain: true } }
+  temperatureGrid:
+    address: rail/v1/weather/temperature-grid
+    messages: { grid: { $ref: "#/components/messages/temperatureGrid" } }
+    bindings: { mqtt: { qos: 1, retain: true } }
+  truthDisruption:
+    address: rail/v1/truth/disruptions/{disruptionId}
+    parameters: { disruptionId: { description: Provoked disruption id. } }
+    messages: { disruption: { $ref: "#/components/messages/disruption" } }
+    bindings: { mqtt: { qos: 1, retain: true } }
+  truthTrain:
+    address: rail/v1/truth/trains/{trainId}
+    parameters: { trainId: { $ref: "#/components/parameters/trainId" } }
+    messages: { simulated: { $ref: "#/components/messages/truthTrain" } }
+    bindings: { mqtt: { qos: 1, retain: true } }
+  truthEvents:
+    address: rail/v1/truth/events
+    messages: { event: { $ref: "#/components/messages/event" } }
+    bindings: { mqtt: { qos: 1, retain: false } }
+  detections:
+    address: rail/v1/detections/{team}/{detectionId}
+    description: Reserved for the detection team (publish allowed). Tombstone when withdrawn.
+    parameters: { team: { description: Team name. }, detectionId: { description: Your id. } }
+    bindings: { mqtt: { qos: 1, retain: true } }
+operations:
+  receiveFleet: { action: receive, channel: { $ref: "#/channels/fleet" } }
+  receivePosition: { action: receive, channel: { $ref: "#/channels/trainPosition" } }
+  receiveInfo: { action: receive, channel: { $ref: "#/channels/trainInfo" } }
+  receiveStatus: { action: receive, channel: { $ref: "#/channels/status" } }
+  receiveIncident: { action: receive, channel: { $ref: "#/channels/incident" } }
+  receiveEvents: { action: receive, channel: { $ref: "#/channels/events" } }
+  receiveWeatherStation: { action: receive, channel: { $ref: "#/channels/weatherStation" } }
+  receiveWeatherSnapshot: { action: receive, channel: { $ref: "#/channels/weatherSnapshot" } }
+  receiveTemperatureGrid: { action: receive, channel: { $ref: "#/channels/temperatureGrid" } }
+  receiveTruthDisruption: { action: receive, channel: { $ref: "#/channels/truthDisruption" } }
+  receiveTruthTrain: { action: receive, channel: { $ref: "#/channels/truthTrain" } }
+  receiveTruthEvents: { action: receive, channel: { $ref: "#/channels/truthEvents" } }
+  sendDetection: { action: send, channel: { $ref: "#/channels/detections" } }
+components:
+  parameters:
+    trainId:
+      description: "{service date YYYYMMDD}_{GTFS trip_id without leading dot}, e.g. 20261121_ojp-91-8-E.1.TA.716.j26"
+  schemas:
+    stopRef:
+      type: object
+      properties: { id: { type: string }, name: { type: string } }
+  messages:
+    status:
+      payload:
+        type: object
+        properties:
+          v: { type: integer }
+          ts: { type: integer }
+          streamId: { type: string }
+          tick: { type: integer }
+          trainsActive: { type: integer }
+          realtime: { type: object, properties: { enabled: { type: boolean }, feedAgeSec: { type: [integer, "null"] }, trips: { type: integer } } }
+          weather: { type: object, properties: { stations: { type: integer }, measuredAt: { type: [integer, "null"] } } }
+    fleet:
+      payload:
+        type: object
+        required: [v, streamId, tick, ts, fields, trains]
+        properties:
+          v: { type: integer }
+          streamId: { type: string }
+          tick: { type: integer }
+          ts: { type: integer }
+          fields: { type: array, items: { type: string }, description: "trainId, lat, lon, bearing, speedKmh, motion, delaySec, line, category, atStopId, continuity" }
+          trains: { type: array, items: { type: array } }
+    position:
+      payload:
+        type: object
+        required: [v, streamId, tick, ts, trainId, lat, lon, bearing, speedKmh, motion, delaySec, continuity]
+        properties:
+          v: { type: integer }
+          streamId: { type: string }
+          tick: { type: integer }
+          ts: { type: integer, description: Epoch ms the position is valid for. }
+          trainId: { type: string }
+          lat: { type: number }
+          lon: { type: number }
+          bearing: { type: number, description: Degrees clockwise from north. }
+          speedKmh: { type: number }
+          motion: { type: string, enum: [moving, stopped] }
+          delaySec: { type: integer, description: "+ late. Departure delay at intermediate stops, arrival delay at the terminus." }
+          line: { type: string }
+          category: { type: string }
+          headsign: { type: string }
+          atStop: { oneOf: [{ $ref: "#/components/schemas/stopRef" }, { type: "null" }] }
+          prevStop: { $ref: "#/components/schemas/stopRef" }
+          nextStop:
+            oneOf:
+              - type: object
+                properties: { id: { type: string }, name: { type: string }, plannedArr: { type: integer }, expectedArr: { type: integer } }
+              - type: "null"
+          edgeId: { type: [string, "null"], description: BAV track segment id. }
+          track: { type: string, enum: [bav, approx] }
+          continuity: { type: integer, description: Increases on a discontinuous jump; do not interpolate across a change. }
+    info:
+      payload:
+        type: object
+        properties:
+          v: { type: integer }
+          trainId: { type: string }
+          tripId: { type: string }
+          serviceDate: { type: string }
+          line: { type: string }
+          category: { type: string }
+          number: { type: [string, "null"] }
+          operator: { type: [string, "null"] }
+          headsign: { type: string }
+          status: { type: string, enum: [active, cancelled] }
+          origin: { $ref: "#/components/schemas/stopRef" }
+          destination: { $ref: "#/components/schemas/stopRef" }
+          calls:
+            type: array
+            items:
+              type: object
+              properties:
+                stopId: { type: string }
+                name: { type: string }
+                lat: { type: number }
+                lon: { type: number }
+                plannedArr: { type: [integer, "null"] }
+                plannedDep: { type: [integer, "null"] }
+                expectedArr: { type: [integer, "null"] }
+                expectedDep: { type: [integer, "null"] }
+                actualArr: { type: [integer, "null"] }
+                actualDep: { type: [integer, "null"] }
+                skipped: { type: boolean }
+          updatedAt: { type: integer }
+    incident:
+      payload:
+        type: object
+        properties:
+          v: { type: integer }
+          id: { type: string }
+          title: { type: string }
+          description: { type: string }
+          severity: { type: string, enum: [info, minor, major, critical] }
+          type: { type: string }
+          reasonCode: { type: string }
+          scope: { type: object }
+          where: { type: string }
+          geometry: { type: [object, "null"], description: GeoJSON geometry. }
+          createdAt: { type: integer }
+          updatedAt: { type: integer }
+          status: { type: string }
+    event:
+      payload:
+        type: object
+        properties: { v: { type: integer }, ts: { type: integer }, kind: { type: string }, type: { type: string } }
+    weatherStation:
+      payload:
+        type: object
+        properties:
+          v: { type: integer }
+          id: { type: string }
+          name: { type: string }
+          lat: { type: number }
+          lon: { type: number }
+          altitudeM: { type: integer }
+          tempC: { type: [number, "null"] }
+          precipMm: { type: [number, "null"], description: Last 10 minutes. }
+          windKmh: { type: [number, "null"], description: 10-minute mean. }
+          measuredAt: { type: [integer, "null"] }
+    weatherSnapshot:
+      payload:
+        type: object
+        properties:
+          v: { type: integer }
+          ts: { type: integer }
+          measuredAt: { type: [integer, "null"] }
+          fields: { type: array, items: { type: string } }
+          stations: { type: array, items: { type: array } }
+    temperatureGrid:
+      payload:
+        type: object
+        required: [bbox, step, cols, rows, values]
+        properties:
+          v: { type: integer }
+          ts: { type: integer }
+          measuredAt: { type: integer }
+          unit: { type: string }
+          method: { type: string }
+          bbox: { type: array, items: { type: number }, description: "[west, south, east, north]" }
+          step: { type: number, description: Cell size in degrees. }
+          cols: { type: integer }
+          rows: { type: integer }
+          order: { type: string }
+          values: { type: array, items: { type: [number, "null"] }, description: "°C, row-major from north-west; null = no station within 30 km." }
+    disruption:
+      payload:
+        type: object
+        properties:
+          v: { type: integer }
+          id: { type: string }
+          type: { type: string }
+          label: { type: string }
+          reasonCode: { type: string }
+          effect: { type: string }
+          scope: { type: object }
+          where: { type: string }
+          params: { type: object }
+          status: { type: string, enum: [active, ended] }
+          startedAt: { type: integer }
+          endsAt: { type: [integer, "null"] }
+          endedAt: { type: [integer, "null"] }
+          geometry: { type: [object, "null"] }
+          affectedTrains: { type: array, items: { type: string } }
+    truthTrain:
+      payload:
+        type: object
+        properties: { v: { type: integer }, trainId: { type: string }, mode: { type: string, const: simulated }, causes: { type: array, items: { type: string } }, ts: { type: integer } }

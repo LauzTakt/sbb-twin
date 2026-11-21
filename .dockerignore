@@ -1,0 +1,6 @@
+node_modules
+viewer/dist
+.git
+*.log
+tools/__pycache__
+.env

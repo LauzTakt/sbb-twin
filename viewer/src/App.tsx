@@ -332,6 +332,10 @@ export function App() {
           </span>
         ))}
         <span>
+          <i style={{ background: COLOURS.selected }} />
+          Selected
+        </span>
+        <span>
           <i className="ring" />
           Simulated (provoked)
         </span>
@@ -515,7 +519,6 @@ function Provoke({ selected, disruptions, say }: { selected?: string; disruption
   return (
     <>
       <h3>Provoke a disruption</h3>
-      <p className="hint">It really happens in the twin: trains brake, wait or slow down, and keep their own behaviour until synced.</p>
       <label className="field">
         <span>Type</span>
         <select value={typeId} onChange={(e) => setTypeId(e.target.value)}>
@@ -526,7 +529,6 @@ function Provoke({ selected, disruptions, say }: { selected?: string; disruption
           ))}
         </select>
       </label>
-      {type && <p className="hint">{type.behaviour}</p>}
       {type?.scope === "section" && (
         <div className="row">
           <StationPicker label="From" value={from} onChange={setFrom} />
@@ -599,7 +601,6 @@ function Incidents({ incidents, say }: { incidents: Incident[]; say: (t: string)
   return (
     <>
       <h3>Mark an incident</h3>
-      <p className="hint">A public flag on the broker (rail/v1/incidents). It does not change any train.</p>
       <label className="field">
         <span>Title</span>
         <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Signal fault at Olten" />
@@ -670,7 +671,6 @@ function Connect() {
   return (
     <>
       <h3>Read the feed</h3>
-      <p className="hint">MQTT over WebSocket (anonymous, read-only). Full contract in the repository's docs.</p>
       <code className="block">{url}</code>
       <ul className="topics">
         {[

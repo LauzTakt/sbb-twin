@@ -444,15 +444,18 @@ function step(tr: Train, t: number, dt: number) {
 const disruptionsAt = (tr: Train, effect: Disruption["effect"]) =>
   [...disruptions.values()].filter((d) => !d.endedAt && (d.effect === effect || d.effect === "skip_stop") && d.station === tr.trip.stops[tr.call]).map((d) => d.id);
 
-/** Delay of the train at its next stop, seconds (+ = late). */
+/** Delay at the next stop in seconds (+ = late): departure delay at intermediate stops (what passengers see),
+ * arrival delay at the terminus. */
 export function delayOf(tr: Train, t: number) {
   const lag = t - tr.tau;
-  if (tr.leg < 0) return Math.round((lag + tr.eDep[tr.call] - tr.trip.dep[tr.call]) / 1000);
-  const k = tr.leg + 1;
+  const n = tr.eArr.length;
+  const k = tr.leg < 0 ? tr.call : tr.leg + 1;
+  if (k < n - 1) return Math.round((lag + tr.eDep[k] - tr.trip.dep[k]) / 1000);
   return Math.round((lag + tr.eArr[k] - tr.trip.arr[k]) / 1000);
 }
-export const expectedArrival = (tr: Train, k: number, t: number) => tr.eArr[k] + (t - tr.tau);
-export const expectedDeparture = (tr: Train, k: number, t: number) => tr.eDep[k] + (t - tr.tau);
+const second = (ms: number) => Math.round(ms / 1000) * 1000;
+export const expectedArrival = (tr: Train, k: number, t: number) => second(tr.eArr[k] + (t - tr.tau));
+export const expectedDeparture = (tr: Train, k: number, t: number) => second(tr.eDep[k] + (t - tr.tau));
 export const nextCall = (tr: Train) => (tr.leg >= 0 ? tr.leg + 1 : Math.min(tr.call + 1, tr.eArr.length - 1));
 export const edgeName = (tr: Train) => edgeId(tr.edgeRef);
 

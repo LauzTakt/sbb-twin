@@ -3,7 +3,7 @@ import type { Map as LibreMap } from "maplibre-gl";
 import type { SnapshotRow } from "./feed";
 
 type T = { id: string; from: [number, number]; to: [number, number]; bearing: number; speed: number; state: string; delay: number; line: string; cat: string; atStop: string | null; continuity: number };
-export const COLOURS = { moving: "#3ddc97", late: "#ffc65a", station: "#7fb2ff", stoppedOnLine: "#ff5d6c", cancelled: "#8b93a1" };
+export const COLOURS = { moving: "#3ddc97", late: "#ffc65a", station: "#7fb2ff", stoppedOnLine: "#ff5d6c", cancelled: "#8b93a1", selected: "#ff4fd8" };
 /** Colour from observable facts only: moving / at a station / stopped on the open line, and lateness. */
 export function colourOf(motion: string, delay: number, atStop: string | null) {
   if (motion === "cancelled") return COLOURS.cancelled;
@@ -110,9 +110,16 @@ export class TrainCanvas {
       ctx.save();
       ctx.translate(p.x, p.y);
       if (selected) {
+        // pulsing magenta ring: the selected train stands out at any zoom
+        const pulse = (performance.now() % 1400) / 1400;
         ctx.beginPath();
-        ctx.arc(0, 0, r * 2.4, 0, Math.PI * 2);
-        ctx.fillStyle = "rgba(255,255,255,0.16)";
+        ctx.arc(0, 0, r * (2 + pulse * 2.2), 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(255,79,216,${0.85 * (1 - pulse)})`;
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(0, 0, r * 2, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(255,79,216,0.22)";
         ctx.fill();
       }
       if (this.simulated.has(t.id)) {
@@ -134,18 +141,18 @@ export class TrainCanvas {
         ctx.lineTo(-r, r);
         ctx.closePath();
       }
-      ctx.fillStyle = colourOf(t.state, t.delay, t.atStop);
-      ctx.strokeStyle = "rgba(5,8,13,0.85)";
-      ctx.lineWidth = 1.2;
+      ctx.fillStyle = selected ? COLOURS.selected : colourOf(t.state, t.delay, t.atStop);
+      ctx.strokeStyle = selected ? "#ffffff" : "rgba(5,8,13,0.85)";
+      ctx.lineWidth = selected ? 2 : 1.2;
       ctx.fill();
       ctx.stroke();
       ctx.restore();
       if (labels || selected) {
         const text = t.line + (t.delay >= 60 ? ` +${Math.round(t.delay / 60)}′` : "");
-        ctx.fillStyle = "rgba(5,8,13,0.75)";
+        ctx.fillStyle = selected ? COLOURS.selected : "rgba(5,8,13,0.75)";
         const tw = ctx.measureText(text).width;
         ctx.fillRect(p.x + r + 4, p.y - 8, tw + 8, 16);
-        ctx.fillStyle = "#e8edf5";
+        ctx.fillStyle = selected ? "#1a0016" : "#e8edf5";
         ctx.fillText(text, p.x + r + 8, p.y);
       }
     };
