@@ -3,7 +3,8 @@ import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import type { GeoJSONSource, Map as LibreMap } from "maplibre-gl";
 import { CircleDot, Crosshair, TrainFront, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { api, connectLive, type Item, type Live, type Status } from "./feed";
+import { api, connectLive, type Disruption, type Item, type Live, type Status } from "./feed";
+import { Control } from "./Control";
 import { baseStyle } from "./map";
 import { TrainCanvas } from "./trains";
 
@@ -41,12 +42,17 @@ export function App() {
   const features = useRef<FC>({ type: "FeatureCollection", features: [] });
   const [conn, setConn] = useState<"connecting" | "online" | "offline">("connecting");
   const [status, setStatus] = useState<Status>();
-  const [items, setItems] = useState<Item[]>([]);
+  const [alertItems, setItems] = useState<Item[]>([]);
+  const [disruptions, setDisruptions] = useState<Disruption[]>([]);
+  const [supported, setSupported] = useState(false);
+  const [tab, setTab] = useState<"disruptions" | "control">("disruptions");
   const [picked, setPicked] = useState<string>();
   const [selected, setSelected] = useState<string | undefined>(() => new URLSearchParams(location.search).get("train") ?? undefined);
   const [following, setFollowing] = useState(false);
   const [station, setStation] = useState<{ id: string; name: string; trains: number }>();
   const [ready, setReady] = useState(false);
+  const own: Item[] = disruptions.filter((d) => d.status === "active" && d.geometry).map((d) => ({ id: d.id, title: d.summary ?? d.label ?? "Disruption", where: d.where, severity: d.effect === "limited" ? "minor" : "major", note: d.cause?.label ?? "registered in the twin", trains: 0, geometry: d.geometry, source: "auto" as const }));
+  const items = [...own, ...alertItems];
 
   useEffect(() => {
     let alive = true;
@@ -76,6 +82,7 @@ export function App() {
         connection: setConn,
         tick: (rows, st) => (layer.current?.update(rows), setStatus(st)),
         items: setItems,
+        disruptions: setDisruptions,
       });
     })();
     return () => {
@@ -166,7 +173,12 @@ export function App() {
         {selected && live.current && <TrainCard key={selected} id={selected} live={live.current} following={following} onFollow={() => setFollowing((f) => !f)} onClose={() => (setSelected(undefined), setFollowing(false))} />}
         {station && <StationCard key={station.id} station={station} onTrain={(id) => (setSelected(id), setStation(undefined))} onClose={() => setStation(undefined)} />}
         <aside className="side">
-          <h2>Disruptions</h2>
+          <div className="tabs" role="tablist">
+            <button aria-pressed={tab === "disruptions"} onClick={() => setTab("disruptions")}>Disruptions</button>
+            <button aria-pressed={tab === "control"} onClick={() => setTab("control")}>Control</button>
+          </div>
+          {tab === "control" && <Control disruptions={disruptions} supported={supported} onCatalogue={setSupported} />}
+          {tab === "disruptions" && <>
           {!sorted.length && <p className="hint">No disruption on the railway right now.</p>}
           <ul className="items">
             {sorted.map((i) => (
@@ -179,6 +191,7 @@ export function App() {
               </li>
             ))}
           </ul>
+          </>}
           <div className="legend">
             <span><i style={{ background: "#00973b" }} />Moving</span>
             <span><i style={{ background: "#f27e00" }} />Late 3 min or more</span>

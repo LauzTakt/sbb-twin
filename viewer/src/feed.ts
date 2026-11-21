@@ -3,15 +3,22 @@
 export type SnapshotRow = [trainId: string, lat: number, lon: number, bearing: number, speedKmh: number, motion: string, delaySec: number, line: string, category: string, atStopId: string | null, continuity: number];
 export type Geometry = { type: string; coordinates: unknown } | null;
 export type Status = { ts: number; trainsActive: number };
+/** A disruption registered in the twin (control-centre view). Fields beyond the first group come with the scenario API. */
+export type Disruption = {
+  id: string; label?: string; summary?: string; description?: string; where: string; status: "active" | "ended"; effect: string; geometry: Geometry;
+  cause?: { code: string; label: string }; durationType?: string; until?: number | null; endsAt?: number | null; lines?: string[]; lifecycle?: string;
+  measures?: { id?: string; type: string; label?: string; at?: string; state?: string }[]; bulletinVersion?: number;
+};
 /** A disruption on the railway: a real SBB alert, or an incident the twin detected itself. */
 export type Item = { id: string; title: string; where: string; severity: "info" | "minor" | "major" | "critical"; note: string; trains: number; geometry: Geometry; source: "sbb" | "auto" };
 
 type Alert = { id: string; title: string; cause: string; severity: "info" | "minor" | "major"; activePeriods: { start: number | null; end: number | null }[]; stations: { name: string }[]; trains: number; geometry: Geometry };
-type Incident = { id: string; title: string; where: string; severity: Item["severity"]; createdAt: number; geometry: Geometry; trainIds?: string[] };
+type Incident = { id: string; title: string; where: string; severity: Item["severity"]; createdAt: number; geometry: Geometry; trainIds?: string[]; disruptionId?: string };
 type Handlers = {
   connection: (state: "connecting" | "online" | "offline") => void;
   tick: (rows: SnapshotRow[], status: Status) => void;
   items: (list: Item[]) => void;
+  disruptions: (list: Disruption[]) => void;
 };
 type TrainUpdate = (position: Record<string, unknown> | null, info: Record<string, unknown> | null) => void;
 export type Live = { watch: (trainId: string, cb: TrainUpdate) => () => void; close: () => void };
@@ -48,8 +55,9 @@ export function connectLive(h: Handlers): Live {
         alerts = (m.alerts as Alert[]).filter((a) => a.severity !== "info").map((a) => ({ id: a.id, title: a.title, where: a.stations.slice(0, 3).map((x) => x.name).join(", "), severity: a.severity, note: endNote(a), trains: a.trains, geometry: a.geometry, source: "sbb" as const }));
         push();
       } else if (m.type === "state") {
+        h.disruptions(m.disruptions as Disruption[]);
         incidents = (m.incidents as Incident[])
-          .filter((i) => i.geometry)
+          .filter((i) => i.geometry && !i.disruptionId)
           .map((i) => ({ id: i.id, title: i.title, where: i.where, severity: i.severity, note: `since ${hm(i.createdAt)}`, trains: i.trainIds?.length ?? 0, geometry: i.geometry, source: "auto" as const }));
         push();
       } else if (m.type === "train") {
@@ -84,4 +92,10 @@ export async function api<T>(path: string): Promise<T> {
   const r = await fetch(`/api${path}`);
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   return (await r.json()) as T;
+}
+export async function send<T>(method: "POST" | "DELETE", path: string, json?: unknown): Promise<T> {
+  const r = await fetch(`/api${path}`, { method, headers: { "content-type": "application/json" }, body: json === undefined ? undefined : JSON.stringify(json) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error((j as { error?: string }).error ?? `HTTP ${r.status}`);
+  return j as T;
 }
