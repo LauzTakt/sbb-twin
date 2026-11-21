@@ -12,11 +12,8 @@ import { loadGeometry } from "./geometry.ts";
 import { applyRealtime, loadTimetable, tick, trains } from "./engine.ts";
 import { live, pollRealtime } from "./realtime.ts";
 import { event, publishTick } from "./feed.ts";
-import { overridePayload, pollWeather, publishWeather, weather } from "./weather.ts";
-import { expireWeather } from "./god.ts";
 import { loadState, saveState } from "./persist.ts";
 import { incidents } from "./disruptions.ts";
-import { settings } from "./engine.ts";
 import { incidentPayload } from "./feed.ts";
 import { publish } from "./mqtt.ts";
 import { alertsState, pollAlerts } from "./alerts.ts";
@@ -56,9 +53,8 @@ startChannel(server);
 await startBroker(server);
 // god-mode state from before a restart: disruptions republish on the first tick, the rest here
 const restored = loadState();
-if (restored.disruptions + restored.overrides + restored.incidents) console.log(`[sbb-twin] restored ${restored.disruptions} disruptions, ${restored.overrides} weather changes, ${restored.incidents} incidents`);
+if (restored.disruptions + restored.incidents) console.log(`[sbb-twin] restored ${restored.disruptions} disruptions, ${restored.incidents} incidents`);
 for (const i of incidents.values()) publish(`incidents/${i.id}`, incidentPayload(i), { retain: true, qos: 1 });
-publish("truth/settings", { v: 1, ...settings, ts: Date.now() }, { retain: true, qos: 1 });
 setInterval(saveState, 2000).unref();
 server.listen(config.port, config.host, () =>
   console.log(`[sbb-twin] viewer + API http://${config.host}:${config.port}/ · MQTT ${config.mqttUrl ? `on ${new URL(config.mqttUrl).host} (read-only WebSocket proxy at /mqtt)` : `tcp://${config.host}:${config.mqttPort} + ws://${config.host}:${config.port}/mqtt`}`),
@@ -83,19 +79,9 @@ setInterval(async () => {
   if (await pollRealtime()) applyRealtime();
 }, config.rtIntervalMs).unref();
 // MeteoSwiss publishes 10-minute values; poll every 5 minutes.
-const refreshWeather = async () => {
-  if (await pollWeather()) publishWeather();
-  else console.warn("[sbb-twin] weather:", weather.error);
-};
-void refreshWeather().then(() => {
-  console.log(`[sbb-twin] weather: ${weather.stations.size} MeteoSwiss stations`);
-  for (const o of weather.overrides.values()) publish(`truth/weather/${o.id}`, overridePayload(o), { retain: true, qos: 1 });
-});
-setInterval(refreshWeather, 5 * 60_000).unref();
 // real SBB service alerts (when a key is set): at start and every few minutes
 void pollAlerts().then(() => config.gtfsSaKey && console.log(`[sbb-twin] service alerts: ${alertsState.alerts.size} touch the railway`));
 setInterval(() => void pollAlerts(), config.saIntervalMs).unref();
-setInterval(expireWeather, 10_000).unref();
 setInterval(async () => {
   if (await loadTimetable().catch((e) => (console.error("[sbb-twin] timetable:", e.message), false))) event("system", { type: "system.timetable", note: "new service day loaded" });
 }, 60_000).unref();

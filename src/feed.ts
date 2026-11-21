@@ -9,7 +9,6 @@ import { byTrainId, collisions, delayOf, edgeName, expectedArrival, expectedDepa
 import { stops } from "./timetable.ts";
 import { disruptions, incidents, type Disruption, type Incident } from "./disruptions.ts";
 import { live } from "./realtime.ts";
-import { overridePayload, weather } from "./weather.ts";
 
 export const VERSION = "1.0.0";
 export const startedAt = Date.now();
@@ -124,13 +123,11 @@ export function event(kind: "disruption" | "incident" | "train" | "sync" | "syst
   channel.sendEvent(body);
 }
 
-/** Everything the control page shows besides trains and weather: what was provoked, marked or switched. */
+/** Everything the control page shows besides trains: what was provoked, marked or switched. */
 export function controlState() {
   return {
     disruptions: [...disruptions.values()].map(disruptionPayload),
     incidents: [...incidents.values()].map(incidentPayload),
-    overrides: [...weather.overrides.values()].map(overridePayload),
-    protection: settings.protection,
     simulated: [...trains.values()].filter((tr) => tr.mode === "sim").map((tr) => ({ trainId: tr.trip.trainId, causes: [...tr.causes] })),
   };
 }
@@ -243,7 +240,6 @@ export function statusPayload(t = Date.now()) {
     realtime: { enabled: live.enabled(), feedAgeSec: live.fetchedAt ? Math.round((t - live.fetchedAt) / 1000) : null, trips: live.trips.size, error: live.error ?? null },
     disruptionsActive: [...disruptions.values()].filter((d) => !d.endedAt).length,
     incidentsMarked: incidents.size,
-    weather: { stations: weather.stations.size, feedAgeSec: weather.fetchedAt ? Math.round((t - weather.fetchedAt) / 1000) : null, measuredAt: weather.grid?.measuredAt ?? null, error: weather.error ?? null },
     broker: { mode: brokerStats.mode, connected: brokerStats.connected, webSocketClients: brokerStats.clients },
     alerts: { enabled: Boolean(config.gtfsSaKey), active: alertsState.alerts.size, feedAgeSec: alertsState.fetchedAt ? Math.round((t - alertsState.fetchedAt) / 1000) : null, error: alertsState.error ?? null },
     controlPages: channel.pageCount(),

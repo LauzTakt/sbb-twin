@@ -7,18 +7,11 @@ export type Geometry = { type: string; coordinates: unknown } | null;
 export type Incident = { id: string; title: string; description: string; severity: string; where: string; createdAt: number; disruptionId?: string; source?: "staff" | "auto"; geometry: Geometry };
 export type Status = { ts: number; trainsActive: number; trainsSimulated: number; realtime: { enabled: boolean; feedAgeSec: number | null; trips: number }; broker?: { mode: string; connected: boolean; viewers: number }; timetableDate: string };
 export type Event = { ts: number; kind: string; type: string; [k: string]: unknown };
-export type WeatherSnapshot = { ts: number; measuredAt: number | null; fields: string[]; stations: (string | number | null)[][] };
-export type TemperatureGrid = { ts: number; measuredAt: number; bbox: [number, number, number, number]; step: number; cols: number; rows: number; values: (number | null)[] };
-
 export function brokerUrl() {
   return `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/mqtt`;
 }
 
-export type WeatherOverride = { id: string; label: string; lat: number; lon: number; radiusKm: number; tempC?: number; tempDeltaC?: number; minTempC?: number; precipMm?: number; phase?: "rain" | "snow"; windKmh?: number; gustKmh?: number; startedAt: number; endsAt: number | null; endedAt?: number; status: "active" | "ended"; disruptionIds: string[] };
-
-/** A real SBB service alert that touches the railway (from opentransportdata.swiss). */
-export type RealAlert = { id: string; title: string; description: string; cause: string; severity: "info" | "minor" | "major"; url: string | null; activePeriods: { start: number | null; end: number | null }[]; stations: { id: string; name: string }[]; trains: number; geometry: Geometry };
-export type ControlState = { ts: number; disruptions: Disruption[]; incidents: Incident[]; overrides: WeatherOverride[]; protection: boolean; simulated: { trainId: string; causes: string[] }[] };
+export type ControlState = { ts: number; disruptions: Disruption[]; incidents: Incident[]; simulated: { trainId: string; causes: string[] }[] };
 type Handlers = {
   connection: (state: "connecting" | "online" | "offline") => void;
   tick: (ts: number, rows: SnapshotRow[], status: Status) => void;
@@ -26,10 +19,6 @@ type Handlers = {
   state: (s: ControlState) => void;
   events: (list: Event[]) => void;
   event: (e: Event) => void;
-  alerts: (list: RealAlert[]) => void;
-  weather: (w: WeatherSnapshot) => void;
-  grid: (g: TemperatureGrid) => void;
-  precip: (g: TemperatureGrid) => void;
 };
 type TrainUpdate = (position: Record<string, unknown> | null, info: Record<string, unknown> | null) => void;
 export type Live = { watch: (trainId: string, cb: TrainUpdate) => () => void; close: () => void };
@@ -54,10 +43,6 @@ export function connectLive(h: Handlers): Live {
       else if (m.type === "state") h.state(m);
       else if (m.type === "event") h.event(m.event);
       else if (m.type === "events") h.events(m.events);
-      else if (m.type === "alerts") h.alerts(m.alerts);
-      else if (m.type === "weather") h.weather(m.snapshot);
-      else if (m.type === "grid") h.grid(m.grid);
-      else if (m.type === "precip") h.precip(m.grid);
       else if (m.type === "train") {
         const w = watching;
         if (w && w.id === m.trainId) w.cb(m.position, m.info);

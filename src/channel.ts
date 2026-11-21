@@ -1,6 +1,6 @@
 // The control page's own link to the twin: a WebSocket at /live fed straight from the engine's state, not through
 // the MQTT broker (the broker is the output for other teams). A page gets everything when it connects; then the
-// fleet and status every tick, the whole control state whenever it changes, weather when it changes, events as they
+// fleet and status every tick, the whole control state whenever it changes, events as they
 // happen, and the train it is watching.
 import type { Server as HttpServer } from "node:http";
 import { WebSocketServer, type WebSocket } from "ws";

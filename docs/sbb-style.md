@@ -61,7 +61,7 @@ SBB palette names. Light values are SBB's; dark values are ours (same roles, rea
 | `milk` | `#f6f6f6` | `#22252a` | subtle backgrounds (ended items, hover) |
 | `white` | `#ffffff` | `#17191c` | page and card surface |
 | `blue` | `#2d327d` | `#8f95e8` | information, a train at a station |
-| `sky` | `#0079c7` | `#0079c7` | selection, focus, links, cold weather |
+| `sky` | `#0079c7` | `#0079c7` | selection, focus, links |
 | `green` | `#00973b` | `#00973b` | running normally, OK, "back to reality" (Sync all), switch on |
 | `orange` | `#f27e00` | `#f27e00` | late, warnings, speed restrictions |
 
@@ -105,8 +105,8 @@ A train's colour comes from what can be observed, in this order:
 - Delay after the planned time, in red, in whole minutes with a prime: `21:53 +2'`. No delay → nothing.
 - Cancelled: the word "Cancelled" in red, the planned time struck through in `metal`.
 - A skipped stop: "Does not stop" in `metal`.
-- Durations in minutes ("120 min"), speeds in km/h, temperatures in °C with one decimal on the map and none in text,
-  precipitation in mm per 10 minutes.
+- Durations in minutes ("120 min"), speeds in km/h.
+
 
 ### Incidents and disruptions
 
@@ -117,20 +117,9 @@ A train's colour comes from what can be observed, in this order:
 | `minor`, speed restriction, signal failure | `orange` | the affected track thick in orange with a glow |
 | `info` | `blue` | — |
 | ended | `cement` / `smoke` | not drawn; listed greyed out for 30 minutes |
-| real SBB alert (`alerts/+`) | `red` interrupted, `orange` limited, `sky` information | the same colours **dashed**, and rings at the stations it names: what really happens is dashed, what we provoke is solid |
 
 Titles follow SBB's wording: "Section closed: Thun – Spiez", "Limited service", "Delays possible". Causes use the SBB
 reason texts ("Overhead line fault", "Track damage", "Person accident") with their reason codes (`EG_008` …).
-
-### Weather
-
-| Layer | Encoding |
-|---|---|
-| Temperature map | ramp −20 °C `#5a2ca0` · −10 `#2c5ee8` · −5 `#3f9be8` · 0 `#9ad8f5` · 5 `#d7f0c8` · 10 `#fde68a` · 15 `#fdba4d` · 20 `#f97a2b` · 25 `#e9442b` · 30 `#b5162b` · 35 `#6d0a1f`, 55–70 % opacity |
-| Rain (mm/10 min) | 0.05 `rgb(150,205,255)` · 0.3 `rgb(70,160,255)` · 1 `rgb(30,110,230)` · 2.5 `rgb(45,60,210)` · 5 `rgb(120,45,210)` · 10 `rgb(200,30,200)` |
-| Snow (mm/10 min) | 0.05 white · 1 `rgb(225,246,255)` · 3 `rgb(185,232,255)` · 6 `rgb(140,215,255)` |
-| Wind | an arrow pointing **where the wind blows**, size by mean speed, colour by gusts: < 50 km/h `blue`, 50–75 `sky`, 75–100 `orange`, ≥ 100 `red`; label "mean–gust km/h" |
-| A weather change (staff) | dashed circle, light fill (14 %); red for heat, sky for cold and snow, blue otherwise; label above the circle |
 
 ## 5. Map
 
@@ -156,7 +145,7 @@ reason texts ("Overhead line fault", "Track damage", "Person accident") with the
 | Chips (presets) | pill, 1 px `cloud` border; selected = `charcoal` fill, white text |
 | Inputs and selects | 40 px high, radius 8 px, 1 px `cloud` border, 15 px text; focus = 2 px `sky` outline |
 | Cards and panels | `white`, radius 10 px (lists) to 16 px (floating panels), 1 px `cloud` border; floating panels add `0 8px 24px rgba(0,0,0,.14)` |
-| List rows | radius 10 px, 1 px `cloud` border, 10 × 12 px padding; an 8 px status dot before the title (red active, orange warning, sky weather, cement ended); the selected row gets a `sky` border |
+| List rows | radius 10 px, 1 px `cloud` border, 10 × 12 px padding; an 8 px status dot before the title (red interrupted, orange limited, sky information, cement ended); the selected row gets a `sky` border |
 | Switch | 44 × 26 px track, white 18 px knob; on = `green`, off = `cement` |
 | Tabs | icon + label, `metal`; active = `charcoal` with a 2 px `red` underline |
 | Header | white bar; brand mark = white train on a red square (radius 8 px); live stats in `metal` with bold numbers; a green dot for "Live" |

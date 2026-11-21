@@ -89,7 +89,7 @@ export function describeScope(scope: Scope): string {
   return scope.trainId;
 }
 
-/** A disruption created by sbb-twin itself (weather consequences, rear-end collisions), not from the API. */
+/** A disruption created by sbb-twin itself (rear-end collisions), not from the API. */
 export function addSystemDisruption(input: { type: string; label: string; reasonCode: string; effect: Effect; scope: Scope; where: string; params?: Disruption["params"]; edges?: Set<number>; endsAt?: number | null; origin: string }): Disruption {
   const d: Disruption = {
     id: `d-${randomUUID().slice(0, 8)}`,

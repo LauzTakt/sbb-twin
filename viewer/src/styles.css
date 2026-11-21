@@ -868,9 +868,6 @@ textarea:focus-visible {
   color: var(--metal);
   font-size: 13px;
 }
-.items li[data-kind="weather"] b::before {
-  background: var(--sky);
-}
 .row.actions {
   margin-top: 12px;
   justify-content: flex-end;
@@ -925,12 +922,6 @@ textarea:focus-visible {
   background: #007a30;
 }
 
-.weather-canvas {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: 1;
-}
 .seg.wx button {
   display: inline-flex;
   align-items: center;

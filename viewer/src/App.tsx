@@ -1,13 +1,11 @@
 import * as maplibregl from "maplibre-gl";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import type { GeoJSONSource, ImageSource, Map as LibreMap } from "maplibre-gl";
-import { Activity, CircleDot, CloudSnow, CloudSun, Crosshair, Layers, Link2, Moon, Pause, RefreshCcw, ShieldCheck, ShieldOff, Siren, Sun, Thermometer, TrainFront, Wind, X, Zap } from "lucide-react";
+import { Activity, CircleDot, Crosshair, Layers, Link2, Moon, Pause, RefreshCcw, Siren, Sun, TrainFront, X, Zap } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api, brokerUrl, connectLive, type ControlState, type Live, type RealAlert, type Disruption, type Event, type Incident, type Status, type TemperatureGrid, type WeatherOverride, type WeatherSnapshot } from "./feed";
+import { api, brokerUrl, connectLive, type ControlState, type Live, type Disruption, type Event, type Incident, type Status } from "./feed";
 import { applyBase, baseStyle, type Theme } from "./map";
 import { COLOURS, TrainCanvas } from "./trains";
-import { gridImage, precipImage, RAIN_LEGEND, RAMP, rampColour, SNOW_LEGEND, temperatureAt } from "./weatherLayer";
-import { WeatherParticles } from "./particles";
 
 type FC = { type: "FeatureCollection"; features: { type: "Feature"; properties: Record<string, unknown>; geometry: { type: string; coordinates: unknown } }[] };
 
@@ -111,14 +109,9 @@ export function App() {
   const [status, setStatus] = useState<Status>();
   const [disruptions, setDisruptions] = useState<Record<string, Disruption>>({});
   const [incidents, setIncidents] = useState<Record<string, Incident>>({});
-  const [alerts, setAlerts] = useState<RealAlert[]>([]);
   const [simulated, setSimulated] = useState<Set<string>>(new Set());
   const [causes, setCauses] = useState<Record<string, string[]>>({}); // why a simulated train behaves as it does
   const [events, setEvents] = useState<Event[]>([]);
-  const [weather, setWeather] = useState<WeatherSnapshot>();
-  const [grid, setGrid] = useState<TemperatureGrid>();
-  const [precip, setPrecip] = useState<TemperatureGrid>();
-  const particles = useRef<WeatherParticles | undefined>(undefined);
   // the whole page is light or dark; the map is either the drawn map or satellite imagery
   const [theme, setTheme] = useState<Theme>(() => {
     try {
@@ -130,16 +123,7 @@ export function App() {
   const [satellite, setSatellite] = useState(false);
   const look = useRef({ theme, satellite });
   const prevTheme = useRef(theme);
-  const [overrides, setOverrides] = useState<Record<string, WeatherOverride>>({});
-  const [protection, setProtection] = useState(true);
-  const placing = useRef<Record<string, unknown> | undefined>(undefined);
-  const [picked, setPicked] = useState<{ kind: "disruption" | "incident" | "weather" | "alert"; id: string }>();
-  const [placingLabel, setPlacingLabel] = useState<string>();
-  // weather layer: off, temperature map, precipitation (rain/snow radar) or wind gusts
-  const [wx, setWx] = useState<"off" | "temp" | "wind">("off");
-  const [showPrecip, setShowPrecip] = useState(true); // rain & snow always shown where it falls
-  const showTemp = wx === "temp";
-  const precipRef = useRef(showPrecip);
+  const [picked, setPicked] = useState<{ kind: "disruption" | "incident"; id: string }>();
   const [showTrains, setShowTrains] = useState(true);
   const [showStations, setShowStations] = useState(true);
   const [station, setStation] = useState<{ id: string; name: string; trains: number }>();
@@ -163,13 +147,11 @@ export function App() {
   useEffect(() => {
     let alive = true;
     void (async () => {
-      // locked to Switzerland: zoom freely, never leave these bounds (they match the temperature map)
+      // locked to Switzerland: zoom freely, never leave these bounds
       const m = new maplibregl.Map({ container: mapEl.current!, style: await baseStyle(), center: [8.2, 46.8], zoom: 7.3, attributionControl: { compact: true }, maxPitch: 60, maxBounds: [[5.4, 45.55], [11.0, 48.05]], renderWorldCopies: false });
       if (!alive) return m.remove();
       mapRef.current = m;
       (window as unknown as { railMap?: LibreMap }).railMap = m; // handy for debugging in the console
-      particles.current = new WeatherParticles(m);
-      (window as unknown as { railParticles?: WeatherParticles }).railParticles = particles.current; // debugging handle
       layer.current = new TrainCanvas(m);
       setReady(true);
       m.on("load", () => {
@@ -177,40 +159,26 @@ export function App() {
         restyle(m);
       });
       m.on("click", (e) => {
-        if (placing.current) {
-          // control: put the prepared weather change where the map was clicked
-          const body = { ...placing.current, lat: e.lngLat.lat, lon: e.lngLat.lng };
-          placing.current = undefined;
-          setPlacingLabel(undefined);
-          m.getCanvas().style.cursor = "";
-          void api<{ override: WeatherOverride; consequences: Disruption[] }>("/weather/overrides", { method: "POST", json: body })
-            .then((r) => {
-              createdRef.current(r);
-              say(`${r.override.label} placed${r.consequences.length ? ` · ${r.consequences.map((c) => c.label).join(", ")}` : ""}`);
-            })
-            .catch((err) => say(err.message));
-          return;
-        }
         const id = layer.current?.hit(e.point.x, e.point.y);
         if (id) {
           setSelected(id);
           setStation(undefined);
           return;
         }
-        // no train there: the smallest event under the cursor (a station before a section before a weather area)
+        // no train there: the smallest event under the cursor (a station before a section)
         const box: [[number, number], [number, number]] = [
           [e.point.x - 7, e.point.y - 7],
           [e.point.x + 7, e.point.y + 7],
         ];
-        const layers = ["disruption-point", "disruption-line", "disruption-glow", "alert-point", "alert-line", "area-fill"].filter((l) => m.getLayer(l));
+        const layers = ["disruption-point", "disruption-line", "disruption-glow"].filter((l) => m.getLayer(l));
         const hit = m
           .queryRenderedFeatures(box, { layers })
           .filter((f) => f.properties?.id)
           .sort((a, b) => Number(a.properties.size) - Number(b.properties.size))[0];
         if (hit) {
-          const kind = hit.properties.kind as "disruption" | "incident" | "weather" | "alert";
+          const kind = hit.properties.kind as "disruption" | "incident";
           setPicked({ kind, id: String(hit.properties.id) });
-          setTab(kind === "incident" || kind === "alert" ? "incidents" : "control");
+          setTab(kind === "incident" ? "incidents" : "control");
           return;
         }
         const st = m.queryRenderedFeatures(box, { layers: ["stations-major", "stations-medium", "stations-minor"].filter((l) => m.getLayer(l)) })[0];
@@ -234,10 +202,6 @@ export function App() {
         state: (st) => applyState.current(st),
         event: (e) => setEvents((x) => [e, ...x].slice(0, 80)),
         events: (list) => setEvents(list.slice(0, 80)),
-        alerts: setAlerts,
-        weather: setWeather,
-        grid: setGrid,
-        precip: setPrecip,
       });
     })();
     return () => {
@@ -254,8 +218,6 @@ export function App() {
   const applyState = useRef((s: ControlState) => {
     setDisruptions(Object.fromEntries(s.disruptions.map((d) => [d.id, d])));
     setIncidents(Object.fromEntries(s.incidents.map((i) => [i.id, i])));
-    setOverrides(Object.fromEntries(s.overrides.map((o) => [o.id, o])));
-    setProtection(s.protection);
     setSimulated(new Set(s.simulated.map((x) => x.trainId)));
     setCauses(Object.fromEntries(s.simulated.map((x) => [x.trainId, x.causes])));
   });
@@ -273,23 +235,7 @@ export function App() {
   }, [selected, following, showTrains, ready]);
 
   // ---- overlays (added once; the base map never reloads)
-  const data = useRef({ alerts: empty as FC, disruptions: empty as FC, weather: empty as FC, areas: empty as FC, grid: undefined as ReturnType<typeof gridImage> | undefined, precipImg: undefined as ReturnType<typeof precipImage> | undefined, temp: false });
-  const wxRef = useRef(wx);
-  function addTemperature(m: LibreMap) {
-    const d = data.current;
-    if (!d.grid || m.getSource("temperature")) return;
-    m.addSource("temperature", { type: "image", url: d.grid.url, coordinates: d.grid.coordinates });
-    m.addLayer(
-      { id: "temperature", type: "raster", source: "temperature", paint: { "raster-opacity": 0.6, "raster-resampling": "linear", "raster-fade-duration": 0 }, layout: { visibility: d.temp ? "visible" : "none" } },
-      m.getLayer("network") ? "network" : undefined,
-    );
-  }
-  function addPrecip(m: LibreMap) {
-    const img = data.current.precipImg;
-    if (!img || m.getSource("precipitation")) return;
-    m.addSource("precipitation", { type: "image", url: img.url, coordinates: img.coordinates });
-    m.addLayer({ id: "precipitation", type: "raster", source: "precipitation", paint: { "raster-opacity": 0.85, "raster-resampling": "linear", "raster-fade-duration": 0 }, layout: { visibility: precipRef.current ? "visible" : "none" } }, m.getLayer("network") ? "network" : undefined);
-  }
+  const data = useRef({ disruptions: empty as FC });
   function addOverlays(m: LibreMap) {
     const d = data.current;
     // railways abroad (OpenStreetMap, prepared by tools/prepare_abroad.py), under the Swiss BAV network
@@ -298,7 +244,6 @@ export function App() {
       m.addLayer({ id: "rail-abroad-halo", type: "line", source: "abroad", layout: { "line-join": "round", "line-cap": "round" }, paint: { "line-color": "#ffffff", "line-width": ["interpolate", ["linear"], ["zoom"], 6, 2.2, 10, 3.4, 14, 5.6], "line-opacity": 0.8 } });
       m.addLayer({ id: "rail-abroad", type: "line", source: "abroad", layout: { "line-join": "round", "line-cap": "round" }, paint: { "line-color": "#767676", "line-width": ["interpolate", ["linear"], ["zoom"], 6, ["match", ["get", "usage"], "main", 0.9, 0.6], 10, ["match", ["get", "usage"], "main", 1.6, 1.1], 14, 2.6], "line-opacity": 0.85 } });
     }
-    addTemperature(m);
     if (!m.getSource("network")) {
       // Swiss network (BAV): a halo under a strong line so the tracks read on any base map
       m.addSource("network", { type: "geojson", data: "/api/network.geojson" });
@@ -318,32 +263,13 @@ export function App() {
         m.addLayer({ id: `station-labels-${tier}`, type: "symbol", source: "stations", minzoom: labelZoom, filter: filter as never, layout: { "text-field": ["get", "name"], "text-font": [tier === "major" ? "Frutiger Neue Bold" : "Frutiger Neue Regular"], "text-size": tier === "major" ? 13 : 12, "text-offset": [0, 0.9], "text-anchor": "top", "text-optional": true, "symbol-sort-key": ["-", 0, ["get", "trains"]], "text-padding": 4 }, paint: { "text-color": "#212121", "text-halo-color": "rgba(255,255,255,0.95)", "text-halo-width": 1.8 } });
       }
     }
-    if (!m.getSource("areas")) {
-      m.addSource("areas", { type: "geojson", data: d.areas as never });
-      m.addLayer({ id: "area-fill", type: "fill", source: "areas", paint: { "fill-color": ["get", "colour"], "fill-opacity": 0.14 } });
-      m.addLayer({ id: "area-line", type: "line", source: "areas", paint: { "line-color": ["get", "colour"], "line-width": 2, "line-dasharray": [3, 2] } });
-      m.addLayer({ id: "area-picked", type: "line", source: "areas", filter: ["==", ["get", "id"], ""], paint: { "line-color": "#0079c7", "line-width": 4 } });
-      m.addLayer({ id: "area-label", type: "symbol", source: "areas", layout: { "text-field": ["get", "label"], "text-size": 13, "text-font": ["Frutiger Neue Bold"], "symbol-placement": "point", "text-anchor": "bottom", "text-offset": [0, -0.4] }, paint: { "text-color": ["get", "colour"], "text-halo-color": "#ffffff", "text-halo-width": 2 } });
-    }
     if (!m.getSource("disruptions")) {
-      m.addSource("alerts", { type: "geojson", data: d.alerts as never });
-      m.addLayer({ id: "alert-line", type: "line", source: "alerts", filter: ["in", ["geometry-type"], ["literal", ["LineString", "MultiLineString"]]], layout: { "line-cap": "butt", "line-join": "round" }, paint: { "line-color": ["get", "colour"], "line-width": ["interpolate", ["linear"], ["zoom"], 7, 3, 12, 5.5], "line-dasharray": [1.6, 1.1] } });
-      m.addLayer({ id: "alert-point", type: "circle", source: "alerts", filter: ["in", ["geometry-type"], ["literal", ["Point", "MultiPoint"]]], minzoom: 7, paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 7, 5, 12, 9], "circle-color": "rgba(0,0,0,0)", "circle-stroke-color": ["get", "colour"], "circle-stroke-width": 2.5 } });
-      m.addLayer({ id: "alert-picked-line", type: "line", source: "alerts", filter: ["==", ["get", "id"], ""], paint: { "line-color": "#0079c7", "line-width": 7, "line-opacity": 0.85 } });
-      m.addLayer({ id: "alert-picked-point", type: "circle", source: "alerts", filter: ["==", ["get", "id"], ""], paint: { "circle-radius": 14, "circle-color": "rgba(0,121,199,0.15)", "circle-stroke-color": "#0079c7", "circle-stroke-width": 3 } });
       m.addSource("disruptions", { type: "geojson", data: d.disruptions as never });
       m.addLayer({ id: "disruption-glow", type: "line", source: "disruptions", filter: ["in", ["geometry-type"], ["literal", ["LineString", "MultiLineString"]]], paint: { "line-color": ["get", "colour"], "line-width": ["interpolate", ["linear"], ["zoom"], 7, 9, 12, 18], "line-opacity": 0.3, "line-blur": 3 } });
       m.addLayer({ id: "disruption-line", type: "line", source: "disruptions", filter: ["in", ["geometry-type"], ["literal", ["LineString", "MultiLineString"]]], layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": ["get", "colour"], "line-width": ["interpolate", ["linear"], ["zoom"], 7, 3.5, 12, 6] } });
       m.addLayer({ id: "disruption-point", type: "circle", source: "disruptions", filter: ["in", ["geometry-type"], ["literal", ["Point", "MultiPoint"]]], paint: { "circle-radius": 11, "circle-color": "rgba(0,0,0,0)", "circle-stroke-color": ["get", "colour"], "circle-stroke-width": 3 } });
       m.addLayer({ id: "picked-line", type: "line", source: "disruptions", filter: ["==", ["get", "id"], ""], paint: { "line-color": "#0079c7", "line-width": 7, "line-opacity": 0.85 } });
       m.addLayer({ id: "picked-point", type: "circle", source: "disruptions", filter: ["==", ["get", "id"], ""], paint: { "circle-radius": 16, "circle-color": "rgba(0,121,199,0.15)", "circle-stroke-color": "#0079c7", "circle-stroke-width": 3 } });
-    }
-    if (!m.getSource("weather")) {
-      m.addSource("weather", { type: "geojson", data: d.weather as never });
-      if (!m.hasImage("wind-arrow")) m.addImage("wind-arrow", windArrow(), { sdf: true });
-      m.addLayer({ id: "wind-arrow", type: "symbol", source: "weather", filter: [">=", ["get", "dir"], 0], layout: { visibility: "none", "icon-image": "wind-arrow", "icon-rotate": ["get", "dir"], "icon-rotation-alignment": "map", "icon-allow-overlap": true, "icon-ignore-placement": true, "icon-size": ["interpolate", ["linear"], ["get", "wind"], 0, 0.3, 20, 0.45, 50, 0.65, 90, 0.85], "symbol-sort-key": ["get", "wind"] }, paint: { "icon-color": ["step", ["get", "gust"], "#2d327d", 50, "#0079c7", 75, "#f27e00", 100, "#eb0000"], "icon-halo-color": "rgba(255,255,255,0.95)", "icon-halo-width": 1.5 } });
-      m.addLayer({ id: "wind-label", type: "symbol", source: "weather", filter: [">=", ["get", "wind"], 0], layout: { visibility: "none", "text-field": ["step", ["zoom"], ["case", [">=", ["get", "gust"], 30], ["get", "windLabel"], ""], 9, ["get", "windLabel"]], "text-anchor": "top", "text-offset": [0, 1.1], "text-size": ["interpolate", ["linear"], ["zoom"], 7, 10.5, 10, 13], "text-font": ["Frutiger Neue Bold"], "text-allow-overlap": false, "text-padding": 6, "symbol-sort-key": ["-", 0, ["get", "gust"]] }, paint: { "text-color": ["step", ["get", "gust"], "#2d327d", 50, "#0079c7", 75, "#f27e00", 100, "#eb0000"], "text-halo-color": "rgba(255,255,255,0.95)", "text-halo-width": 2 } });
-      m.addLayer({ id: "weather-label", type: "symbol", source: "weather", layout: { visibility: d.temp ? "visible" : "none", "text-field": ["get", "label"], "text-size": ["interpolate", ["linear"], ["zoom"], 7, 11, 10, 13.5], "text-font": ["Frutiger Neue Bold"], "text-allow-overlap": false, "text-padding": 6 }, paint: { "text-color": "#212121", "text-halo-color": "rgba(255,255,255,0.92)", "text-halo-width": 2 } });
     }
   }
   /** Light/dark page and map, or satellite: recolour in place (no reload). */
@@ -361,11 +287,6 @@ export function App() {
       m.setPaintProperty("rail-abroad-halo", "line-color", halo);
     }
     const dark = th === "dark" || sat;
-    if (m.getLayer("weather-label")) {
-      m.setPaintProperty("weather-label", "text-color", dark ? "#ffffff" : "#212121");
-      m.setPaintProperty("weather-label", "text-halo-color", dark ? "rgba(16,20,24,0.9)" : "rgba(255,255,255,0.92)");
-    }
-    if (m.getLayer("area-label")) m.setPaintProperty("area-label", "text-halo-color", dark ? "#101418" : "#ffffff");
     for (const tier of ["major", "medium", "minor"]) {
       if (!m.getLayer(`station-labels-${tier}`)) continue;
       m.setPaintProperty(`station-labels-${tier}`, "text-color", dark ? "#f1f2f4" : "#212121");
@@ -373,9 +294,6 @@ export function App() {
       m.setPaintProperty(`stations-${tier}`, "circle-stroke-color", dark ? "#0b0e11" : "#212121");
     }
     if (layer.current) layer.current.theme = dark ? "dark" : "light";
-    if (particles.current) particles.current.dark = dark;
-    if (m.getLayer("wind-label")) m.setPaintProperty("wind-label", "text-halo-color", dark ? "rgba(16,20,24,0.92)" : "rgba(255,255,255,0.95)");
-    if (m.getLayer("wind-arrow")) m.setPaintProperty("wind-arrow", "icon-halo-color", dark ? "rgba(16,20,24,0.92)" : "rgba(255,255,255,0.95)");
   }
   useEffect(() => {
     look.current = { theme, satellite };
@@ -400,29 +318,6 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [theme, satellite]);
   useEffect(() => {
-    // weather changes drawn as soft circles
-    const circle = (o: WeatherOverride) => {
-      const pts: number[][] = [];
-      for (let k = 0; k <= 64; k++) {
-        const a = (k / 64) * 2 * Math.PI;
-        pts.push([o.lon + ((o.radiusKm / (111.32 * Math.cos((o.lat * Math.PI) / 180))) * Math.cos(a)), o.lat + (o.radiusKm / 111.32) * Math.sin(a)]);
-      }
-      return pts;
-    };
-    const describe = (o: WeatherOverride) =>
-      [o.tempC !== undefined ? `${o.tempC}°` : o.tempDeltaC !== undefined ? `${o.tempDeltaC > 0 ? "+" : ""}${o.tempDeltaC}°` : "", o.gustKmh ? `${o.gustKmh} km/h` : "", o.precipMm ? `${o.precipMm} mm` : ""].filter(Boolean).join(" · ");
-    const colour = (o: WeatherOverride) => ((o.tempC ?? 0) >= 25 || (o.tempDeltaC ?? 0) > 0 ? "#eb0000" : (o.tempC ?? 99) <= 0 || (o.tempDeltaC ?? 0) < 0 ? "#0079c7" : "#2d327d");
-    const list = Object.values(overrides).filter((o) => o.status === "active");
-    data.current.areas = {
-      type: "FeatureCollection",
-      features: list.flatMap((o) => [
-        { type: "Feature" as const, properties: { colour: colour(o), label: "", id: o.id, kind: "weather", size: o.radiusKm * 2 }, geometry: { type: "Polygon", coordinates: [circle(o)] } },
-        { type: "Feature" as const, properties: { colour: colour(o), label: `${o.label}\n${describe(o)}` }, geometry: { type: "Point", coordinates: [o.lon, o.lat + o.radiusKm / 111.32] } },
-      ]),
-    };
-    (mapRef.current?.getSource("areas") as GeoJSONSource | undefined)?.setData(data.current.areas as never);
-  }, [overrides]);
-  useEffect(() => {
     const features = [
       ...Object.values(disruptions)
         .filter((d) => d.status === "active" && d.geometry && d.geometry.type !== "Polygon")
@@ -434,105 +329,12 @@ export function App() {
     data.current.disruptions = { type: "FeatureCollection", features };
     (mapRef.current?.getSource("disruptions") as GeoJSONSource | undefined)?.setData(data.current.disruptions as never);
   }, [disruptions, incidents]);
-  useEffect(() => {
-    // real SBB alerts: dashed track sections and station rings, red when service is interrupted, orange when limited
-    const colour = (a: RealAlert) => (a.severity === "major" ? "#eb0000" : a.severity === "minor" ? "#f27e00" : "#0079c7");
-    data.current.alerts = {
-      type: "FeatureCollection",
-      features: alerts
-        .filter((a) => a.geometry)
-        .map((a) => ({ type: "Feature" as const, properties: { id: a.id, kind: "alert", colour: colour(a), size: extent(a.geometry) + 1 }, geometry: a.geometry as FC["features"][number]["geometry"] })),
-    };
-    (mapRef.current?.getSource("alerts") as GeoJSONSource | undefined)?.setData(data.current.alerts as never);
-  }, [alerts]);
-  useEffect(() => {
-    if (!weather) return;
-    data.current.weather = {
-      type: "FeatureCollection",
-      features: weather.stations
-        .map((row) => Object.fromEntries(weather.fields.map((f, i) => [f, row[i]])) as Record<string, string | number | null>)
-        .filter((s) => s.tempC !== null || s.gustKmh !== null)
-        .map((s) => ({
-          type: "Feature" as const,
-          properties: {
-            id: s.id,
-            name: s.name,
-            colour: typeof s.tempC === "number" ? rampColour(s.tempC) : "#999",
-            label: typeof s.tempC === "number" ? `${s.tempC.toFixed(1)}°` : "",
-            gust: typeof s.gustKmh === "number" ? Math.round(s.gustKmh) : -1,
-            wind: typeof s.windKmh === "number" ? Math.round(s.windKmh) : -1,
-            dir: typeof s.windDirDeg === "number" ? (s.windDirDeg + 180) % 360 : -1,
-            windLabel: typeof s.windKmh === "number" ? `${Math.round(s.windKmh)}${typeof s.gustKmh === "number" && s.gustKmh >= s.windKmh + 5 ? `–${Math.round(s.gustKmh)}` : ""} km/h` : "",
-          },
-          geometry: { type: "Point" as const, coordinates: [s.lon as number, s.lat as number] },
-        })),
-    };
-    (mapRef.current?.getSource("weather") as GeoJSONSource | undefined)?.setData(data.current.weather as never);
-  }, [weather]);
-  useEffect(() => {
-    if (!grid) return;
-    data.current.grid = gridImage(grid);
-    const m = mapRef.current;
-    const src = m?.getSource("temperature") as ImageSource | undefined;
-    if (src) src.updateImage({ url: data.current.grid.url, coordinates: data.current.grid.coordinates });
-    else if (m) {
-      try {
-        addTemperature(m);
-      } catch {
-        m.once("idle", () => addTemperature(m));
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [grid]);
-  useEffect(() => {
-    data.current.temp = showTemp;
-    wxRef.current = wx;
-    const m = mapRef.current;
-    if (m && showTemp && !m.getSource("temperature")) addTemperature(m);
-    precipRef.current = showPrecip;
-    if (m && showPrecip && !m.getSource("precipitation")) addPrecip(m);
-    const show: Record<string, boolean> = { temperature: wx === "temp", "weather-label": wx === "temp", precipitation: showPrecip, "wind-label": wx === "wind", "wind-arrow": wx === "wind" };
-    for (const [id, on] of Object.entries(show)) if (m?.getLayer(id)) m.setLayoutProperty(id, "visibility", on ? "visible" : "none");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wx, showPrecip]);
-  useEffect(() => {
-    if (!precip) return;
-    data.current.precipImg = precipImage(precip, grid);
-    const m = mapRef.current;
-    const src = m?.getSource("precipitation") as ImageSource | undefined;
-    if (src) src.updateImage({ url: data.current.precipImg.url, coordinates: data.current.precipImg.coordinates });
-    else if (m && showPrecip) {
-      try {
-        addPrecip(m);
-      } catch {
-        m.once("idle", () => addPrecip(m));
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [precip, grid]);
-  useEffect(() => {
-    // falling rain / drifting snow / wind streaks inside the active god-mode weather areas
-    const made = Object.values(overrides)
-      .filter((o) => o.status === "active")
-      .map((o) => {
-        const t = o.tempC ?? (grid ? (temperatureAt(grid, o.lon, o.lat) ?? 5) : 5);
-        return { id: o.id, lon: o.lon, lat: o.lat, radiusKm: o.radiusKm, precipMm: o.precipMm ?? 0, gustKmh: o.gustKmh ?? 0, snow: o.phase ? o.phase === "snow" : t <= 1 };
-      });
-    // real rain and snow where MeteoSwiss stations measure it (at least 0.3 mm in 10 minutes)
-    const f = weather?.fields ?? [];
-    const [pi, ti, gi, li, oi, ii] = ["precipMm", "tempC", "gustKmh", "lat", "lon", "id"].map((k) => f.indexOf(k));
-    const inside = (lat: number, lon: number) => made.some((a) => Math.hypot((lat - a.lat) * 111.32, (lon - a.lon) * 111.32 * Math.cos((lat * Math.PI) / 180)) < a.radiusKm + 8);
-    const real = (weather?.stations ?? [])
-      .filter((r) => typeof r[pi] === "number" && (r[pi] as number) >= 0.3 && !inside(r[li] as number, r[oi] as number))
-      .map((r) => ({ id: `station-${r[ii]}`, lon: r[oi] as number, lat: r[li] as number, radiusKm: 8, precipMm: r[pi] as number, gustKmh: typeof r[gi] === "number" ? (r[gi] as number) : 0, snow: typeof r[ti] === "number" && (r[ti] as number) <= 1 }));
-    particles.current?.set([...made, ...real]);
-  }, [overrides, grid, weather]);
 
   // the picked event: highlighted on the map, scrolled to in the list
   useEffect(() => {
     const m = mapRef.current;
     const id = picked?.id ?? "";
-    for (const l of ["picked-line", "picked-point", "area-picked", "alert-picked-line", "alert-picked-point"]) if (m?.getLayer(l)) m.setFilter(l, ["==", ["get", "id"], id]);
+    for (const l of ["picked-line", "picked-point"]) if (m?.getLayer(l)) m.setFilter(l, ["==", ["get", "id"], id]);
     if (!picked) return;
     const t = setTimeout(() => document.querySelector(`[data-id="${picked.id}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 120);
     return () => clearTimeout(t);
@@ -542,13 +344,11 @@ export function App() {
   const upsert = {
     disruption: (d?: Disruption | null) => d && setDisruptions((x) => ({ ...x, [d.id]: d })),
     incident: (i?: Incident | null) => i && setIncidents((x) => ({ ...x, [i.id]: i })),
-    override: (o?: WeatherOverride | null) => o && setOverrides((x) => ({ ...x, [o.id]: o })),
   };
   const created: Created = (r) => {
     if (!r) return;
     upsert.disruption(r.disruption);
     upsert.incident(r.incident);
-    upsert.override(r.override);
     for (const d of r.consequences ?? []) upsert.disruption(d);
   };
   const createdRef = useRef(created);
@@ -573,14 +373,6 @@ export function App() {
         if (before) setDisruptions((x) => ({ ...x, [id]: before }));
       });
     },
-    endWeather: (id: string) => {
-      const before = overrides[id];
-      if (before) setOverrides((x) => ({ ...x, [id]: { ...before, status: "ended", endedAt: Date.now() } }));
-      void api(`/weather/overrides/${id}/end`, { method: "POST", json: {} }).catch((e) => {
-        say(e.message);
-        if (before) setOverrides((x) => ({ ...x, [id]: before }));
-      });
-    },
     unmark: (id: string) => {
       const before = incidents[id];
       setIncidents((x) => drop(x, id));
@@ -598,10 +390,8 @@ export function App() {
     const r = await api<{ removed: number; synced: number }>("/control/reset", { method: "POST", json: {} }).catch((e) => (say(e.message), null));
     if (!r) return;
     setPicked(undefined);
-    setProtection(true);
     setDisruptions({});
     setIncidents({});
-    setOverrides({});
     setSimulated(new Set());
     setCauses({});
     say(r.removed || r.synced ? `Back to reality: ${r.removed} changes removed, ${r.synced} trains synced` : "Already on the real data");
@@ -628,16 +418,6 @@ export function App() {
           <span>
             <b>{active.length}</b> disruptions
           </span>
-          {(status?.realtime.feedAgeSec ?? 0) > 180 && (
-            <span className="warn" title="The official real-time predictions are late: trains follow their last known delays">
-              live data {Math.round((status?.realtime.feedAgeSec ?? 0) / 60)} min old
-            </span>
-          )}
-          {weather?.measuredAt && (
-            <span className="wx" title="MeteoSwiss measurement time">
-              weather {hm(weather.measuredAt)}
-            </span>
-          )}
         </div>
         <div className="tools">
           <div className="seg" role="group" aria-label="Base map">
@@ -660,23 +440,6 @@ export function App() {
               <CircleDot size={15} />
               <span className="label">Stations</span>
             </button>
-          </div>
-          <div className="seg wx" role="group" aria-label="Weather layer">
-            <button aria-pressed={showPrecip} onClick={() => setShowPrecip((x) => !x)} title="Rain & snow">
-              <CloudSnow size={15} />
-              <span className="label">Rain & snow</span>
-            </button>
-            {(
-              [
-                ["temp", "Temperature", Thermometer],
-                ["wind", "Wind", Wind],
-              ] as const
-            ).map(([id, label, Icon]) => (
-              <button key={id} aria-pressed={wx === id} onClick={() => setWx((w) => (w === id ? "off" : id))} title={label}>
-                <Icon size={15} />
-                <span className="label">{label}</span>
-              </button>
-            ))}
           </div>
           <button className="primary go" onClick={() => void syncAll()} title="Back to reality: delete every change and sync every train">
             <RefreshCcw size={15} /> Sync all
@@ -703,27 +466,13 @@ export function App() {
           {tab === "control" && (
             <ControlPanel
               disruptions={Object.values(disruptions)}
-              overrides={Object.values(overrides)}
               picked={picked?.id}
               act={act}
               onCreated={created}
-              protection={protection}
-              setProtection={setProtection}
-              placingLabel={placingLabel}
-              onPlace={(body, label) => {
-                placing.current = body;
-                setPlacingLabel(label);
-                if (mapRef.current) mapRef.current.getCanvas().style.cursor = "crosshair";
-              }}
-              onCancelPlace={() => {
-                placing.current = undefined;
-                setPlacingLabel(undefined);
-                if (mapRef.current) mapRef.current.getCanvas().style.cursor = "";
-              }}
               say={say}
             />
           )}
-          {tab === "incidents" && <Incidents incidents={Object.values(incidents)} alerts={alerts} picked={picked?.id} onUnmark={act.unmark} onCreated={(i) => upsert.incident(i)} say={say} />}
+          {tab === "incidents" && <Incidents incidents={Object.values(incidents)} picked={picked?.id} onUnmark={act.unmark} onCreated={(i) => upsert.incident(i)} say={say} />}
           {tab === "events" && <Events events={events} />}
           {tab === "connect" && <Connect />}
         </div>
@@ -750,45 +499,6 @@ export function App() {
             <i className="ring" />
             Simulated (provoked)
           </span>
-          {showPrecip && (precip?.values.some((v) => (v ?? 0) >= 0.05) || Object.values(overrides).some((o) => o.status === "active" && (o.precipMm ?? 0) > 0)) && (
-            <div className="ramp">
-              <div style={{ background: `linear-gradient(90deg, ${RAIN_LEGEND.map(([, c]) => c).join(",")})` }} />
-              <small>
-                <span>rain 0.3</span>
-                <span>2</span>
-                <span>6</span>
-                <span>15</span>
-                <span>30</span>
-                <span>60 mm/h</span>
-              </small>
-              <div style={{ background: `linear-gradient(90deg, ${SNOW_LEGEND.map(([, c]) => c).join(",")})`, marginTop: 4, boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.15)" }} />
-              <small>
-                <span>snow · light</span>
-                <span>heavy</span>
-              </small>
-            </div>
-          )}
-          {wx === "wind" && (
-            <div className="ramp">
-              <small>
-                <span style={{ color: "#2d327d" }}>gusts &lt; 50 km/h</span>
-                <span style={{ color: "#0079c7" }}>50</span>
-                <span style={{ color: "#f27e00" }}>75</span>
-                <span style={{ color: "#eb0000" }}>≥ 100</span>
-              </small>
-            </div>
-          )}
-          {showTemp && (
-            <div className="ramp">
-              <div style={{ background: `linear-gradient(90deg, ${RAMP.map(([t, c]) => `${c} ${((t + 20) / 55) * 100}%`).join(",")})` }} />
-              <small>
-                <span>−20°</span>
-                <span>0°</span>
-                <span>15°</span>
-                <span>35°</span>
-              </small>
-            </div>
-          )}
         </div>
       </aside>
       {selected && client.current && (
@@ -816,7 +526,6 @@ export function App() {
             setTab("control");
           }}
           following={following}
-          grid={grid}
           onFollow={() => setFollowing((f) => !f)}
           onClose={() => {
             setSelected(undefined);
@@ -847,7 +556,7 @@ export function App() {
   );
 }
 
-function TrainCard({ id, client, simulated, mods, onEnd, onCreated, holds, onPick, following, grid, onFollow, onClose, say }: { id: string; client: Live; simulated: boolean; mods: Disruption[]; onEnd: (id: string) => void; onCreated: Created; holds: { id: string; label: string }[]; onPick: (id: string) => void; following: boolean; grid?: TemperatureGrid; onFollow: () => void; onClose: () => void; say: (t: string) => void }) {
+function TrainCard({ id, client, simulated, mods, onEnd, onCreated, holds, onPick, following, onFollow, onClose, say }: { id: string; client: Live; simulated: boolean; mods: Disruption[]; onEnd: (id: string) => void; onCreated: Created; holds: { id: string; label: string }[]; onPick: (id: string) => void; following: boolean; onFollow: () => void; onClose: () => void; say: (t: string) => void }) {
   const [pos, setPos] = useState<Pos>();
   const [info, setInfo] = useState<Info>();
   const [cruise, setCruise] = useState("120");
@@ -872,7 +581,6 @@ function TrainCard({ id, client, simulated, mods, onEnd, onCreated, holds, onPic
     const r = await api<{ synced: string[] }>("/sync", { method: "POST", json: { trainIds: [id] } }).catch((e) => (say(e.message), null));
     if (r) say(r.synced.length ? "Back on the real data" : "Already on the real data");
   };
-  const temp = grid && pos ? temperatureAt(grid, pos.lon, pos.lat) : null;
   // stops still ahead carry an expected time; passed ones do not
   const upcoming = info?.calls.filter((c) => c.expectedArr !== null || c.expectedDep !== null).slice(0, 6) ?? [];
   const late = (pos?.delaySec ?? 0) >= 60;
@@ -901,10 +609,6 @@ function TrainCard({ id, client, simulated, mods, onEnd, onCreated, holds, onPic
           <div className={late ? "late" : ""}>
             <b>{pos.delaySec >= 0 ? "+" : "−"}{Math.floor(Math.abs(pos.delaySec) / 60)}:{String(Math.abs(pos.delaySec) % 60).padStart(2, "0")}</b>
             <small>delay</small>
-          </div>
-          <div>
-            <b>{temp !== null ? `${temp.toFixed(1)}°` : "–"}</b>
-            <small>outside</small>
           </div>
           <div>
             <b className="motion">{info?.status === "cancelled" ? "cancelled" : pos.motion === "moving" ? "moving" : pos.atStop ? "at station" : "stopped"}</b>
@@ -1027,11 +731,10 @@ function TrainCard({ id, client, simulated, mods, onEnd, onCreated, holds, onPic
   );
 }
 
-type Preset = { id: string; label: string; tempC?: number; tempDeltaC?: number; precipMm?: number; windKmh?: number; gustKmh?: number };
 const NETWORK_TYPES = (t: DType) => t.scope === "section" || t.scope === "station";
 
-type Act = { endDisruption: (id: string) => void; removeDisruption: (id: string) => void; endWeather: (id: string) => void; unmark: (id: string) => void };
-type Created = (r: { disruption?: Disruption; incident?: Incident | null; override?: WeatherOverride; consequences?: Disruption[] } | null) => void;
+type Act = { endDisruption: (id: string) => void; removeDisruption: (id: string) => void; unmark: (id: string) => void };
+type Created = (r: { disruption?: Disruption; incident?: Incident | null; consequences?: Disruption[] } | null) => void;
 type BoardRow = { trainId: string | null; line: string; category: string; headsign: string; planned: number; expected: number; delayMin: number; cancelled: boolean };
 function StationCard({ station, onCreated, onClose, onTrain, onSection, say }: { station: { id: string; name: string; trains: number }; onCreated: Created; onClose: () => void; onTrain: (id: string) => void; onSection: () => void; say: (t: string) => void }) {
   const [board, setBoard] = useState<BoardRow[]>();
@@ -1095,9 +798,8 @@ function StationCard({ station, onCreated, onClose, onTrain, onSection, say }: {
   );
 }
 
-function ControlPanel({ disruptions, overrides, picked, act, onCreated, protection, setProtection, placingLabel, onPlace, onCancelPlace, say }: { disruptions: Disruption[]; overrides: WeatherOverride[]; picked?: string; act: Act; onCreated: Created; protection: boolean; setProtection: (on: boolean) => void; placingLabel?: string; onPlace: (body: Record<string, unknown>, label: string) => void; onCancelPlace: () => void; say: (t: string) => void }) {
+function ControlPanel({ disruptions, picked, act, onCreated, say }: { disruptions: Disruption[]; picked?: string; act: Act; onCreated: Created; say: (t: string) => void }) {
   const [types, setTypes] = useState<DType[]>([]);
-  const [presets, setPresets] = useState<Preset[]>([]);
   const [typeId, setTypeId] = useState("overhead_line_fault");
   const EFFECTS: [string, string][] = [
     ["section_closure", "Section closed"],
@@ -1128,13 +830,8 @@ function ControlPanel({ disruptions, overrides, picked, act, onCreated, protecti
     setReachable(undefined);
     if (from) void api<(Station & { km: number })[]>(`/stations/${from.id}/neighbours`).then(setReachable).catch(() => {});
   }, [from]);
-  const [preset, setPreset] = useState("heatwave");
-  const [customTemp, setCustomTemp] = useState("");
-  const [radius, setRadius] = useState("20");
-  const [wMinutes, setWMinutes] = useState("60");
   useEffect(() => {
     void api<DType[]>("/disruption-types").then((t) => setTypes(t.filter(NETWORK_TYPES)));
-    void api<{ presets: Preset[] }>("/control").then((g) => setPresets(g.presets));
   }, []);
   const type = types.find((t) => t.id === typeId);
   useEffect(() => setMinutes(type?.defaultMinutes ? String(type.defaultMinutes) : ""), [type]);
@@ -1149,24 +846,7 @@ function ControlPanel({ disruptions, overrides, picked, act, onCreated, protecti
     onCreated(r);
     if (r) say(`${r.disruption.label}: ${r.disruption.where}`);
   };
-  const place = () => {
-    const p = presets.find((x) => x.id === preset);
-    const body: Record<string, unknown> = customTemp ? { label: `${customTemp} °C`, tempC: Number(customTemp) } : { preset };
-    body.radiusKm = Number(radius) || 20;
-    body.minutes = wMinutes ? Number(wMinutes) : null;
-    onPlace(body, customTemp ? `${customTemp} °C` : (p?.label ?? "Weather"));
-  };
-  const toggleProtection = async () => {
-    const want = !protection;
-    setProtection(want); // show it at once; the server confirms over MQTT
-    const r = await api<{ protection: boolean }>("/control/protection", { method: "POST", json: { on: want } }).catch((e) => (say(e.message), null));
-    if (r) {
-      setProtection(r.protection);
-      say(r.protection ? "Train protection on: trains never run into each other" : "Train protection off: drivers only see what is ahead");
-    } else setProtection(!want);
-  };
   const live = disruptions.filter((d) => d.status === "active").sort((a, b) => b.startedAt - a.startedAt);
-  const weatherLive = overrides.filter((o) => o.status === "active");
   const ended = disruptions.filter((d) => d.status !== "active").sort((a, b) => (b.endedAt ?? 0) - (a.endedAt ?? 0)).slice(0, 6);
   return (
     <>
@@ -1226,73 +906,9 @@ function ControlPanel({ disruptions, overrides, picked, act, onCreated, protecti
         <Zap size={15} /> Provoke
       </button>
 
-      <h3>Weather</h3>
-      <div className="chips">
-        {presets.map((p) => (
-          <button
-            key={p.id}
-            aria-pressed={!customTemp && preset === p.id}
-            onClick={() => {
-              setPreset(p.id);
-              setCustomTemp("");
-            }}
-          >
-            {p.label}
-          </button>
-        ))}
-      </div>
-      <div className="row">
-        <label className="field">
-          <span>Or set °C</span>
-          <input value={customTemp} onChange={(e) => setCustomTemp(e.target.value.replace(/[^\d-]/g, ""))} placeholder="e.g. 42" />
-        </label>
-        <label className="field">
-          <span>Radius (km)</span>
-          <input value={radius} onChange={(e) => setRadius(e.target.value.replace(/\D/g, ""))} />
-        </label>
-        <label className="field">
-          <span>Duration (min)</span>
-          <input value={wMinutes} onChange={(e) => setWMinutes(e.target.value.replace(/\D/g, ""))} placeholder="until ended" />
-        </label>
-      </div>
-      {placingLabel ? (
-        <div className="placing">
-          <span>Click on the map to place: {placingLabel}</span>
-          <button onClick={onCancelPlace}>Cancel</button>
-        </div>
-      ) : (
-        <button className="primary wide" onClick={place}>
-          <CloudSun size={15} /> Place on the map
-        </button>
-      )}
-
-      <h3>Safety</h3>
-      <button className={`switch ${protection ? "on" : "off"}`} onClick={() => void toggleProtection()} aria-pressed={protection}>
-        {protection ? <ShieldCheck size={18} /> : <ShieldOff size={18} />}
-        <span>
-          <b>Train protection {protection ? "on" : "off"}</b>
-          <small>{protection ? "Trains always stop behind a stopped train" : "Drivers only see a stopped train 500 m ahead"}</small>
-        </span>
-      </button>
-
       <h3>Active</h3>
-      {!live.length && !weatherLive.length && <p className="hint">Nothing changed: every train follows the real data.</p>}
+      {!live.length && <p className="hint">Nothing changed: every train follows the real data.</p>}
       <ul className="items">
-        {weatherLive.map((o) => (
-          <li key={o.id} data-kind="weather" data-id={o.id} className={picked === o.id ? "picked" : undefined}>
-            <div>
-              <b>{o.label}</b>
-              <span>
-                {o.radiusKm} km{o.tempC !== undefined ? ` · ${o.tempC} °C` : ""}
-                {o.tempDeltaC !== undefined ? ` · ${o.tempDeltaC > 0 ? "+" : ""}${o.tempDeltaC} °C` : ""}
-                {o.gustKmh ? ` · gusts ${o.gustKmh} km/h` : ""}
-                {o.precipMm ? ` · ${o.precipMm} mm` : ""}
-              </span>
-              <small>since {hm(o.startedAt)}{o.endsAt ? ` · until ${hm(o.endsAt)}` : ""}</small>
-            </div>
-            <button onClick={() => act.endWeather(o.id)}>End</button>
-          </li>
-        ))}
         {live.map((d) => (
           <li key={d.id} data-status={d.status} data-id={d.id} className={picked === d.id ? "picked" : undefined}>
             <div>
@@ -1321,7 +937,7 @@ function ControlPanel({ disruptions, overrides, picked, act, onCreated, protecti
   );
 }
 
-function Incidents({ incidents, alerts, picked, onUnmark, onCreated, say }: { incidents: Incident[]; alerts: RealAlert[]; picked?: string; onUnmark: (id: string) => void; onCreated: (i: Incident) => void; say: (t: string) => void }) {
+function Incidents({ incidents, picked, onUnmark, onCreated, say }: { incidents: Incident[]; picked?: string; onUnmark: (id: string) => void; onCreated: (i: Incident) => void; say: (t: string) => void }) {
   const [title, setTitle] = useState("");
   const [severity, setSeverity] = useState("major");
   const [station, setStation] = useState<Station>();
@@ -1379,31 +995,8 @@ function Incidents({ incidents, alerts, picked, onUnmark, onCreated, say }: { in
             </li>
           ))}
       </ul>
-      <h3>Live from SBB</h3>
-      {!alerts.length && <p className="hint">No current alerts on the railway.</p>}
-      <ul className="items">
-        {[...alerts]
-          .sort((a, b) => rank(a) - rank(b) || a.title.localeCompare(b.title))
-          .map((a) => (
-            <li key={a.id} data-severity={a.severity} data-id={a.id} className={picked === a.id ? "picked" : undefined}>
-              <div>
-                <b>{a.title}</b>
-                {a.stations.length > 0 && <span>{a.stations.slice(0, 4).map((s) => s.name).join(", ")}{a.stations.length > 4 ? ` +${a.stations.length - 4}` : ""}</span>}
-                <small>{[a.cause !== "unknown" && a.cause !== "other" ? a.cause : "", until(a), a.trains ? `${a.trains} train${a.trains > 1 ? "s" : ""}` : ""].filter(Boolean).join(" · ")}</small>
-              </div>
-            </li>
-          ))}
-      </ul>
     </>
   );
-}
-const rank = (a: RealAlert) => (a.severity === "major" ? 0 : a.severity === "minor" ? 1 : 2);
-function until(a: RealAlert) {
-  const now = Date.now();
-  const p = a.activePeriods.find((x) => (x.start ?? 0) <= now && (x.end ?? Infinity) >= now) ?? a.activePeriods[0];
-  if (!p?.end) return p?.start ? `since ${new Date(p.start).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}` : "";
-  const end = new Date(p.end);
-  return end.toDateString() === new Date().toDateString() ? `until ${hm(p.end)}` : `until ${end.toLocaleDateString("en-GB", { day: "numeric", month: "short" })}`;
 }
 
 function Events({ events }: { events: Event[] }) {
@@ -1438,8 +1031,6 @@ function Connect() {
           ["sbb-twin/v1/trains/+/position", "one train per message, every second"],
           ["sbb-twin/v1/trains/+/info", "line, operator, stops and times (retained)"],
           ["sbb-twin/v1/incidents/+", "marked incidents (retained)"],
-          ["sbb-twin/v1/weather/temperature-grid", "temperature map (retained)"],
-          ["sbb-twin/v1/weather/snapshot", "MeteoSwiss stations (retained)"],
           ["sbb-twin/v1/status", "heartbeat (retained)"],
           ["sbb-twin/v1/detections/{team}/{id}", "yours to publish"],
         ].map(([t, d]) => (
@@ -1452,24 +1043,4 @@ function Connect() {
       <code className="block">{`const c = mqtt.connect("${url}")\nc.on("connect", () => c.subscribe("sbb-twin/v1/fleet"))\nc.on("message", (_, b) => console.log(JSON.parse(b).trains.length))`}</code>
     </>
   );
-}
-
-/** An arrow pointing north (rotated by the map to where the wind blows), as a signed-distance icon. */
-function windArrow() {
-  const n = 48;
-  const c = document.createElement("canvas");
-  c.width = c.height = n;
-  const g = c.getContext("2d")!;
-  g.fillStyle = "#000";
-  g.beginPath();
-  g.moveTo(24, 3);
-  g.lineTo(37, 21);
-  g.lineTo(28, 19);
-  g.lineTo(28, 45);
-  g.lineTo(20, 45);
-  g.lineTo(20, 19);
-  g.lineTo(11, 21);
-  g.closePath();
-  g.fill();
-  return { width: n, height: n, data: new Uint8Array(g.getImageData(0, 0, n, n).data.buffer) };
 }
