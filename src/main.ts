@@ -17,6 +17,8 @@ import { incidents } from "./disruptions.ts";
 import { incidentPayload } from "./feed.ts";
 import { publish } from "./mqtt.ts";
 import { alertsState, pollAlerts } from "./alerts.ts";
+import { bulletins } from "./feed.ts";
+import { scenarioTick } from "./scenario.ts";
 
 process.on("unhandledRejection", (e) => console.error("[sbb-twin] unhandled:", (e as Error)?.message ?? e));
 
@@ -55,6 +57,7 @@ await startBroker(server);
 const restored = loadState();
 if (restored.disruptions + restored.incidents) console.log(`[sbb-twin] restored ${restored.disruptions} disruptions, ${restored.incidents} incidents`);
 for (const i of incidents.values()) publish(`incidents/${i.id}`, incidentPayload(i), { retain: true, qos: 1 });
+for (const b of bulletins()) publish(`bulletins/${b.id}`, { v: 1, ...b }, { retain: true, qos: 1 });
 setInterval(saveState, 2000).unref();
 server.listen(config.port, config.host, () =>
   console.log(`[sbb-twin] viewer + API http://${config.host}:${config.port}/ · MQTT ${config.mqttUrl ? `on ${new URL(config.mqttUrl).host} (read-only WebSocket proxy at /mqtt)` : `tcp://${config.host}:${config.mqttPort} + ws://${config.host}:${config.port}/mqtt`}`),
@@ -65,6 +68,7 @@ event("system", { type: "system.started" });
 function loop() {
   const t = Math.floor(Date.now() / 1000) * 1000;
   try {
+    scenarioTick(t); // decisions taking effect, the effective timetable, buses and bulletins
     const { removed } = tick(t);
     publishTick(t, removed);
   } catch (err) {

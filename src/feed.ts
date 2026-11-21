@@ -5,10 +5,11 @@ import * as channel from "./channel.ts";
 import { alertsState } from "./alerts.ts";
 import { autoIncidents } from "./auto.ts";
 import { config } from "./config.ts";
-import { byTrainId, collisions, delayOf, edgeName, expectedArrival, expectedDeparture, nextCall, settings, timetableDate, trains, tripMeta, type Train } from "./engine.ts";
+import { byTrainId, collisions, delayOf, edgeName, expectedArrival, liveTimes, nextCall, timetableDate, trains, tripMeta, type Train } from "./engine.ts";
 import { stops } from "./timetable.ts";
-import { disruptions, incidents, type Disruption, type Incident } from "./disruptions.ts";
+import { disruptions, incidents, tripChanges, type Disruption, type Incident } from "./disruptions.ts";
 import { live } from "./realtime.ts";
+import { forget, isScenario, latestBulletin, scenarioFields } from "./scenario.ts";
 
 export const VERSION = "1.0.0";
 export const startedAt = Date.now();
@@ -25,6 +26,8 @@ export function positionPayload(tr: Train, t: number) {
   const here = tr.leg >= 0 ? tr.leg : tr.call;
   const prev = stops[tr.trip.stops[here]];
   const next = stops[tr.trip.stops[k]];
+  const cut = tripChanges.get(tr.trip.key)?.cut;
+  const ended = Boolean(tr.terminatedAt) || (cut !== undefined && k > cut); // its run ends here (a short turn)
   return {
     v: 1,
     streamId,
@@ -42,7 +45,7 @@ export function positionPayload(tr: Train, t: number) {
     headsign: tr.trip.head,
     atStop: tr.leg < 0 ? { id: prev.id, name: prev.name } : null,
     prevStop: { id: prev.id, name: prev.name },
-    nextStop: k !== here ? { id: next.id, name: next.name, plannedArr: tr.trip.arr[k], expectedArr: Math.round(expectedArrival(tr, k, t)) } : null,
+    nextStop: k !== here && !ended ? { id: next.id, name: next.name, plannedArr: tr.trip.arr[k], expectedArr: Math.round(expectedArrival(tr, k, t)) } : null,
     edgeId: edgeName(tr) ?? null,
     track: tr.bav ? "bav" : "approx",
     continuity: tr.continuity,
@@ -54,6 +57,10 @@ export function infoPayload(tr: Train, t: number) {
   const n = tr.trip.arr.length;
   const passed = tr.leg >= 0 ? tr.leg : tr.call;
   const stop = (i: number) => stops[tr.trip.stops[i]];
+  // the effective timetable: forecast times (a hold until the section reopens) and the last call it serves
+  const lt = liveTimes(tr.trip, t);
+  const last = lt.lastServed;
+  const cut = last < n - 1;
   return {
     v: 1,
     trainId: tr.trip.trainId,
@@ -63,10 +70,13 @@ export function infoPayload(tr: Train, t: number) {
     category: tr.trip.cat,
     number: m?.[0] || null,
     operator: m?.[1] || null,
-    headsign: tr.trip.head,
-    status: tr.cancelled ? "cancelled" : "active",
+    headsign: cut ? stop(last).name : tr.trip.head,
+    status: tr.cancelled || lt.cancelled ? "cancelled" : tr.terminatedAt ? "terminated" : "active",
     origin: { id: stop(0).id, name: stop(0).name },
-    destination: { id: stop(n - 1).id, name: stop(n - 1).name },
+    destination: { id: stop(last).id, name: stop(last).name },
+    plannedDestination: { id: stop(n - 1).id, name: stop(n - 1).name },
+    lastServedSequence: last,
+    disruptionId: lt.change?.by ?? null,
     calls: Array.from({ length: n }, (_, i) => ({
       stopId: stop(i).id,
       name: stop(i).name,
@@ -74,11 +84,12 @@ export function infoPayload(tr: Train, t: number) {
       lon: r6(stop(i).lon),
       plannedArr: i > 0 ? tr.trip.arr[i] : null,
       plannedDep: i < n - 1 ? tr.trip.dep[i] : null,
-      expectedArr: i > 0 && i > passed ? Math.round(expectedArrival(tr, i, t)) : null,
-      expectedDep: i < n - 1 && i >= passed && !(i === passed && tr.leg >= 0) ? Math.round(expectedDeparture(tr, i, t)) : null,
+      expectedArr: i > 0 && i > passed && i <= last ? Math.round(lt.arr[i]) : null,
+      expectedDep: i < last && i >= passed && !(i === passed && tr.leg >= 0) ? Math.round(lt.dep[i]) : null,
       actualArr: i > 0 ? num(tr.actArr[i]) : null,
       actualDep: i < n - 1 ? num(tr.actDep[i]) : null,
-      skipped: Boolean(tr.skipped[i]),
+      skipped: Boolean(tr.skipped[i]) || i > last,
+      cancelled: i > last,
     })),
     updatedAt: t,
   };
@@ -86,14 +97,15 @@ export function infoPayload(tr: Train, t: number) {
 
 function infoSignature(tr: Train, t: number) {
   const k = nextCall(tr);
-  return `${tr.cancelled}|${Math.round(delayOf(tr, t) / 30)}|${k}|${Array.from(tr.skipped).join("")}`;
+  const lt = liveTimes(tr.trip, t);
+  return `${tr.cancelled || lt.cancelled}|${Math.round(delayOf(tr, t) / 30)}|${k}|${Array.from(tr.skipped).join("")}|${lt.lastServed}|${Math.round((lt.dep[Math.min(k, lt.dep.length - 1)] ?? 0) / 60_000)}|${tr.terminatedAt ? 1 : 0}`;
 }
 
 /** Ground truth for a train a provoked disruption took over (never in the public payloads). */
 const truthTrain = (tr: Train) => ({ v: 1, trainId: tr.trip.trainId, mode: "simulated", state: tr.motion, causes: [...tr.causes], ts: Date.now() });
 
 export function disruptionPayload(d: Disruption) {
-  return {
+  const base = {
     v: 1,
     id: d.id,
     type: d.type,
@@ -111,8 +123,11 @@ export function disruptionPayload(d: Disruption) {
     geometry: d.geometry,
     affectedTrains: [...d.affected],
   };
+  return isScenario(d) ? { ...base, ...scenarioFields(d) } : base;
 }
-export const incidentPayload = (i: Incident) => ({ v: 1, ...i, status: "active" });
+/** The latest bulletin of every scenario disruption. */
+export const bulletins = () => [...disruptions.values()].filter(isScenario).map(latestBulletin).filter((b) => b !== null);
+export const incidentPayload = (i: Incident) => ({ v: 1, ...i, status: i.lifecycle === "ENDED" ? "ended" : "active" });
 
 /** Public events (observable facts) go to events/{kind}; what we provoked goes to truth/events. */
 export function event(kind: "disruption" | "incident" | "train" | "sync" | "system", data: Record<string, unknown>) {
@@ -128,6 +143,7 @@ export function controlState() {
   return {
     disruptions: [...disruptions.values()].map(disruptionPayload),
     incidents: [...incidents.values()].map(incidentPayload),
+    bulletins: bulletins(),
     simulated: [...trains.values()].filter((tr) => tr.mode === "sim").map((tr) => ({ trainId: tr.trip.trainId, causes: [...tr.causes] })),
   };
 }
@@ -218,6 +234,8 @@ export function publishTick(t: number, removed: Train[]) {
 }
 
 export function removeDisruption(id: string) {
+  const d = disruptions.get(id);
+  if (d && isScenario(d)) forget(id);
   disruptions.delete(id);
   disruptionSig.delete(id);
   clear(`truth/disruptions/${id}`);

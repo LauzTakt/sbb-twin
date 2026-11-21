@@ -4,10 +4,12 @@ import { InputError, TYPES, createDisruption, createIncident, disruptions, incid
 import { byTrainId, neighbours, obstacleAhead, servedStations, stationBoard, sync, trains } from "./engine.ts";
 import { searchStations, stationIndex } from "./timetable.ts";
 import { abroadGeoJson, networkGeoJson } from "./geometry.ts";
-import { controlState, disruptionPayload, event, incidentPayload, infoPayload, positionPayload, pushState, removeDisruption, statusPayload } from "./feed.ts";
+import { bulletins, controlState, disruptionPayload, event, incidentPayload, infoPayload, positionPayload, pushState, removeDisruption, statusPayload } from "./feed.ts";
+import { CAUSES, MEASURES } from "./catalogue.ts";
+import { acceptProposal, addMeasure, createScenario, forgetAll, isScenario, latestBulletin, resume, scenarioTick, setState, withdrawMeasure, type ScenarioInput } from "./scenario.ts";
+import { stops } from "./timetable.ts";
 import { clear, publish } from "./mqtt.ts";
 import { releaseAll, releaseTrain } from "./god.ts";
-import { settings } from "./engine.ts";
 import { alertsState } from "./alerts.ts";
 import { journeyGeometry, plan, sectionGeometry, situation, trainGeometry } from "./planner.ts";
 
@@ -43,13 +45,35 @@ function endDisruption(id: string) {
   if (!d.endedAt) d.endedAt = Date.now();
   return d;
 }
+const scenarioOf = (id: string) => {
+  const d = disruptions.get(id);
+  if (!d) return undefined;
+  if (!isScenario(d)) throw new InputError("This is a train-level disruption: only scenario disruptions take measures");
+  return d;
+};
+/** A train breakdown blocks its section: an interrupted disruption (train blocking the line) with a bulletin. */
+function breakdownSection(trainId: string) {
+  const tr = byTrainId.get(trainId);
+  if (!tr) return undefined;
+  const n = tr.trip.stops.length;
+  const i = tr.leg >= 0 ? tr.leg : Math.min(tr.call, n - 2);
+  if (i < 0) return undefined;
+  try {
+    return createScenario({ cause: "EG_014", scope: { kind: "section", from: stops[tr.trip.stops[i]].id, to: stops[tr.trip.stops[i + 1]].id }, effect: "interrupted", durationType: "UNKNOWN", linkedTrain: trainId });
+  } catch {
+    return undefined; // no section to close (e.g. a train abroad): the breakdown still stops the train
+  }
+}
 
 export function api() {
   const app = new Hono().basePath("/api");
   // every change reaches the control pages at once (the engine also checks every tick)
   app.use("*", async (c, next) => {
     await next();
-    if (c.req.method !== "GET") pushState();
+    if (c.req.method !== "GET") {
+      scenarioTick(Date.now(), true); // bulletins and the effective timetable follow at once
+      pushState();
+    }
   });
   app.onError((err, c) => {
     if (err instanceof InputError) return c.json({ error: err.message }, 422);
@@ -97,21 +121,72 @@ export function api() {
   });
 
 
-  // Provoke disruptions (ground truth: trains really change behaviour)
-  app.get("/disruption-types", (c) => c.json(TYPES));
+  // Scenario disruptions (a cause, an effect state, the control centre's measures) and train-level actions
+  app.get("/disruption-types", (c) => c.json(CAUSES.map((x) => ({ ...x, defaultMinutes: x.minutes }))));
+  app.get("/measure-types", (c) => c.json(MEASURES));
+  app.get("/train-actions", (c) => c.json(TYPES));
   app.get("/disruptions", (c) => c.json([...disruptions.values()].map(disruptionPayload)));
+  app.get("/disruptions/:id", (c) => {
+    const d = disruptions.get(c.req.param("id"));
+    return d ? c.json(disruptionPayload(d)) : c.json({ error: "Unknown disruption" }, 404);
+  });
   app.post("/disruptions", async (c) => {
     const b = await body(c);
+    if (b.cause !== undefined) {
+      const d = createScenario(b as ScenarioInput);
+      publish(`truth/disruptions/${d.id}`, disruptionPayload(d), { retain: true, qos: 1 });
+      event("disruption", { type: "disruption.started", id: d.id, label: d.label, where: d.where });
+      return c.json({ disruption: disruptionPayload(d), bulletin: latestBulletin(d), proposal: d.scenario.proposal }, 201);
+    }
     const d = createDisruption(b as Parameters<typeof createDisruption>[0], trainLookup);
     publish(`truth/disruptions/${d.id}`, disruptionPayload(d), { retain: true, qos: 1 });
     event("disruption", { type: "disruption.started", id: d.id, label: d.label, where: d.where });
+    const linked = d.effect === "train_breakdown" && d.scope.kind === "train" ? breakdownSection(d.scope.trainId) : undefined;
     const incident = b.mark
       ? markIncident({ title: `${d.label}: ${d.where}`, description: String(b.note ?? ""), severity: severityFor[d.effect], type: d.type, reasonCode: d.reasonCode, scope: d.scope, where: d.where, disruptionId: d.id })
       : undefined;
-    return c.json({ disruption: disruptionPayload(d), incident: incident ? incidentPayload(incident) : null }, 201);
+    return c.json({ disruption: disruptionPayload(d), incident: incident ? incidentPayload(incident) : null, linked: linked ? disruptionPayload(linked) : null, bulletin: linked ? latestBulletin(linked) : null }, 201);
   });
-  app.post("/disruptions/:id/end", (c) => {
-    const d = endDisruption(c.req.param("id"));
+  const answer = (d: Parameters<typeof disruptionPayload>[0] & { scenario?: unknown }) => ({ disruption: disruptionPayload(d), bulletin: isScenario(d) ? latestBulletin(d) : null });
+  app.post("/disruptions/:id/measures", async (c) => {
+    const d = scenarioOf(c.req.param("id"));
+    if (!d) return c.json({ error: "Unknown disruption" }, 404);
+    const b = await body(c);
+    const list = Array.isArray(b.measures) ? (b.measures as Record<string, unknown>[]) : [b];
+    const added = list.map((m) => addMeasure(d, m));
+    event("disruption", { type: "disruption.measure", id: d.id, measures: added.map((m) => m.type) });
+    return c.json({ ...answer(d), added }, 201);
+  });
+  app.post("/disruptions/:id/measures/:mid/withdraw", async (c) => {
+    const d = scenarioOf(c.req.param("id"));
+    if (!d) return c.json({ error: "Unknown disruption" }, 404);
+    const b = await body(c);
+    withdrawMeasure(d, c.req.param("mid"), b.at);
+    return c.json(answer(d));
+  });
+  app.post("/disruptions/:id/proposal/accept", (c) => {
+    const d = scenarioOf(c.req.param("id"));
+    if (!d) return c.json({ error: "Unknown disruption" }, 404);
+    const added = acceptProposal(d);
+    return c.json({ ...answer(d), added }, 201);
+  });
+  app.post("/disruptions/:id/state", async (c) => {
+    const d = scenarioOf(c.req.param("id"));
+    if (!d) return c.json({ error: "Unknown disruption" }, 404);
+    const b = await body(c);
+    setState(d, b.effect, b.at);
+    event("disruption", { type: "disruption.state", id: d.id, effect: b.effect });
+    return c.json(answer(d));
+  });
+  app.post("/disruptions/:id/end", async (c) => {
+    const id = c.req.param("id");
+    const s = disruptions.get(id);
+    if (s && isScenario(s)) {
+      const b = await body(c);
+      if (!s.endedAt) resume(s, b.at);
+      return c.json(answer(s));
+    }
+    const d = endDisruption(id);
     return d ? c.json(disruptionPayload(d)) : c.json({ error: "Unknown disruption" }, 404);
   });
   app.delete("/disruptions/:id", (c) => {
@@ -119,6 +194,12 @@ export function api() {
     if (!d) return c.json({ error: "Unknown disruption" }, 404);
     removeDisruption(d.id);
     return c.json({ removed: d.id });
+  });
+  app.get("/bulletins", (c) => c.json(bulletins()));
+  app.get("/bulletins/:id", (c) => {
+    const d = disruptions.get(c.req.param("id"));
+    if (!d || !isScenario(d)) return c.json({ error: "Unknown disruption" }, 404);
+    return c.json({ latest: latestBulletin(d), versions: d.scenario.bulletins });
   });
 
   // Mark / unmark incidents (public flags)
@@ -180,6 +261,7 @@ export function api() {
       clear(`incidents/${i.id}`);
       removed++;
     }
+    forgetAll(); // replacement buses and every timetable change
     const synced = sync();
     event("sync", { type: "reset", removed, trainIds: synced });
     return c.json({ removed, synced: synced.length });

@@ -81,6 +81,17 @@ export function pathBetween(a: Stop, b: Stop): Path {
   return path;
 }
 
+const roads = new Map<string, Path>();
+/** A road vehicle's way between two stops (replacement buses): straight, on no rail track. */
+export function roadPath(a: Stop, b: Stop): Path {
+  const key = `${a.id}>${b.id}`;
+  let p = roads.get(key);
+  if (!p) roads.set(key, (p = build([a.lon, a.lat, b.lon, b.lat], [0], false)));
+  return p;
+}
+/** How a vehicle of this category gets from one stop to the next: buses (EV) by road, everything else on the rails. */
+export const travelPath = (cat: string, a: Stop, b: Stop) => (cat === "EV" ? roadPath(a, b) : pathBetween(a, b));
+
 /** Position, bearing and track segment at a distance along a path. */
 export function pointAt(path: Path, s: number) {
   const { coords, cum } = path;

@@ -6,7 +6,7 @@ import { createHash } from "node:crypto";
 import { dayTrips, liveTimes, servedStations, stationBoard, byTrainId } from "./engine.ts";
 import { searchStations, stationIndex, stops, type Trip } from "./timetable.ts";
 import { disruptions, incidents, type Incident } from "./disruptions.ts";
-import { edgesGeometry, pathBetween, sectionEdges } from "./geometry.ts";
+import { edgesGeometry, sectionEdges, travelPath } from "./geometry.ts";
 import { alertsState } from "./alerts.ts";
 
 const TRANSFER_MS = 4 * 60_000;
@@ -88,11 +88,12 @@ function connections(t: number, after: number) {
     const lt = liveTimes(trip, t);
     if (lt.cancelled) return;
     lives[ti] = lt;
-    for (let i = lt.from; i < n - 1; i++) {
+    const road = trip.cat === "EV"; // replacement buses: rail closures do not stop them
+    for (let i = lt.from; i < lt.lastServed; i++) {
       const dep = lt.dep[i];
       const arr = lt.arr[i + 1];
       if (dep > until) break;
-      if (blocked(trip.stops[i], trip.stops[i + 1], dep)) break; // it cannot get through: nothing further on this trip
+      if (!road && blocked(trip.stops[i], trip.stops[i + 1], dep)) break; // it cannot get through: nothing further on this trip
       if (dep < after) continue;
       conns.push({ trip: ti, i, dep, arr, from: trip.stops[i], to: trip.stops[i + 1] });
     }
@@ -149,7 +150,7 @@ function toJourney(trips: Trip[], lives: (Live | undefined)[], parts: { trip: nu
     const trip = trips[ti];
     const lt = lives[ti]!;
     const delaySec = Math.round((lt.arr[j] - trip.arr[j]) / 1000);
-    const held = lt.train && lt.train.mode === "sim" && lt.train.speed < 0.5 && lt.train.leg >= 0;
+    const held = lt.train && ((lt.train.mode === "sim" && lt.train.speed < 0.5 && lt.train.leg >= 0) || lt.train.motion === "held");
     const ids = new Set<string>();
     for (let k = i; k <= j; k++) ids.add(stops[trip.stops[k]].id);
     return {
@@ -169,6 +170,7 @@ function toJourney(trips: Trip[], lives: (Live | undefined)[], parts: { trip: nu
   const last = legs[legs.length - 1];
   const warnings: string[] = [];
   for (const l of legs) {
+    if (l.category === "EV") warnings.push(`Replacement bus (EV) from ${l.from.name} to ${l.to.name}`);
     if (l.status === "held") warnings.push(`${l.line} to ${l.headsign} is stopped at the moment`);
     else if (l.status === "late") warnings.push(`${l.line} to ${l.headsign} is about ${Math.round(l.delaySec / 60)} min late`);
     for (const inc of l.incidents) if (!warnings.includes(inc.title)) warnings.push(inc.title);
@@ -224,7 +226,7 @@ export function plan(fromQ: string, toQ: string, after = Date.now(), limit = 4) 
 export function tripGeometry(trip: Trip, i: number, j: number) {
   const coords: number[][] = [];
   for (let k = i; k < j; k++) {
-    const p = pathBetween(stops[trip.stops[k]], stops[trip.stops[k + 1]]);
+    const p = travelPath(trip.cat, stops[trip.stops[k]], stops[trip.stops[k + 1]]);
     const n = p.coords.length / 2;
     for (let v = 0; v < n; v++) if (v % 4 === 0 || v === n - 1) coords.push([r5(p.coords[2 * v]), r5(p.coords[2 * v + 1])]);
   }
@@ -258,7 +260,16 @@ export function sectionGeometry(fromQ: string, toQ: string) {
 /** What a passenger at a station, on a train, or going from A to B should know right now. */
 export function situation(q: { station?: string; trainId?: string; from?: string; to?: string }) {
   const t = Date.now();
-  const brief = (i: Incident) => ({ id: i.id, title: i.title, where: i.where, severity: i.severity, source: i.source ?? "staff", since: i.createdAt, trainIds: i.trainIds ?? [] });
+  const brief = (i: Incident) => ({
+    id: i.id,
+    title: i.title,
+    where: i.where,
+    severity: i.severity,
+    source: i.source ?? "staff",
+    since: i.createdAt,
+    trainIds: i.trainIds ?? [],
+    ...(i.source === "control" ? { description: i.description, lines: i.lines, until: i.until, durationType: i.durationType, lifecycle: i.lifecycle, bulletinVersion: i.bulletinVersion, messages: i.messages, replacementBus: i.replacementBus } : {}),
+  });
   const atStation = (k: number) => {
     const id = stops[k].id;
     const board = stationBoard(k, t, 90, 12);

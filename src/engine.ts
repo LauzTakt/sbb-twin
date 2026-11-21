@@ -7,9 +7,9 @@ import { gunzipSync } from "node:zlib";
 import { join } from "node:path";
 import { config } from "./config.ts";
 import { loadDay, stops, type Trip } from "./timetable.ts";
-import { edgeId, edgeSpans, edgeTracks, metres, pathBetween, pointAt, type Path } from "./geometry.ts";
+import { edgeId, edgeSpans, edgeTracks, metres, pointAt, travelPath, type Path } from "./geometry.ts";
 import { live, type TripLive } from "./realtime.ts";
-import { addSystemDisruption, disruptions, type Disruption } from "./disruptions.ts";
+import { addSystemDisruption, disruptions, tripChanges, type Disruption } from "./disruptions.ts";
 import { addDays, zurich } from "./time.ts";
 
 export type Motion = "running" | "dwelling" | "held" | "stopped" | "cancelled";
@@ -45,6 +45,7 @@ export type Train = {
   continuity: number; // +1 on every discontinuous jump (sync, large prediction change): do not interpolate across it
   pendingRecover?: boolean; // its disruptions ended: accelerate back to the timetable pace, then rejoin reality
   recovering?: boolean; // back on the real timeline, catching up its lag (warp) without jumps
+  terminatedAt?: number; // reached the last call it serves (a short turn): leaves service shortly after
 };
 
 const BRAKE = 0.7; // m/s², service braking
@@ -121,7 +122,7 @@ function timeline(trip: Trip, rt?: TripLive) {
   return { eArr, eDep, skipped };
 }
 
-const legPath = (trip: Trip, i: number) => pathBetween(stops[trip.stops[i]], stops[trip.stops[i + 1]]);
+const legPath = (trip: Trip, i: number) => travelPath(trip.cat, stops[trip.stops[i]], stops[trip.stops[i + 1]]);
 const legT = (tr: Train, i: number) => (tr.eArr[i + 1] - tr.eDep[i]) / 1000;
 
 /** Where a train is when it is at time tau of its reference timeline. */
@@ -205,8 +206,10 @@ function legLimits(tr: Train, leg: number, path: Path, sCur: number, vCur: numbe
   const out: Limits = { limit: Infinity, caps: [], causes: [], brake: false, brakeRate: BRAKE };
   const spans = edgeSpans(path);
   const id = tr.trip.trainId;
+  const road = tr.trip.cat === "EV";
   for (const d of disruptions.values()) {
     if (d.endedAt) continue;
+    if (road && (d.effect === "section_closure" || d.effect === "speed_restriction" || d.effect === "signal_failure")) continue; // buses: not on the rails
     if (d.effect === "section_closure") {
       const hit = spans.find((sp) => sp.to > sCur && d.edges.has(Math.abs(sp.ref)));
       if (!hit) continue;
@@ -336,6 +339,7 @@ function stationRules(tr: Train, i: number, t: number) {
       skip = true;
       d.affected.add(id);
     } else if (d.effect === "section_closure") {
+      if (tr.trip.cat === "EV") continue;
       if (edgeSpans(legPath(tr.trip, i)).some((sp) => d.edges.has(Math.abs(sp.ref)))) holding.push(d.id);
     } else if ((d.effect === "train_breakdown" || (d.effect === "obstacle" && d.params.collidedAt)) && d.scope.kind === "train") {
       if (d.scope.trainId === id) holding.push(d.id);
@@ -359,16 +363,69 @@ function stationRules(tr: Train, i: number, t: number) {
 // ---------------------------------------------------------------- the world
 export const trains = new Map<string, Train>(); // by trip key
 export const byTrainId = new Map<string, Train>();
+let baseTrips: Trip[] = [];
 let trips: Trip[] = [];
+const extraTrips = new Map<string, Trip[]>(); // owner (disruption id) -> trips it added (replacement buses)
 let loadedDate = "";
+const rebuildTrips = () => (trips = extraTrips.size ? [...baseTrips, ...[...extraTrips.values()].flat()] : baseTrips);
+/** Trips added to today's effective timetable by an owner (a disruption's replacement buses); replaces its earlier set.
+ *  Vehicles already running keep going. */
+export function setExtraTrips(owner: string, list: Trip[]) {
+  if (list.length) extraTrips.set(owner, list);
+  else extraTrips.delete(owner);
+  rebuildTrips();
+}
+/** Remove an owner's added trips (all owners without one) and take their vehicles out of service at once. */
+export function removeExtraTrips(owner?: string) {
+  for (const [o, list] of [...extraTrips]) {
+    if (owner && o !== owner) continue;
+    for (const trip of list) {
+      const tr = trains.get(trip.key);
+      if (tr) {
+        trains.delete(trip.key);
+        byTrainId.delete(trip.trainId);
+      }
+      finished.delete(trip.key);
+    }
+    extraTrips.delete(o);
+  }
+  rebuildTrips();
+}
 const finished = new Set<string>();
 const meta: Record<string, [string, string, string]> = {};
 export const tripMeta = (tripId: string) => meta[tripId];
 /** Today's timetable (every trip of the loaded service day). */
 export const dayTrips = () => trips;
-/** A trip's expected times now: an active train's own timeline (held or slowed trains move later), else the
- *  timetable with the live predictions. `from` is the first stop where a passenger can still board it. */
+/** A trip in the effective timetable now: its expected times (an active train's own timeline, held or slowed trains
+ *  move later, else the timetable with the live predictions), forecast past a hold until the section reopens, and the
+ *  last call it serves (a short turn cancels the calls after it). `from` is the first stop where a passenger can still
+ *  board it. */
 export function liveTimes(trip: Trip, t: number) {
+  const base = baseTimes(trip, t);
+  const n = trip.stops.length;
+  const change = tripChanges.get(trip.key);
+  let lastServed = n - 1;
+  let cancelled = base.cancelled;
+  if (change) {
+    if (change.cut !== undefined && change.cut >= base.from) {
+      lastServed = change.cut;
+      if (change.cut === 0) cancelled = true;
+    }
+    const k = change.holdAt;
+    if (k !== undefined && change.holdUntil !== undefined && k >= base.from) {
+      const delta = change.holdUntil - base.dep[k];
+      if (delta > 0) {
+        base.dep[k] += delta;
+        for (let i = k + 1; i < n; i++) {
+          base.arr[i] += delta;
+          base.dep[i] += delta;
+        }
+      }
+    }
+  }
+  return { ...base, cancelled, lastServed, change };
+}
+function baseTimes(trip: Trip, t: number) {
   const tr = trains.get(trip.key);
   if (tr) {
     const n = trip.stops.length;
@@ -388,7 +445,8 @@ export function liveTimes(trip: Trip, t: number) {
 export async function loadTimetable(t = Date.now()) {
   const today = zurich(t).date;
   if (today === loadedDate) return false;
-  trips = await loadDay(today);
+  baseTrips = await loadDay(today);
+  rebuildTrips();
   loadedDate = today;
   adjacency = undefined;
   const m = join(config.dataDir, "trips-meta.json.gz");
@@ -396,9 +454,11 @@ export async function loadTimetable(t = Date.now()) {
   return true;
 }
 export const timetableDate = () => loadedDate;
-/** Next departures from a station in the twin: live times for trains in service, predictions for the rest. */
+/** Next departures from a station in the effective timetable: live times for trains in service, predictions for the
+ *  rest, held trains at their forecast departure, short-turned trains with their new destination, cancelled departures
+ *  shown as cancelled, replacement buses included. */
 export function stationBoard(station: number, t: number, minutes = 60, limit = 12) {
-  const rows: { trainId: string | null; line: string; category: string; headsign: string; planned: number; expected: number; delayMin: number; cancelled: boolean }[] = [];
+  const rows: { trainId: string | null; line: string; category: string; headsign: string; planned: number; expected: number; delayMin: number; cancelled: boolean; plannedHeadsign?: string; disruptionId?: string }[] = [];
   for (const trip of trips) {
     const n = trip.stops.length;
     for (let i = 0; i < n - 1; i++) {
@@ -407,18 +467,24 @@ export function stationBoard(station: number, t: number, minutes = 60, limit = 1
       if (planned < t - 15 * 60_000 || planned > t + minutes * 60_000) continue;
       const tr = trains.get(trip.key);
       if (tr && (tr.leg >= i || (tr.leg < 0 && tr.call > i))) continue; // already left
-      let expected = planned;
-      let cancelled = false;
-      if (tr) {
-        expected = expectedDeparture(tr, i, t);
-        cancelled = tr.cancelled;
-      } else {
-        const rt = live.trips.get(trip.key);
-        cancelled = Boolean(rt?.cancelled);
-        expected = timeline(trip, rt).eDep[i];
-      }
+      const lt = liveTimes(trip, t);
+      if (lt.skipped[i]) continue; // passes without stopping
+      const expected = lt.dep[i];
+      const cancelled = lt.cancelled || i >= lt.lastServed;
       if (expected < t - 60_000 && !cancelled) continue;
-      rows.push({ trainId: tr?.trip.trainId ?? null, line: trip.line, category: trip.cat, headsign: trip.head, planned, expected, delayMin: Math.max(0, Math.round((expected - planned) / 60_000)), cancelled });
+      const cut = lt.lastServed < n - 1 && i < lt.lastServed;
+      rows.push({
+        trainId: trip.trainId,
+        line: trip.line,
+        category: trip.cat,
+        headsign: cut ? stops[trip.stops[lt.lastServed]].name : trip.head,
+        planned,
+        expected,
+        delayMin: Math.max(0, Math.round((expected - planned) / 60_000)),
+        cancelled,
+        ...(cut ? { plannedHeadsign: trip.head } : {}),
+        ...(lt.change ? { disruptionId: lt.change.by } : {}),
+      });
     }
   }
   return rows.sort((a, b) => a.expected - b.expected).slice(0, limit);
@@ -556,6 +622,16 @@ function cancel(tr: Train, reason: Train["cancelReason"], t: number) {
 function step(tr: Train, t: number, dt: number) {
   if (tr.cancelled) return;
   const n = tr.eArr.length;
+  // a short turn: the run ends at its last served call (cut 0 at the origin: the whole trip is cancelled)
+  const change = tripChanges.get(tr.trip.key);
+  const pos = tr.leg >= 0 ? tr.leg + 1 : tr.call;
+  const cut = change?.cut !== undefined && change.cut >= pos && change.cut < n - 1 ? change.cut : undefined;
+  if (cut !== undefined && cut === 0 && tr.leg < 0) {
+    change!.committed = true;
+    disruptions.get(change!.by)?.affected.add(tr.trip.trainId);
+    cancel(tr, "provoked", t);
+    return;
+  }
   let target: number;
   if (tr.mode === "real") {
     if (tr.warp) {
@@ -568,8 +644,16 @@ function step(tr: Train, t: number, dt: number) {
   target = Math.max(target, tr.tau);
   const causes: string[] = [];
   let held = false;
+  if (cut !== undefined) target = Math.max(tr.tau, Math.min(target, Math.max(tr.eArr[cut], tr.eDep[cut] - 1)));
 
-  if (tr.leg < 0) {
+  if (tr.leg < 0 && cut !== undefined && tr.call === cut) {
+    // arrived where its run now ends: passengers alight, then it leaves service
+    if (!tr.terminatedAt) {
+      tr.terminatedAt = t;
+      change!.committed = true;
+      disruptions.get(change!.by)?.affected.add(tr.trip.trainId);
+    }
+  } else if (tr.leg < 0) {
     // at a station: may be held, skip it, or end the run here
     const i = tr.call;
     const rules = stationRules(tr, i, t);
@@ -783,14 +867,14 @@ export function tick(t: number): TickResult {
   for (const tr of trains.values()) {
     step(tr, t, dt);
     // A cancelled train stays visible as "cancelled" for a minute, then leaves service.
-    const done = tr.cancelled ? t - (tr.cancelledAt ?? t) > 60_000 : tr.tau >= tr.eArr[tr.eArr.length - 1] + 60_000;
+    const done = tr.cancelled ? t - (tr.cancelledAt ?? t) > 60_000 : tr.terminatedAt ? t - tr.terminatedAt > 90_000 : tr.tau >= tr.eArr[tr.eArr.length - 1] + 60_000;
     if (done) removed.push(tr);
   }
   for (const tr of removed) {
     trains.delete(tr.trip.key);
     byTrainId.delete(tr.trip.trainId);
     finished.add(tr.trip.key);
-    if (tr.cancelReason === "provoked") provokedGone.set(tr.trip.trainId, tr.trip.key);
+    if (tr.cancelReason === "provoked" || tr.terminatedAt) provokedGone.set(tr.trip.trainId, tr.trip.key);
   }
   for (const d of disruptions.values()) if (!d.endedAt && d.endsAt && t >= d.endsAt) d.endedAt = t;
   return { t, removed };
@@ -806,7 +890,7 @@ export function sync(trainIds?: string[]) {
   const out: string[] = [];
   for (const tr of trains.values()) {
     if (trainIds && !trainIds.includes(tr.trip.trainId)) continue;
-    if (tr.mode === "real" && !(tr.cancelled && tr.cancelReason === "provoked")) continue;
+    if (tr.mode === "real" && !(tr.cancelled && tr.cancelReason === "provoked") && !tr.terminatedAt) continue;
     const rt = live.trips.get(tr.trip.key);
     Object.assign(tr, timeline(tr.trip, rt));
     tr.mode = "real";
@@ -814,6 +898,7 @@ export function sync(trainIds?: string[]) {
     tr.warp = 0;
     tr.pendingRecover = false;
     tr.recovering = false;
+    tr.terminatedAt = undefined;
     tr.causes.clear();
     tr.holds.clear();
     tr.cancelled = Boolean(rt?.cancelled);

@@ -5,7 +5,7 @@ import { disruptions } from "./disruptions.ts";
 export function releaseTrain(trainId: string) {
   const ended: string[] = [];
   for (const d of disruptions.values())
-    if (!d.endedAt && d.scope.kind === "train" && d.scope.trainId === trainId) {
+    if (!d.endedAt && ((d.scope.kind === "train" && d.scope.trainId === trainId) || d.scenario?.linkedTrain === trainId)) {
       d.endedAt = Date.now();
       ended.push(d.id);
     }
