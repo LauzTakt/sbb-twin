@@ -72,7 +72,8 @@ export type Incident = {
   where: string;
   geometry: GeoJsonGeometry | null;
   disruptionId?: string;
-  source?: "staff" | "auto"; // "auto": opened and closed by the twin itself (collision, stopped train, delay, cancellation)
+  source?: "staff" | "auto"; // "auto": opened and closed by the twin's own detection (src/auto.ts)
+  trainIds?: string[]; // automatic incidents: the trains concerned
   createdAt: number;
   updatedAt: number;
 };
