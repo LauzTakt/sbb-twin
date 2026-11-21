@@ -11,8 +11,13 @@ import { loadGeometry } from "./geometry.ts";
 import { applyRealtime, loadTimetable, tick, trains } from "./engine.ts";
 import { live, pollRealtime } from "./realtime.ts";
 import { event, publishTick } from "./feed.ts";
-import { pollWeather, publishWeather, weather } from "./weather.ts";
+import { overridePayload, pollWeather, publishWeather, weather } from "./weather.ts";
 import { expireWeather } from "./god.ts";
+import { loadState, saveState } from "./persist.ts";
+import { incidents } from "./disruptions.ts";
+import { settings } from "./engine.ts";
+import { incidentPayload } from "./feed.ts";
+import { publish } from "./mqtt.ts";
 
 process.on("unhandledRejection", (e) => console.error("[sbb-twin] unhandled:", (e as Error)?.message ?? e));
 
@@ -46,6 +51,12 @@ if (!config.production) {
   vite = await createVite({ configFile: join(config.viewerDir, "vite.config.ts"), server: { middlewareMode: true, hmr: { server }, allowedHosts: true }, appType: "spa" });
 }
 await startBroker(server);
+// god-mode state from before a restart: disruptions republish on the first tick, the rest here
+const restored = loadState();
+if (restored.disruptions + restored.overrides + restored.incidents) console.log(`[sbb-twin] restored ${restored.disruptions} disruptions, ${restored.overrides} weather changes, ${restored.incidents} incidents`);
+for (const i of incidents.values()) publish(`incidents/${i.id}`, incidentPayload(i), { retain: true, qos: 1 });
+publish("truth/settings", { v: 1, ...settings, ts: Date.now() }, { retain: true, qos: 1 });
+setInterval(saveState, 2000).unref();
 server.listen(config.port, config.host, () =>
   console.log(`[sbb-twin] viewer + API http://${config.host}:${config.port}/ · MQTT tcp://${config.host}:${config.mqttPort} · MQTT/WebSocket ws://${config.host}:${config.port}/mqtt`),
 );
@@ -73,7 +84,10 @@ const refreshWeather = async () => {
   if (await pollWeather()) publishWeather();
   else console.warn("[sbb-twin] weather:", weather.error);
 };
-void refreshWeather().then(() => console.log(`[sbb-twin] weather: ${weather.stations.size} MeteoSwiss stations`));
+void refreshWeather().then(() => {
+  console.log(`[sbb-twin] weather: ${weather.stations.size} MeteoSwiss stations`);
+  for (const o of weather.overrides.values()) publish(`truth/weather/${o.id}`, overridePayload(o), { retain: true, qos: 1 });
+});
 setInterval(refreshWeather, 5 * 60_000).unref();
 setInterval(expireWeather, 10_000).unref();
 setInterval(async () => {

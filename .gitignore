@@ -3,3 +3,5 @@ viewer/dist
 *.log
 .rail-data
 .env
+data/state.json
+data/state.json.tmp
