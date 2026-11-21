@@ -43,6 +43,8 @@ export type Train = {
   infoSig: string;
   infoAt: number;
   continuity: number; // +1 on every discontinuous jump (sync, large prediction change): do not interpolate across it
+  pendingRecover?: boolean; // its disruptions ended: accelerate back to the timetable pace, then rejoin reality
+  recovering?: boolean; // back on the real timeline, catching up its lag (warp) without jumps
 };
 
 const BRAKE = 0.7; // m/s², service braking
@@ -164,7 +166,39 @@ export const collisions: { trainId: string; disruptionId: string; impactKmh: num
 /** God-mode switches. protection = train protection/signalling: with it, a train never runs into one stopped ahead. */
 export const settings = { protection: true };
 const SIGHT_M = 500; // without protection, a driver sees a stopped train this far ahead
+const AUTHORITY_MARGIN_M = 350; // with protection: end of movement authority = rear of the train ahead minus this
 let stoppedOnLine: Train[] = [];
+// Trains by track segment and direction (signed edge ref), with how far along that segment they are.
+let onEdge = new Map<number, { tr: Train; d: number }[]>();
+function indexEdges() {
+  onEdge = new Map();
+  for (const tr of trains.values()) {
+    if (tr.leg < 0 || tr.cancelled) continue;
+    const span = edgeSpans(legPath(tr.trip, tr.leg)).find((sp) => tr.s >= sp.from && tr.s <= sp.to);
+    if (!span?.ref) continue;
+    if (!onEdge.has(span.ref)) onEdge.set(span.ref, []);
+    onEdge.get(span.ref)!.push({ tr, d: tr.s - span.from });
+  }
+}
+/** The nearest train ahead on the same track and direction within the next two segments: distance to it. */
+function trainAhead(tr: Train, path: Path, sCur: number) {
+  const spans = edgeSpans(path);
+  const k = spans.findIndex((sp) => sCur >= sp.from && sCur <= sp.to);
+  if (k < 0) return undefined;
+  let best: { other: Train; gap: number } | undefined;
+  for (let j = k; j < Math.min(spans.length, k + 3); j++) {
+    const sp = spans[j];
+    if (!sp.ref) continue;
+    const here = j === k ? sCur - sp.from : -Infinity;
+    for (const { tr: other, d } of onEdge.get(sp.ref) ?? []) {
+      if (other === tr || d <= here) continue;
+      const gap = sp.from + d - sCur;
+      if (!best || gap < best.gap) best = { other, gap };
+    }
+    if (best) break;
+  }
+  return best;
+}
 const sameDir = (a: number, b: number) => Math.sign(a) === Math.sign(b);
 
 function legLimits(tr: Train, leg: number, path: Path, sCur: number, vCur: number): Limits {
@@ -237,7 +271,26 @@ function legLimits(tr: Train, leg: number, path: Path, sCur: number, vCur: numbe
     }
   }
   if (!settings.protection) sightLimits(tr, leg, path, sCur, out);
+  else protectionLimits(tr, path, sCur, vCur, out);
   return out;
+}
+
+/** Train protection (like ETCS): the movement authority ends behind the train ahead on the same track; the train
+ * brakes on its service curve so it never passes that point. It only matters when the train ahead is slower than
+ * us or stopped: real trains already keep their distances, so this is how disruptions spread to the trains behind. */
+function protectionLimits(tr: Train, path: Path, sCur: number, vCur: number, out: Limits) {
+  const ahead = trainAhead(tr, path, sCur);
+  if (!ahead) return;
+  const { other, gap } = ahead;
+  // two trains on real data already keep their real distances (and coupled trains share one position)
+  if (tr.mode === "real" && other.mode === "real" && !other.cancelled) return;
+  const closing = vCur - other.speed;
+  const authority = gap - AUTHORITY_MARGIN_M;
+  // only when it constrains us: inside our braking distance plus a margin, and we are faster than the train ahead
+  if (closing <= 0.3 && authority > 200) return;
+  if (authority > (vCur * vCur) / (2 * BRAKE) + 300) return;
+  out.limit = Math.min(out.limit, sCur + Math.max(0, authority));
+  out.causes.push("protection");
 }
 
 /** Without train protection a driver only reacts to a train stopped ahead once it is in sight: emergency braking,
@@ -317,11 +370,48 @@ export async function loadTimetable(t = Date.now()) {
   if (today === loadedDate) return false;
   trips = await loadDay(today);
   loadedDate = today;
+  adjacency = undefined;
   const m = join(config.dataDir, "trips-meta.json.gz");
   if (existsSync(m) && !Object.keys(meta).length) Object.assign(meta, JSON.parse(gunzipSync(readFileSync(m)).toString()));
   return true;
 }
 export const timetableDate = () => loadedDate;
+let adjacency: Map<number, Set<number>> | undefined;
+/** Stations a train reaches from this one (along consecutive stops), nearest first by distance, up to `maxKm`. */
+export function neighbours(station: number, maxKm = 40) {
+  if (!adjacency) {
+    adjacency = new Map();
+    for (const trip of trips)
+      for (let i = 1; i < trip.stops.length; i++) {
+        const a = trip.stops[i - 1];
+        const b = trip.stops[i];
+        if (a === b) continue;
+        if (!adjacency.has(a)) adjacency.set(a, new Set());
+        if (!adjacency.has(b)) adjacency.set(b, new Set());
+        adjacency.get(a)!.add(b);
+        adjacency.get(b)!.add(a);
+      }
+  }
+  const dist = new Map([[station, 0]]);
+  const queue: [number, number][] = [[0, station]];
+  while (queue.length) {
+    let best = 0;
+    for (let k = 1; k < queue.length; k++) if (queue[k][0] < queue[best][0]) best = k;
+    const [d, u] = queue[best];
+    queue[best] = queue[queue.length - 1];
+    queue.pop();
+    if (d > (dist.get(u) ?? Infinity)) continue;
+    for (const n of adjacency.get(u) ?? []) {
+      const nd = d + metres(stops[u].lon, stops[u].lat, stops[n].lon, stops[n].lat) / 1000;
+      if (nd <= maxKm && nd < (dist.get(n) ?? Infinity)) {
+        dist.set(n, nd);
+        queue.push([nd, n]);
+      }
+    }
+  }
+  dist.delete(station);
+  return [...dist].sort((a, b) => a[1] - b[1]).map(([i, km]) => ({ ...stops[i], km: Math.round(km * 10) / 10 }));
+}
 export const nextDate = () => addDays(loadedDate, 1);
 
 function makeTrain(trip: Trip, t: number, rt?: TripLive): Train {
@@ -395,8 +485,9 @@ function refresh(tr: Train) {
   }
   const now = tr.tau + tr.warp;
   const w = now - tauNew;
-  tr.warp = Math.abs(w) > 300_000 ? 0 : w;
-  if (Math.abs(w) > 300_000) tr.continuity++;
+  const snap = Math.abs(w) > 300_000 && !tr.recovering;
+  tr.warp = snap ? 0 : w;
+  if (snap) tr.continuity++;
   tr.tau = now - tr.warp;
 }
 
@@ -417,6 +508,7 @@ function step(tr: Train, t: number, dt: number) {
       const k = 0.25 * dt * 1000;
       tr.warp = Math.abs(tr.warp) <= k ? 0 : tr.warp - Math.sign(tr.warp) * k;
     }
+    if (!tr.warp) tr.recovering = false;
     target = t - tr.warp;
   } else target = tr.tau + dt * 1000;
   target = Math.max(target, tr.tau);
@@ -515,6 +607,8 @@ function step(tr: Train, t: number, dt: number) {
     // crossed a station within one tick (short stop): fine, physics resumes next tick
   }
   if (causes.length) {
+    tr.pendingRecover = false;
+    tr.recovering = false;
     if (tr.mode === "real") {
       tr.mode = "sim";
       tr.warp = 0;
@@ -537,6 +631,45 @@ function step(tr: Train, t: number, dt: number) {
   }
   settle(tr, p, speed);
   tr.motion = held ? "held" : p.leg < 0 ? "dwelling" : speed < 0.3 && causes.length ? "stopped" : "running";
+  if (tr.mode === "sim" && tr.pendingRecover && !causes.length && (p.leg < 0 || Math.abs(speed - p.v) < 1)) rejoin(tr, t);
+}
+
+/** Back onto the real timeline from where the train is, keeping its lag as a warp it catches up (no jump). */
+function rejoin(tr: Train, t: number) {
+  const rt = live.trips.get(tr.trip.key);
+  const oldArr = tr.eArr;
+  const next = timeline(tr.trip, rt);
+  tr.eArr = next.eArr;
+  tr.eDep = next.eDep;
+  tr.skipped = next.skipped;
+  let tauNew: number;
+  if (tr.leg >= 0) tauNew = tr.eDep[tr.leg] + invert(legPath(tr.trip, tr.leg).len, legT(tr, tr.leg), tr.accel, tr.s) * 1000;
+  else tauNew = Math.min(Math.max(tr.eArr[tr.call] + (tr.tau - oldArr[tr.call]), tr.eArr[tr.call]), tr.eDep[tr.call]);
+  tr.mode = "real";
+  tr.pendingRecover = false;
+  tr.recovering = true;
+  tr.warp = t - tauNew;
+  tr.tau = tauNew;
+  tr.causes.clear();
+  tr.holds.clear();
+}
+
+/** When disruptions end, the trains they held go back to normal on their own (unless another one still holds them). */
+const settled = new Set<string>();
+function applyEnds() {
+  const stillActive = (id: string) => {
+    const d = disruptions.get(id);
+    return d ? !d.endedAt : id === "protection-off" && !settings.protection;
+  };
+  for (const d of disruptions.values()) {
+    if (!d.endedAt || settled.has(d.id)) continue;
+    settled.add(d.id);
+    if (d.effect === "cancellation" && d.scope.kind === "train") sync([d.scope.trainId]);
+  }
+  for (const tr of trains.values()) {
+    if (tr.mode !== "sim" || tr.pendingRecover || !tr.causes.size) continue;
+    if (![...tr.causes].some(stillActive)) tr.pendingRecover = true;
+  }
 }
 const disruptionsAt = (tr: Train, effect: Disruption["effect"]) =>
   [...disruptions.values()].filter((d) => !d.endedAt && (d.effect === effect || d.effect === "skip_stop") && d.station === tr.trip.stops[tr.call]).map((d) => d.id);
@@ -590,6 +723,8 @@ export function tick(t: number): TickResult {
     }
   }
   const removed: Train[] = [];
+  applyEnds();
+  indexEdges();
   stoppedOnLine = settings.protection ? [] : [...trains.values()].filter((x) => x.leg >= 0 && x.speed < 0.5 && !x.cancelled);
   for (const tr of trains.values()) {
     step(tr, t, dt);
@@ -623,6 +758,8 @@ export function sync(trainIds?: string[]) {
     tr.mode = "real";
     tr.tau = t;
     tr.warp = 0;
+    tr.pendingRecover = false;
+    tr.recovering = false;
     tr.causes.clear();
     tr.holds.clear();
     tr.cancelled = Boolean(rt?.cancelled);

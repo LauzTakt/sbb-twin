@@ -28,20 +28,30 @@ const ago = (ms: number) => {
 const lineColour = (cat: string) => (/^(IC|ICE|EC|IR|TGV|RJX|EN|NJ|ICN)$/.test(cat) ? "#eb0000" : cat === "EV" ? "#ff9f1c" : /^(RE|IRE)$/.test(cat) ? "#2d327d" : "#39424e");
 const empty = { type: "FeatureCollection" as const, features: [] };
 
-function StationPicker({ label, value, onChange }: { label: string; value?: Station; onChange: (s?: Station) => void }) {
+function StationPicker({ label, value, onChange, options }: { label: string; value?: Station; onChange: (s?: Station) => void; options?: (Station & { km?: number })[] }) {
   const [q, setQ] = useState("");
-  const [hits, setHits] = useState<Station[]>([]);
+  const [hits, setHits] = useState<(Station & { km?: number })[]>([]);
+  const [open, setOpen] = useState(false);
+  const norm = (x: string) => x.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
   useEffect(() => {
+    if (options) {
+      // only stations a train reaches from the other end: filter the list as the user types
+      if (!open || value) return setHits([]);
+      setHits(options.filter((s) => norm(s.name).includes(norm(q.trim()))).slice(0, 12));
+      return;
+    }
     if (!q.trim() || value?.name === q) return setHits([]);
     const id = setTimeout(() => api<Station[]>(`/stations?q=${encodeURIComponent(q)}`).then(setHits).catch(() => setHits([])), 150);
     return () => clearTimeout(id);
-  }, [q, value]);
+  }, [q, value, options, open]);
   return (
     <label className="field picker">
       <span>{label}</span>
       <input
         value={value?.name ?? q}
-        placeholder="Search a station"
+        placeholder={options ? "Choose a connected station" : "Search a station"}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
         onChange={(e) => {
           onChange(undefined);
           setQ(e.target.value);
@@ -59,7 +69,7 @@ function StationPicker({ label, value, onChange }: { label: string; value?: Stat
                   setHits([]);
                 }}
               >
-                {s.name} <small>{s.id}</small>
+                {s.name} <small>{s.km !== undefined ? `${s.km} km` : s.id}</small>
               </button>
             </li>
           ))}
@@ -397,6 +407,7 @@ export function App() {
               disruptions={Object.values(disruptions)}
               overrides={Object.values(overrides)}
               protection={protection}
+              setProtection={setProtection}
               placingLabel={placingLabel}
               onPlace={(body, label) => {
                 placing.current = body;
@@ -645,7 +656,7 @@ function TrainCard({ id, client, simulated, mods, following, grid, onFollow, onC
 type Preset = { id: string; label: string; tempC?: number; tempDeltaC?: number; precipMm?: number; windKmh?: number; gustKmh?: number };
 const NETWORK_TYPES = (t: DType) => t.scope === "section" || t.scope === "station";
 
-function GodMode({ disruptions, overrides, protection, placingLabel, onPlace, onCancelPlace, say }: { disruptions: Disruption[]; overrides: WeatherOverride[]; protection: boolean; placingLabel?: string; onPlace: (body: Record<string, unknown>, label: string) => void; onCancelPlace: () => void; say: (t: string) => void }) {
+function GodMode({ disruptions, overrides, protection, setProtection, placingLabel, onPlace, onCancelPlace, say }: { disruptions: Disruption[]; overrides: WeatherOverride[]; protection: boolean; setProtection: (on: boolean) => void; placingLabel?: string; onPlace: (body: Record<string, unknown>, label: string) => void; onCancelPlace: () => void; say: (t: string) => void }) {
   const [types, setTypes] = useState<DType[]>([]);
   const [presets, setPresets] = useState<Preset[]>([]);
   const [typeId, setTypeId] = useState("overhead_line_fault");
@@ -656,6 +667,12 @@ function GodMode({ disruptions, overrides, protection, placingLabel, onPlace, on
   const [maxKmh, setMaxKmh] = useState("40");
   const [hold, setHold] = useState("8");
   const [busy, setBusy] = useState(false);
+  const [reachable, setReachable] = useState<(Station & { km: number })[]>();
+  useEffect(() => {
+    setTo(undefined);
+    setReachable(undefined);
+    if (from) void api<(Station & { km: number })[]>(`/stations/${from.id}/neighbours`).then(setReachable).catch(() => {});
+  }, [from]);
   const [preset, setPreset] = useState("heatwave");
   const [customTemp, setCustomTemp] = useState("");
   const [radius, setRadius] = useState("20");
@@ -684,8 +701,13 @@ function GodMode({ disruptions, overrides, protection, placingLabel, onPlace, on
     onPlace(body, customTemp ? `${customTemp} °C` : (p?.label ?? "Weather"));
   };
   const toggleProtection = async () => {
-    const r = await api<{ protection: boolean }>("/god/protection", { method: "POST", json: { on: !protection } }).catch((e) => (say(e.message), null));
-    if (r) say(r.protection ? "Train protection on: trains never run into each other" : "Train protection off: drivers only see what is ahead");
+    const want = !protection;
+    setProtection(want); // show it at once; the server confirms over MQTT
+    const r = await api<{ protection: boolean }>("/god/protection", { method: "POST", json: { on: want } }).catch((e) => (say(e.message), null));
+    if (r) {
+      setProtection(r.protection);
+      say(r.protection ? "Train protection on: trains never run into each other" : "Train protection off: drivers only see what is ahead");
+    } else setProtection(!want);
   };
   const releaseAll = async () => {
     const r = await api<{ ended: number }>("/god/release-all", { method: "POST", json: {} }).catch((e) => (say(e.message), null));
@@ -710,7 +732,7 @@ function GodMode({ disruptions, overrides, protection, placingLabel, onPlace, on
       {type?.scope === "section" && (
         <div className="row">
           <StationPicker label="From" value={from} onChange={setFrom} />
-          <StationPicker label="To" value={to} onChange={setTo} />
+          <StationPicker label="To" value={to} onChange={setTo} options={from ? (reachable ?? []) : undefined} />
         </div>
       )}
       {type?.scope === "station" && <StationPicker label="Station" value={station} onChange={setStation} />}

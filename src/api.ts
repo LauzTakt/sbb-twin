@@ -1,8 +1,8 @@
 // HTTP control API for staff (provoke/end disruptions, mark/unmark incidents, sync) and read helpers.
 import { Hono } from "hono";
 import { InputError, TYPES, createDisruption, createIncident, disruptions, incidents } from "./disruptions.ts";
-import { byTrainId, obstacleAhead, sync, trains } from "./engine.ts";
-import { searchStations } from "./timetable.ts";
+import { byTrainId, neighbours, obstacleAhead, sync, trains } from "./engine.ts";
+import { searchStations, stationIndex } from "./timetable.ts";
 import { networkGeoJson } from "./geometry.ts";
 import { disruptionPayload, event, incidentPayload, infoPayload, positionPayload, removeDisruption, statusPayload } from "./feed.ts";
 import { clear, publish } from "./mqtt.ts";
@@ -64,6 +64,11 @@ export function api() {
     return c.json({ position: positionPayload(tr, t), info: infoPayload(tr, t), truth: { mode: tr.mode === "sim" ? "simulated" : "real", causes: [...tr.causes] } });
   });
   app.get("/stations", (c) => c.json(searchStations(c.req.query("q") ?? "", 10)));
+  app.get("/stations/:id/neighbours", (c) => {
+    const i = stationIndex(c.req.param("id"));
+    if (i === undefined) return c.json({ error: "Unknown station" }, 404);
+    return c.json(neighbours(i, Math.min(80, Number(c.req.query("km") ?? 40))));
+  });
   app.get("/network.geojson", (c) => {
     c.header("content-type", "application/geo+json");
     c.header("cache-control", "public, max-age=3600");
