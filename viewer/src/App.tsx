@@ -231,7 +231,7 @@ export function App() {
                 <X size={20} />
               </button>
             </header>
-            <Control disruptions={disruptions} />
+            <Control disruptions={disruptions} onClose={() => setRegistering(false)} />
           </div>
         </div>
       )}
