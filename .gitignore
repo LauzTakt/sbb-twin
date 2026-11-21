@@ -1,0 +1,4 @@
+node_modules
+viewer/dist
+*.log
+.rail-data

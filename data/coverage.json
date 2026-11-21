@@ -1,0 +1,874 @@
+{
+ "generated": "2026-11-21T19:17:58",
+ "inputs": {
+  "gpkg": "/workspace/sbb/geo/schienennetz_2056_de.gpkg",
+  "railDb": "/workspace/sbb/gtfs/rail-v1.sqlite",
+  "gtfs": "/workspace/sbb/gtfs/gtfs_fp2026_20261118.zip"
+ },
+ "parameters": {
+  "nodeTolM": 100.0,
+  "snapM": 2.0,
+  "gapMaxM": 200.0,
+  "matchM": 300.0,
+  "siblingM": 250.0,
+  "siblingCost": [
+   2.0,
+   100.0
+  ],
+  "detour": [
+   2.5,
+   2000.0
+  ],
+  "maxKmh": 250.0,
+  "minRunS": 60,
+  "simplifyM": 8.0
+ },
+ "network": {
+  "nodes": 3250,
+  "segments": 3486,
+  "edgesKept": 3485,
+  "edgesQuarantined": 1,
+  "vertices": 464027,
+  "lengthKm": 5865.9,
+  "reversed": [
+   {
+    "id": "ch14uvag00387348",
+    "a": "Dietikon, Bahnhof",
+    "b": "Dietikon AVA"
+   },
+   {
+    "id": "ch14uvag00387335",
+    "a": "Schlieren, Geissweid (Wds)",
+    "b": "Schlieren, Geissweid (Verzw)"
+   },
+   {
+    "id": "ch14uvag00224124",
+    "a": "Le Châtelard-Frontière",
+    "b": "Le Châtelard (frontière)"
+   }
+  ],
+  "repaired": [
+   {
+    "id": "ch14uvag00388101",
+    "end": "a",
+    "node": "Lampenberg-Ramlinsburg,Station",
+    "gapM": 106791.0,
+    "reattachedTo": "La Tour-de-Trême"
+   },
+   {
+    "id": "ch14uvag00387371",
+    "end": "a",
+    "node": "Galgenbühl (Agl)",
+    "gapM": 1703.5,
+    "reattachedTo": "Zweisimmen Nord (Verzw)"
+   },
+   {
+    "id": "ch14uvag00068191",
+    "end": "a",
+    "node": "Bulle",
+    "gapM": 309.0,
+    "reattachedTo": "Bulle - saut kilométrique"
+   }
+  ],
+  "quarantined": [
+   {
+    "id": "ch14uvag00068323",
+    "end": "a",
+    "node": "Givisiez",
+    "gapM": 353.0,
+    "reason": "end 353 m from its node"
+   }
+  ],
+  "endsOffsetConsistent": 6,
+  "endsGapKept": [
+   {
+    "id": "ch14uvag00068106",
+    "end": "a",
+    "node": "Liestal [Gleis 4]",
+    "gapM": 161.9
+   },
+   {
+    "id": "ch14uvag00277944",
+    "end": "a",
+    "node": "Buchs SG",
+    "gapM": 140.7
+   },
+   {
+    "id": "ch14uvag00240312",
+    "end": "a",
+    "node": "RBL Ost",
+    "gapM": 120.5
+   },
+   {
+    "id": "ch14uvag00087144",
+    "end": "a",
+    "node": "Le Day",
+    "gapM": 109.6
+   },
+   {
+    "id": "ch14uvag00088235",
+    "end": "b",
+    "node": "Zürich Herdern Abstellgruppe",
+    "gapM": 109.6
+   }
+  ],
+  "gauges": {
+   "mm1000": 1558,
+   "mm1435": 1872,
+   "mm1000_1435": 17,
+   "mm800": 35,
+   "mm600": 1,
+   "mm1200": 2
+  }
+ },
+ "stations": {
+  "inPairs": 3250,
+  "matchedExact": 1708,
+  "matchedByName": 13,
+  "unmatched": 1529,
+  "withSubNodes": 81,
+  "unmatchedSwissByLegCount": [
+   {
+    "id": "8510670",
+    "name": "Trélex dépôt",
+    "trips": 6280
+   },
+   {
+    "id": "8519685",
+    "name": "Aarau Torfeld",
+    "trips": 3760
+   },
+   {
+    "id": "8519306",
+    "name": "St. Gallen Güterbahnhof",
+    "trips": 1518
+   },
+   {
+    "id": "8501952",
+    "name": "Iselle di Trasquera",
+    "trips": 1253
+   },
+   {
+    "id": "8505580",
+    "name": "Re",
+    "trips": 1060
+   },
+   {
+    "id": "8505584",
+    "name": "Malesco",
+    "trips": 1060
+   },
+   {
+    "id": "8505581",
+    "name": "S. Maria Maggiore",
+    "trips": 1060
+   },
+   {
+    "id": "8505585",
+    "name": "Druogno",
+    "trips": 1060
+   },
+   {
+    "id": "8505597",
+    "name": "Trontano",
+    "trips": 1060
+   },
+   {
+    "id": "8505593",
+    "name": "Masera",
+    "trips": 1060
+   },
+   {
+    "id": "8501951",
+    "name": "Varzo",
+    "trips": 1054
+   },
+   {
+    "id": "8501950",
+    "name": "Preglia",
+    "trips": 1054
+   },
+   {
+    "id": "8509050",
+    "name": "Chur West",
+    "trips": 434
+   },
+   {
+    "id": "8505588",
+    "name": "Creggio",
+    "trips": 332
+   },
+   {
+    "id": "8505599",
+    "name": "Verigo",
+    "trips": 332
+   },
+   {
+    "id": "8505590",
+    "name": "Gagnone-Orcesco",
+    "trips": 332
+   },
+   {
+    "id": "8505594",
+    "name": "Prestinone",
+    "trips": 332
+   },
+   {
+    "id": "8505578",
+    "name": "Zornasco",
+    "trips": 332
+   },
+   {
+    "id": "8505589",
+    "name": "Folsogno-Dissimo",
+    "trips": 332
+   },
+   {
+    "id": "8502476",
+    "name": "Vevey Vignerons",
+    "trips": 322
+   },
+   {
+    "id": "8510470",
+    "name": "Matten b. Interlaken",
+    "trips": 291
+   },
+   {
+    "id": "8505861",
+    "name": "Maccagno",
+    "trips": 214
+   },
+   {
+    "id": "8505862",
+    "name": "Pino-Tronzano",
+    "trips": 198
+   },
+   {
+    "id": "8505874",
+    "name": "Colmegna",
+    "trips": 198
+   },
+   {
+    "id": "8505226",
+    "name": "Grindelwald Terminal",
+    "trips": 163
+   }
+  ],
+  "exactMatchFarFromGtfsCoord": [
+   {
+    "station": "8501475",
+    "name": "Les Echenards",
+    "node": "Les Echenards",
+    "offM": 1086
+   }
+  ]
+ },
+ "pairs": {
+  "total": 9701,
+  "bav": 4894,
+  "approx": 4807,
+  "approxReasons": {
+   "unmatched station": 4775,
+   "no path": 19,
+   "too fast": 7,
+   "detour": 6
+  },
+  "swissTotal": 5016,
+  "swissBav": 4894,
+  "swissBavShare": 0.9757,
+  "legsInTimetable": 2855374,
+  "sameStationLegsSkipped": 276,
+  "evOnlyPairsSkipped": 3241,
+  "maxJumpBetweenEdgesM": 109.6,
+  "pathsWithJumpOver20M": 160
+ },
+ "plausibility": {
+  "worstRejectedDetour": [
+   {
+    "pair": "8509358>8509357",
+    "names": [
+     "Cavaglia",
+     "Alp Grüm"
+    ],
+    "reason": "detour",
+    "lengthKm": 5.92,
+    "straightKm": 1.5,
+    "ratio": 3.94,
+    "minRunMin": 12.0,
+    "kmh": 30
+   },
+   {
+    "pair": "8509357>8509358",
+    "names": [
+     "Alp Grüm",
+     "Cavaglia"
+    ],
+    "reason": "detour",
+    "lengthKm": 5.92,
+    "straightKm": 1.5,
+    "ratio": 3.94,
+    "minRunMin": 12.0,
+    "kmh": 30
+   },
+   {
+    "pair": "8504483>8504188",
+    "names": [
+     "Ins",
+     "Sugiez"
+    ],
+    "reason": "detour",
+    "lengthKm": 16.43,
+    "straightKm": 4.24,
+    "ratio": 3.87,
+    "minRunMin": 3.0,
+    "kmh": 329
+   },
+   {
+    "pair": "8504400>8516154",
+    "names": [
+     "Kerzers",
+     "Bern Brünnen Westside"
+    ],
+    "reason": "detour",
+    "lengthKm": 44.29,
+    "straightKm": 14.31,
+    "ratio": 3.1,
+    "minRunMin": 11.0,
+    "kmh": 242
+   },
+   {
+    "pair": "8504221>8504237",
+    "names": [
+     "Neuchâtel",
+     "Les Hauts-Geneveys"
+    ],
+    "reason": "detour",
+    "lengthKm": 20.59,
+    "straightKm": 7.28,
+    "ratio": 2.83,
+    "minRunMin": 20.0,
+    "kmh": 62
+   },
+   {
+    "pair": "8504400>8504489",
+    "names": [
+     "Kerzers",
+     "Bern Bümpliz Nord"
+    ],
+    "reason": "detour",
+    "lengthKm": 43.17,
+    "straightKm": 15.34,
+    "ratio": 2.81,
+    "minRunMin": 12.0,
+    "kmh": 216
+   }
+  ],
+  "worstRejectedSpeed": [
+   {
+    "pair": "8501110>8504200",
+    "names": [
+     "Ependes VD",
+     "Yverdon-les-Bains"
+    ],
+    "reason": "too fast",
+    "lengthKm": 6.43,
+    "straightKm": 4.66,
+    "ratio": 1.38,
+    "minRunMin": 0.0,
+    "kmh": 386
+   },
+   {
+    "pair": "8506293>8506292",
+    "names": [
+     "Mogelsberg",
+     "Degersheim"
+    ],
+    "reason": "too fast",
+    "lengthKm": 5.31,
+    "straightKm": 4.5,
+    "ratio": 1.18,
+    "minRunMin": 1.0,
+    "kmh": 319
+   },
+   {
+    "pair": "8501035>8501033",
+    "names": [
+     "Allaman",
+     "Rolle"
+    ],
+    "reason": "too fast",
+    "lengthKm": 5.18,
+    "straightKm": 5.07,
+    "ratio": 1.02,
+    "minRunMin": 1.0,
+    "kmh": 311
+   },
+   {
+    "pair": "8503400>8503313",
+    "names": [
+     "Bülach",
+     "Niederglatt ZH"
+    ],
+    "reason": "too fast",
+    "lengthKm": 5.02,
+    "straightKm": 4.75,
+    "ratio": 1.06,
+    "minRunMin": 1.0,
+    "kmh": 301
+   },
+   {
+    "pair": "8501031>8501030",
+    "names": [
+     "Gland",
+     "Nyon"
+    ],
+    "reason": "too fast",
+    "lengthKm": 4.74,
+    "straightKm": 4.71,
+    "ratio": 1.01,
+    "minRunMin": 1.0,
+    "kmh": 284
+   },
+   {
+    "pair": "8503006>8503020",
+    "names": [
+     "Zürich Oerlikon",
+     "Zürich Hardbrücke"
+    ],
+    "reason": "too fast",
+    "lengthKm": 4.51,
+    "straightKm": 3.57,
+    "ratio": 1.26,
+    "minRunMin": 0.0,
+    "kmh": 271
+   },
+   {
+    "pair": "8506035>8506014",
+    "names": [
+     "Schottikon",
+     "Elgg"
+    ],
+    "reason": "too fast",
+    "lengthKm": 4.36,
+    "straightKm": 3.9,
+    "ratio": 1.12,
+    "minRunMin": 1.0,
+    "kmh": 262
+   }
+  ],
+  "highestAcceptedDetour": [
+   {
+    "pair": "8509068>8509069",
+    "names": [
+     "Klosters Platz",
+     "Cavadürli"
+    ],
+    "reason": null,
+    "lengthKm": 4.35,
+    "straightKm": 1.0,
+    "ratio": 4.35,
+    "minRunMin": 6.0,
+    "kmh": 43
+   },
+   {
+    "pair": "8509069>8509068",
+    "names": [
+     "Cavadürli",
+     "Klosters Platz"
+    ],
+    "reason": null,
+    "lengthKm": 4.35,
+    "straightKm": 1.0,
+    "ratio": 4.35,
+    "minRunMin": 7.0,
+    "kmh": 37
+   },
+   {
+    "pair": "8501375>8501300",
+    "names": [
+     "Chernex",
+     "Montreux"
+    ],
+    "reason": null,
+    "lengthKm": 4.22,
+    "straightKm": 1.12,
+    "ratio": 3.78,
+    "minRunMin": 11.0,
+    "kmh": 23
+   },
+   {
+    "pair": "8510732>8510725",
+    "names": [
+     "Le Muids, bif. gare",
+     "Arzier, gare"
+    ],
+    "reason": null,
+    "lengthKm": 2.78,
+    "straightKm": 0.75,
+    "ratio": 3.71,
+    "minRunMin": 3.0,
+    "kmh": 56
+   },
+   {
+    "pair": "8501679>8501691",
+    "names": [
+     "Findelbach",
+     "Riffelalp"
+    ],
+    "reason": null,
+    "lengthKm": 2.28,
+    "straightKm": 0.68,
+    "ratio": 3.35,
+    "minRunMin": 8.0,
+    "kmh": 17
+   },
+   {
+    "pair": "8501691>8501679",
+    "names": [
+     "Riffelalp",
+     "Findelbach"
+    ],
+    "reason": null,
+    "lengthKm": 2.28,
+    "straightKm": 0.68,
+    "ratio": 3.35,
+    "minRunMin": 10.0,
+    "kmh": 14
+   },
+   {
+    "pair": "8505165>8505170",
+    "names": [
+     "Andermatt",
+     "Nätschen"
+    ],
+    "reason": null,
+    "lengthKm": 4.48,
+    "straightKm": 1.38,
+    "ratio": 3.24,
+    "minRunMin": 8.0,
+    "kmh": 34
+   },
+   {
+    "pair": "8505170>8505165",
+    "names": [
+     "Nätschen",
+     "Andermatt"
+    ],
+    "reason": null,
+    "lengthKm": 4.48,
+    "straightKm": 1.38,
+    "ratio": 3.24,
+    "minRunMin": 9.0,
+    "kmh": 30
+   },
+   {
+    "pair": "8507384>8507372",
+    "names": [
+     "Lauterbrunnen",
+     "Wengen"
+    ],
+    "reason": null,
+    "lengthKm": 3.78,
+    "straightKm": 1.22,
+    "ratio": 3.09,
+    "minRunMin": 14.0,
+    "kmh": 16
+   },
+   {
+    "pair": "8507372>8507384",
+    "names": [
+     "Wengen",
+     "Lauterbrunnen"
+    ],
+    "reason": null,
+    "lengthKm": 3.78,
+    "straightKm": 1.22,
+    "ratio": 3.09,
+    "minRunMin": 13.0,
+    "kmh": 17
+   },
+   {
+    "pair": "8500264>8500261",
+    "names": [
+     "Oberdorf SO",
+     "Langendorf"
+    ],
+    "reason": null,
+    "lengthKm": 7.72,
+    "straightKm": 2.51,
+    "ratio": 3.08,
+    "minRunMin": 7.0,
+    "kmh": 66
+   },
+   {
+    "pair": "8500261>8500264",
+    "names": [
+     "Langendorf",
+     "Oberdorf SO"
+    ],
+    "reason": null,
+    "lengthKm": 7.72,
+    "straightKm": 2.51,
+    "ratio": 3.08,
+    "minRunMin": 7.0,
+    "kmh": 66
+   },
+   {
+    "pair": "8505000>8517336",
+    "names": [
+     "Luzern",
+     "Luzern Verkehrshaus"
+    ],
+    "reason": null,
+    "lengthKm": 5.97,
+    "straightKm": 2.1,
+    "ratio": 2.84,
+    "minRunMin": 6.0,
+    "kmh": 60
+   },
+   {
+    "pair": "8517336>8505000",
+    "names": [
+     "Luzern Verkehrshaus",
+     "Luzern"
+    ],
+    "reason": null,
+    "lengthKm": 5.97,
+    "straightKm": 2.1,
+    "ratio": 2.84,
+    "minRunMin": 6.0,
+    "kmh": 60
+   },
+   {
+    "pair": "8509361>8509357",
+    "names": [
+     "Poschiavo",
+     "Alp Grüm"
+    ],
+    "reason": null,
+    "lengthKm": 16.5,
+    "straightKm": 5.82,
+    "ratio": 2.83,
+    "minRunMin": 34.0,
+    "kmh": 29
+   }
+  ],
+  "fastestAccepted": [
+   {
+    "pair": "8516161>8504410",
+    "names": [
+     "Bern Wankdorf",
+     "Zollikofen"
+    ],
+    "reason": null,
+    "lengthKm": 4.12,
+    "straightKm": 3.78,
+    "ratio": 1.09,
+    "minRunMin": 1.0,
+    "kmh": 247
+   },
+   {
+    "pair": "8502223>8502222",
+    "names": [
+     "Hedingen",
+     "Bonstetten-Wettswil"
+    ],
+    "reason": null,
+    "lengthKm": 4.05,
+    "straightKm": 3.45,
+    "ratio": 1.17,
+    "minRunMin": 1.0,
+    "kmh": 243
+   },
+   {
+    "pair": "8501116>8501117",
+    "names": [
+     "Vufflens-la-Ville",
+     "Bussigny"
+    ],
+    "reason": null,
+    "lengthKm": 4.05,
+    "straightKm": 3.57,
+    "ratio": 1.13,
+    "minRunMin": 1.0,
+    "kmh": 243
+   },
+   {
+    "pair": "8501118>8501037",
+    "names": [
+     "Renens VD",
+     "Morges"
+    ],
+    "reason": null,
+    "lengthKm": 7.99,
+    "straightKm": 7.13,
+    "ratio": 1.12,
+    "minRunMin": 2.0,
+    "kmh": 240
+   },
+   {
+    "pair": "8503503>8500309",
+    "names": [
+     "Turgi",
+     "Brugg AG"
+    ],
+    "reason": null,
+    "lengthKm": 3.84,
+    "straightKm": 3.57,
+    "ratio": 1.07,
+    "minRunMin": 0.0,
+    "kmh": 230
+   },
+   {
+    "pair": "8506291>8506290",
+    "names": [
+     "Schachen (Herisau)",
+     "Herisau"
+    ],
+    "reason": null,
+    "lengthKm": 3.68,
+    "straightKm": 2.6,
+    "ratio": 1.42,
+    "minRunMin": 0.0,
+    "kmh": 221
+   },
+   {
+    "pair": "8506217>8506107",
+    "names": [
+     "Sulgen",
+     "Erlen"
+    ],
+    "reason": null,
+    "lengthKm": 3.6,
+    "straightKm": 3.5,
+    "ratio": 1.03,
+    "minRunMin": 1.0,
+    "kmh": 216
+   },
+   {
+    "pair": "8506301>8506302",
+    "names": [
+     "St. Gallen Bruggen",
+     "St. Gallen"
+    ],
+    "reason": null,
+    "lengthKm": 3.59,
+    "straightKm": 3.52,
+    "ratio": 1.02,
+    "minRunMin": 0.0,
+    "kmh": 215
+   },
+   {
+    "pair": "8506103>8506104",
+    "names": [
+     "Müllheim-Wigoltingen",
+     "Märstetten"
+    ],
+    "reason": null,
+    "lengthKm": 3.57,
+    "straightKm": 3.56,
+    "ratio": 1.0,
+    "minRunMin": 1.0,
+    "kmh": 214
+   },
+   {
+    "pair": "8506107>8506108",
+    "names": [
+     "Erlen",
+     "Oberaach"
+    ],
+    "reason": null,
+    "lengthKm": 3.51,
+    "straightKm": 3.38,
+    "ratio": 1.04,
+    "minRunMin": 1.0,
+    "kmh": 211
+   }
+  ]
+ },
+ "lakeZurich": {
+  "legs": [
+   {
+    "pair": "8503206>8503207",
+    "names": [
+     "Wädenswil",
+     "Richterswil"
+    ],
+    "quality": "bav",
+    "lengthM": 3476.3,
+    "edges": [
+     "ch14uvag00088260"
+    ],
+    "tracks": [
+     2
+    ]
+   },
+   {
+    "pair": "8503207>8503208",
+    "names": [
+     "Richterswil",
+     "Bäch SZ"
+    ],
+    "quality": "bav",
+    "lengthM": 1914.0,
+    "edges": [
+     "ch14uvag00088261",
+     "ch14uvag00088262"
+    ],
+    "tracks": [
+     2,
+     2
+    ]
+   },
+   {
+    "pair": "8503208>8503210",
+    "names": [
+     "Bäch SZ",
+     "Freienbach SBB"
+    ],
+    "quality": "bav",
+    "lengthM": 2334.9,
+    "edges": [
+     "ch14uvag00088263"
+    ],
+    "tracks": [
+     2
+    ]
+   },
+   {
+    "pair": "8503210>8503209",
+    "names": [
+     "Freienbach SBB",
+     "Pfäffikon SZ"
+    ],
+    "quality": "bav",
+    "lengthM": 1730.0,
+    "edges": [
+     "ch14uvag00088264"
+    ],
+    "tracks": [
+     2
+    ]
+   }
+  ],
+  "totalM": 9455.3,
+  "expectedEdges": [
+   "ch14uvag00088260",
+   "ch14uvag00088261",
+   "ch14uvag00088262",
+   "ch14uvag00088263",
+   "ch14uvag00088264"
+  ],
+  "ok": true
+ },
+ "tripsMeta": {
+  "trips": 321824,
+  "railRoutes": 1253
+ },
+ "outputs": {
+  "network-lines.geojson": 995773,
+  "network.json.gz": 2994968,
+  "paths.json.gz": 57068,
+  "trips-meta.json.gz": 1277593
+ }
+}
