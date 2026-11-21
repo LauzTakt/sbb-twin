@@ -10,7 +10,7 @@ export type Disruption = {
   measures?: { id?: string; type: string; label?: string; at?: string; state?: string }[]; bulletinVersion?: number;
 };
 /** A disruption on the railway: a real SBB alert, or an incident the twin detected itself. */
-export type Item = { id: string; title: string; where: string; severity: "info" | "minor" | "major" | "critical"; note: string; trains: number; geometry: Geometry; source: "sbb" | "auto" };
+export type Item = { id: string; title: string; where: string; severity: "info" | "minor" | "major" | "critical"; note: string; trains: number; geometry: Geometry; source: "sbb" | "auto"; trainIds?: string[] };
 
 type Alert = { id: string; title: string; cause: string; severity: "info" | "minor" | "major"; activePeriods: { start: number | null; end: number | null }[]; stations: { name: string }[]; trains: number; geometry: Geometry };
 type Incident = { id: string; title: string; where: string; severity: Item["severity"]; createdAt: number; geometry: Geometry; trainIds?: string[]; disruptionId?: string };
@@ -58,7 +58,7 @@ export function connectLive(h: Handlers): Live {
         h.disruptions(m.disruptions as Disruption[]);
         incidents = (m.incidents as Incident[])
           .filter((i) => i.geometry && !i.disruptionId)
-          .map((i) => ({ id: i.id, title: i.title, where: i.where, severity: i.severity, note: `since ${hm(i.createdAt)}`, trains: i.trainIds?.length ?? 0, geometry: i.geometry, source: "auto" as const }));
+          .map((i) => ({ id: i.id, title: i.title, where: i.where, severity: i.severity, note: `since ${hm(i.createdAt)}`, trains: i.trainIds?.length ?? 0, trainIds: i.trainIds, geometry: i.geometry, source: "auto" as const }));
         push();
       } else if (m.type === "train") {
         const w = watching;

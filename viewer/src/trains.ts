@@ -23,6 +23,8 @@ export class TrainCanvas {
   private at = 0;
   private raf = 0;
   selected?: string;
+  /** When set, only these trains are drawn at full strength; the others fade (a picked disruption). */
+  focus?: Set<string>;
   following = false;
   visible = true; // the "Trains" layer switch
   count = 0;
@@ -114,7 +116,9 @@ export class TrainCanvas {
       const p = map.project(lerp(t.from, t.to, k));
       if (p.x < -20 || p.y < -20 || p.x > view.width + 20 || p.y > view.height + 20) return;
       const r = selected ? size * 1.6 : size;
+      const dim = !selected && this.focus !== undefined && !this.focus.has(t.id);
       ctx.save();
+      ctx.globalAlpha = dim ? 0.2 : 1;
       ctx.translate(p.x, p.y);
       if (selected) {
         // pulsing sky-blue ring: the selected train stands out on any map, in its own colour
@@ -151,7 +155,7 @@ export class TrainCanvas {
       ctx.fillStyle = colourOf(t.state, t.delay, t.atStop, pal); // selecting never changes the colour
       ctx.fill();
       ctx.restore();
-      if (labels || selected) {
+      if ((labels || selected) && !dim) {
         // SBB-style tag: white pill, line in charcoal, delay in red
         const late = t.delay >= 60 ? ` +${Math.round(t.delay / 60)}′` : "";
         const lw = ctx.measureText(t.line).width;
@@ -172,7 +176,9 @@ export class TrainCanvas {
         }
       }
     };
-    for (const t of this.trains.values()) if (t.id !== this.selected) draw(t, false);
+    const faded = (t: T) => this.focus !== undefined && !this.focus.has(t.id);
+    for (const t of this.trains.values()) if (t.id !== this.selected && faded(t)) draw(t, false);
+    for (const t of this.trains.values()) if (t.id !== this.selected && !faded(t)) draw(t, false);
     const sel = this.selected && this.trains.get(this.selected);
     if (sel) draw(sel, true);
   }

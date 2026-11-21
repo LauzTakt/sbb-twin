@@ -3,7 +3,7 @@ import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import type { GeoJSONSource, Map as LibreMap } from "maplibre-gl";
 import { CircleDot, Crosshair, TrainFront, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { api, connectLive, type Disruption, type Item, type Live, type Status } from "./feed";
+import { api, connectLive, type Disruption, type Item, type Live, type SnapshotRow, type Status } from "./feed";
 import { Control } from "./Control";
 import { baseStyle } from "./map";
 import { TrainCanvas } from "./trains";
@@ -39,6 +39,11 @@ export function App() {
   const mapRef = useRef<LibreMap | undefined>(undefined);
   const layer = useRef<TrainCanvas | undefined>(undefined);
   const live = useRef<Live | undefined>(undefined);
+  const rowsRef = useRef<SnapshotRow[]>([]);
+  const itemsRef = useRef<Item[]>([]);
+  const pickedId = useRef<string | undefined>(undefined);
+  const pickedRef = useRef<Item | undefined>(undefined);
+  const near = useRef<{ id: string; ids: Set<string> } | undefined>(undefined);
   const features = useRef<FC>({ type: "FeatureCollection", features: [] });
   const [conn, setConn] = useState<"connecting" | "online" | "offline">("connecting");
   const [status, setStatus] = useState<Status>();
@@ -47,12 +52,14 @@ export function App() {
   const [supported, setSupported] = useState(false);
   const [tab, setTab] = useState<"disruptions" | "control">("disruptions");
   const [picked, setPicked] = useState<string>();
+  pickedId.current = picked;
   const [selected, setSelected] = useState<string | undefined>(() => new URLSearchParams(location.search).get("train") ?? undefined);
   const [following, setFollowing] = useState(false);
   const [station, setStation] = useState<{ id: string; name: string; trains: number }>();
   const [ready, setReady] = useState(false);
   const own: Item[] = disruptions.filter((d) => d.status === "active" && d.geometry).map((d) => ({ id: d.id, title: d.summary ?? d.label ?? "Disruption", where: d.where, severity: d.effect === "limited" ? "minor" : "major", note: d.cause?.label ?? "registered in the twin", trains: 0, geometry: d.geometry, source: "auto" as const }));
   const items = [...own, ...alertItems];
+  itemsRef.current = items;
 
   useEffect(() => {
     let alive = true;
@@ -61,6 +68,7 @@ export function App() {
       if (!alive) return m.remove();
       m.touchZoomRotate.disableRotation();
       mapRef.current = m;
+      (window as unknown as { railMap?: LibreMap }).railMap = m; // handy for debugging
       layer.current = new TrainCanvas(m);
       setReady(true);
       m.on("load", () => addLayers(m));
@@ -80,7 +88,12 @@ export function App() {
       m.on("dragstart", () => setFollowing(false));
       live.current = connectLive({
         connection: setConn,
-        tick: (rows, st) => (layer.current?.update(rows), setStatus(st)),
+        tick: (rows, st) => {
+          layer.current?.update(rows);
+          rowsRef.current = rows;
+          refocus();
+          setStatus(st);
+        },
         items: setItems,
         disruptions: setDisruptions,
       });
@@ -93,6 +106,26 @@ export function App() {
     };
   }, []);
 
+  /** The trains involved in the picked disruption: the ones the server names, plus those running on or next to its track. */
+  function refocus() {
+    const item = pickedRef.current;
+    if (!item) return void (layer.current && (layer.current.focus = undefined));
+    const pts = points(item.geometry);
+    const ids = new Set(item.trainIds ?? []);
+    for (const r of rowsRef.current) {
+      if (ids.has(r[0])) continue;
+      for (const p of pts) {
+        const dx = (r[2] - p[0]) * 76;
+        const dy = (r[1] - p[1]) * 111;
+        if (dx * dx + dy * dy < 2.25) {
+          ids.add(r[0]);
+          break;
+        }
+      }
+    }
+    near.current = { id: item.id, ids };
+    if (layer.current) layer.current.focus = ids;
+  }
   function addLayers(m: LibreMap) {
     const before = m.getStyle().layers.find((l) => l.type === "symbol")?.id;
     const width = (a: number, b: number, c: number) => ["interpolate", ["linear"], ["zoom"], 6, a, 10, b, 14, c] as never;
@@ -131,17 +164,29 @@ export function App() {
   // the picked disruption: highlighted, the map moves to it, the list scrolls to it
   useEffect(() => {
     const m = mapRef.current;
-    if (m?.getLayer("section-picked")) m.setFilter("section-picked", ["==", ["get", "id"], picked ?? ""]);
-    const item = items.find((i) => i.id === picked);
+    if (m?.getLayer("section-picked")) m.setFilter("section-picked", ["all", ["==", ["get", "id"], picked ?? ""], ["in", ["geometry-type"], ["literal", ["LineString", "MultiLineString"]]]] as never);
+    const item = itemsRef.current.find((i) => i.id === picked);
+    pickedRef.current = item;
+    refocus();
+    for (const l of ["section-line", "section-casing", "section-point"]) {
+      const prop = l === "section-point" ? "circle-opacity" : "line-opacity";
+      if (m?.getLayer(l)) m.setPaintProperty(l, prop, picked ? (["case", ["==", ["get", "id"], picked], 1, 0.22] as never) : 1);
+    }
+    if (m?.getLayer("section-point")) m.setPaintProperty("section-point", "circle-stroke-opacity", picked ? (["case", ["==", ["get", "id"], picked], 1, 0.22] as never) : 1);
     const pts = points(item?.geometry ?? null);
     if (!m || !item || !pts.length) return;
     const b = new maplibregl.LngLatBounds(pts[0] as [number, number], pts[0] as [number, number]);
     for (const p of pts) b.extend(p as [number, number]);
-    const view = m.getBounds();
-    if (!pts.every((q) => view.contains(q as [number, number]))) m.fitBounds(b, { padding: { top: 90, bottom: 90, left: 60, right: 420 }, maxZoom: 11, duration: 700 });
+    m.fitBounds(b, { padding: { top: 90, bottom: 90, left: 90, right: 90 }, maxZoom: 12, duration: 700 });
     document.querySelector(`[data-id="${picked}"]`)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [picked]);
+  // the list changed (a disruption was updated or ended): keep the focus on the picked one
+  useEffect(() => {
+    pickedRef.current = itemsRef.current.find((i) => i.id === pickedId.current);
+    refocus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [alertItems, disruptions]);
   useEffect(() => {
     if (!layer.current) return;
     layer.current.selected = selected;
