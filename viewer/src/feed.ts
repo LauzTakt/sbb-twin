@@ -10,9 +10,9 @@ export type Disruption = {
   measures?: { id?: string; type: string; label?: string; at?: string; state?: string }[]; bulletinVersion?: number;
 };
 /** A disruption on the railway: a real SBB alert, or an incident the twin detected itself. */
-export type Item = { id: string; title: string; where: string; severity: "info" | "minor" | "major" | "critical"; note: string; trains: number; geometry: Geometry; source: "sbb" | "auto"; trainIds?: string[] };
+export type Item = { id: string; title: string; where: string; severity: "info" | "minor" | "major" | "critical"; note: string; trains: number; geometry: Geometry; source: "sbb" | "auto"; trainIds?: string[]; description?: string };
 
-type Alert = { id: string; title: string; cause: string; severity: "info" | "minor" | "major"; activePeriods: { start: number | null; end: number | null }[]; stations: { name: string }[]; trains: number; geometry: Geometry };
+type Alert = { id: string; title: string; description: string; cause: string; severity: "info" | "minor" | "major"; activePeriods: { start: number | null; end: number | null }[]; stations: { name: string }[]; trains: number; geometry: Geometry };
 type Incident = { id: string; title: string; where: string; severity: Item["severity"]; createdAt: number; geometry: Geometry; trainIds?: string[]; disruptionId?: string };
 type Handlers = {
   connection: (state: "connecting" | "online" | "offline") => void;
@@ -53,7 +53,7 @@ export function connectLive(h: Handlers): Live {
       if (m.type === "tick") h.tick(m.trains, m.status);
       else if (m.type === "alerts") {
         // only real disruptions: the feed also carries notices ("stop moved", "access restricted", "Information") that are not
-        alerts = (m.alerts as Alert[]).filter((a) => /^(Interrupted|Limited|Irregular) service/i.test(a.title)).map((a) => ({ id: a.id, title: a.title, where: a.stations.slice(0, 3).map((x) => x.name).join(", "), severity: a.severity, note: endNote(a), trains: a.trains, geometry: a.geometry, source: "sbb" as const }));
+        alerts = (m.alerts as Alert[]).filter((a) => /^(Interrupted|Limited|Irregular) service/i.test(a.title)).map((a) => ({ id: a.id, title: a.title, where: a.stations.slice(0, 3).map((x) => x.name).join(", "), severity: a.severity, note: endNote(a), trains: a.trains, geometry: a.geometry, description: a.description, source: "sbb" as const }));
         push();
       } else if (m.type === "state") {
         h.disruptions(m.disruptions as Disruption[]);

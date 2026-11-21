@@ -95,3 +95,10 @@ main { flex: 1; min-height: 0; position: relative; display: flex; }
 .chips button, .proposal button { border: 1px solid var(--cloud); background: var(--white); border-radius: 999px; padding: 5px 10px; font-size: 12.5px; }
 .chips button:hover, .proposal button:hover { background: var(--milk); }
 .chips button.strong { background: var(--green); border-color: var(--green); color: #fff; }
+
+.top { display: flex; align-items: center; gap: 18px; }
+.sync { display: inline-flex; align-items: center; gap: 6px; border: 0; background: var(--green); color: #fff; border-radius: 999px; padding: 8px 16px; font-weight: 700; font-size: 14px; }
+.sync:hover { background: #007d31; }
+.sync:disabled { background: var(--cement); }
+.bulletins p { margin: 4px 0 2px; font-size: 13px; line-height: 1.45; color: var(--iron); white-space: pre-line; }
+@media (max-width: 760px) { .top .stats { display: none; } }

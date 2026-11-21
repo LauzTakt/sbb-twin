@@ -1,9 +1,9 @@
 import * as maplibregl from "maplibre-gl";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import type { GeoJSONSource, Map as LibreMap } from "maplibre-gl";
-import { CircleDot, Crosshair, TrainFront, X } from "lucide-react";
+import { CircleDot, Crosshair, RefreshCcw, TrainFront, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { api, connectLive, type Disruption, type Item, type Live, type SnapshotRow, type Status } from "./feed";
+import { api, connectLive, send, type Disruption, type Item, type Live, type SnapshotRow, type Status } from "./feed";
 import { Control } from "./Control";
 import { baseStyle } from "./map";
 import { TrainCanvas } from "./trains";
@@ -50,14 +50,15 @@ export function App() {
   const [alertItems, setItems] = useState<Item[]>([]);
   const [disruptions, setDisruptions] = useState<Disruption[]>([]);
   const [supported, setSupported] = useState(false);
-  const [tab, setTab] = useState<"disruptions" | "control">("disruptions");
+  const [tab, setTab] = useState<"disruptions" | "bulletins" | "control">("disruptions");
+  const [syncing, setSyncing] = useState(false);
   const [picked, setPicked] = useState<string>();
   pickedId.current = picked;
   const [selected, setSelected] = useState<string | undefined>(() => new URLSearchParams(location.search).get("train") ?? undefined);
   const [following, setFollowing] = useState(false);
   const [station, setStation] = useState<{ id: string; name: string; trains: number }>();
   const [ready, setReady] = useState(false);
-  const own: Item[] = disruptions.filter((d) => d.status === "active" && d.geometry).map((d) => ({ id: d.id, title: d.summary ?? d.label ?? "Disruption", where: d.where, severity: d.effect === "limited" ? "minor" : "major", note: d.cause?.label ?? "registered in the twin", trains: 0, geometry: d.geometry, source: "auto" as const }));
+  const own: Item[] = disruptions.filter((d) => d.status === "active" && d.geometry).map((d) => ({ id: d.id, title: d.summary ?? d.label ?? "Disruption", where: d.where, severity: d.effect === "limited" ? "minor" : "major", note: d.cause?.label ?? "registered in the twin", trains: 0, geometry: d.geometry, description: d.description, source: "auto" as const }));
   const items = [...own, ...alertItems];
   itemsRef.current = items;
 
@@ -204,6 +205,7 @@ export function App() {
           sbb-twin
           <span className={`conn ${conn}`}>{conn === "online" ? "Live" : conn === "offline" ? "Offline" : "Connecting"}</span>
         </div>
+        <div className="top">
         <div className="stats">
           <span>
             <b>{status?.trainsActive ?? "–"}</b> trains
@@ -211,6 +213,10 @@ export function App() {
           <span>
             <b>{items.length}</b> {items.length === 1 ? "disruption" : "disruptions"}
           </span>
+        </div>
+        <button className="sync" disabled={syncing} onClick={() => { setSyncing(true); setPicked(undefined); void send("POST", "/control/reset", {}).catch(() => undefined).finally(() => setSyncing(false)); }} title="Remove everything registered in the twin and go back to the real timetable">
+          <RefreshCcw size={15} /> {syncing ? "Syncing…" : "Sync with reality"}
+        </button>
         </div>
       </header>
       <main>
@@ -220,9 +226,24 @@ export function App() {
         <aside className="side">
           <div className="tabs" role="tablist">
             <button aria-pressed={tab === "disruptions"} onClick={() => setTab("disruptions")}>Disruptions</button>
+            <button aria-pressed={tab === "bulletins"} onClick={() => setTab("bulletins")}>Bulletins</button>
             <button aria-pressed={tab === "control"} onClick={() => setTab("control")}>Control</button>
           </div>
           {tab === "control" && <Control disruptions={disruptions} supported={supported} onCatalogue={setSupported} />}
+          {tab === "bulletins" && (
+            <ul className="items bulletins">
+              {!sorted.some((i) => i.description) && <p className="hint">No bulletin for the current disruptions.</p>}
+              {sorted.filter((i) => i.description).map((i) => (
+                <li key={i.id} data-id={i.id} className={picked === i.id ? "picked" : undefined}>
+                  <button onClick={() => (setPicked(i.id), setSelected(undefined), setStation(undefined))}>
+                    <b style={{ ["--dot" as string]: COLOUR[i.severity] }}>{i.title}</b>
+                    <p>{i.description}</p>
+                    <small>{[i.note, i.source === "sbb" ? "published by SBB" : "twin"].filter(Boolean).join(" · ")}</small>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
           {tab === "disruptions" && <>
           {!sorted.length && <p className="hint">No disruption on the railway right now.</p>}
           <ul className="items">

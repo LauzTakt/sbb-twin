@@ -1,5 +1,5 @@
 // Control-centre mode: register a disruption, decide what is done about it, see the bulletin it produces.
-import { Plus, RefreshCcw, X } from "lucide-react";
+import { Plus, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { api, send, type Disruption } from "./feed";
 
@@ -192,9 +192,6 @@ export function Control({ disruptions, supported, onCatalogue }: { disruptions: 
           </li>
         ))}
       </ul>
-      <button className="follow" onClick={() => void act("/control/reset")}>
-        <RefreshCcw size={15} /> Sync all: back to the real timetable
-      </button>
     </>
   );
 }
