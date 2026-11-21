@@ -15,7 +15,13 @@ export const live = {
   enabled: () => Boolean(config.gtfsRtKey),
 };
 const num = (v: unknown) => (v == null ? undefined : Number(String(v)));
-const station = (stopId: string) => stopId.replace(/^Parent/, "").split(":")[0];
+// Stops come as Swiss Location IDs ("ch:1:sloid:10665:0:19728" = quay 19728 of service point 10665 = station 8510665)
+// or, rarely, as numeric station ids ("8503000", "8503000:0:5", "Parent8503000").
+export function station(stopId: string) {
+  const sloid = stopId.match(/^ch:1:sloid:(\d+)/);
+  if (sloid) return `85${sloid[1].padStart(5, "0")}`;
+  return stopId.replace(/^Parent/, "").split(":")[0];
+}
 
 export async function pollRealtime() {
   if (!config.gtfsRtKey) return false;
