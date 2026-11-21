@@ -165,6 +165,18 @@ function route(fromId: string, toId: string): number[] {
   return out.reverse();
 }
 
+/** Edge refs (unsigned) of every track segment that passes within `radiusKm` of a point. */
+export function edgesWithin(lat: number, lon: number, radiusKm: number): Set<number> {
+  const out = new Set<number>();
+  if (!network) return out;
+  const r = radiusKm * 1000;
+  network.edges.forEach((e, i) => {
+    const c = e[5];
+    for (let k = 0; k < c.length; k += 6) if (metres(lon, lat, c[k], c[k + 1]) <= r) return void out.add(i + 1);
+  });
+  return out;
+}
+
 /** GeoJSON geometry of a set of edges (for drawing an affected section). */
 export function edgesGeometry(refs: Set<number>) {
   const lines: number[][][] = [];

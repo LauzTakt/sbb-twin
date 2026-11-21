@@ -1,18 +1,20 @@
 // HTTP control API for staff (provoke/end disruptions, mark/unmark incidents, sync) and read helpers.
 import { Hono } from "hono";
 import { InputError, TYPES, createDisruption, createIncident, disruptions, incidents } from "./disruptions.ts";
-import { byTrainId, sync, trains } from "./engine.ts";
+import { byTrainId, obstacleAhead, sync, trains } from "./engine.ts";
 import { searchStations } from "./timetable.ts";
 import { networkGeoJson } from "./geometry.ts";
 import { disruptionPayload, event, incidentPayload, infoPayload, positionPayload, removeDisruption, statusPayload } from "./feed.ts";
 import { clear, publish } from "./mqtt.ts";
-import { GRID, weather } from "./weather.ts";
+import { GRID, overridePayload, removeOverride, weather } from "./weather.ts";
+import { WEATHER_PRESETS, endWeather, releaseAll, releaseTrain, setProtection, setWeather } from "./god.ts";
+import { settings } from "./engine.ts";
 
 const trainLookup = (id: string) => {
   const tr = byTrainId.get(id);
   if (!tr) return undefined;
   const next = tr.leg >= 0 ? tr.leg + 1 : tr.call + 1;
-  return { label: `${tr.trip.line} → ${tr.trip.head}`, nextStation: next < tr.trip.stops.length - 1 ? tr.trip.stops[next] : undefined };
+  return { label: `${tr.trip.line} → ${tr.trip.head}`, nextStation: next < tr.trip.stops.length - 1 ? tr.trip.stops[next] : undefined, obstacleAt: (m: number) => obstacleAhead(tr, m) };
 };
 const severityFor: Record<string, "minor" | "major" | "critical"> = {
   section_closure: "critical",
@@ -24,6 +26,8 @@ const severityFor: Record<string, "minor" | "major" | "critical"> = {
   cancellation: "minor",
   train_speed: "minor",
   skip_stop: "minor",
+  target_speed: "minor",
+  obstacle: "critical",
 };
 
 function markIncident(input: Parameters<typeof createIncident>[0]) {
@@ -107,6 +111,51 @@ export function api() {
     clear(`incidents/${i.id}`);
     event("incident", { type: "incident.unmarked", id: i.id, title: i.title });
     return c.json({ removed: i.id });
+  });
+
+  // God mode: weather over an area, train protection, releasing trains
+  app.get("/god", (c) => c.json({ protection: settings.protection, presets: WEATHER_PRESETS, overrides: [...weather.overrides.values()].map(overridePayload) }));
+  app.post("/god/protection", async (c) => {
+    const b = await body(c);
+    const s = setProtection(Boolean(b.on));
+    publish("truth/settings", { v: 1, ...s, ts: Date.now() }, { retain: true, qos: 1 });
+    event("disruption", { type: s.protection ? "protection.on" : "protection.off" });
+    return c.json(s);
+  });
+  app.post("/god/release-all", (c) => {
+    const n = releaseAll();
+    event("disruption", { type: "release.all", count: n });
+    return c.json({ ended: n });
+  });
+  app.post("/trains/:id/release", (c) => {
+    const ended = releaseTrain(c.req.param("id"));
+    event("disruption", { type: "train.released", trainId: c.req.param("id"), ended });
+    return c.json({ ended });
+  });
+  app.get("/weather/overrides", (c) => c.json([...weather.overrides.values()].map(overridePayload)));
+  app.post("/weather/overrides", async (c) => {
+    const b = await body(c);
+    const preset = WEATHER_PRESETS.find((p) => p.id === b.preset) as Record<string, unknown> | undefined;
+    const num = (k: string) => (b[k] !== undefined && b[k] !== null && b[k] !== "" ? Number(b[k]) : preset?.[k] !== undefined ? Number(preset[k]) : undefined);
+    const lat = Number(b.lat);
+    const lon = Number(b.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) throw new InputError("A weather change needs a place (lat, lon)");
+    const values = { tempC: num("tempC"), tempDeltaC: num("tempDeltaC"), precipMm: num("precipMm"), windKmh: num("windKmh"), gustKmh: num("gustKmh") };
+    if (Object.values(values).every((v) => v === undefined)) throw new InputError("Set at least one value (temperature, rain or wind)");
+    const label = String(b.label ?? preset?.label ?? "Weather change");
+    const { override, consequences } = setWeather({ label, lat, lon, radiusKm: Number(b.radiusKm ?? 20), minutes: b.minutes === undefined ? null : Number(b.minutes) || null, endsAt: null, ...values });
+    for (const d of consequences) publish(`truth/disruptions/${d.id}`, disruptionPayload(d), { retain: true, qos: 1 });
+    event("disruption", { type: "weather.override", id: override.id, label, where: `${override.radiusKm} km`, consequences: consequences.map((d) => d.label) });
+    return c.json({ override: overridePayload(override), consequences: consequences.map(disruptionPayload) }, 201);
+  });
+  app.post("/weather/overrides/:id/end", (c) => {
+    const o = endWeather(c.req.param("id"));
+    return o ? c.json(overridePayload(o)) : c.json({ error: "Unknown weather change" }, 404);
+  });
+  app.delete("/weather/overrides/:id", (c) => {
+    endWeather(c.req.param("id"));
+    const o = removeOverride(c.req.param("id"));
+    return o ? c.json({ removed: o.id }) : c.json({ error: "Unknown weather change" }, 404);
   });
 
   // Back to reality

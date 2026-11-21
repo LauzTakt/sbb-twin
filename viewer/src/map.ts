@@ -1,49 +1,75 @@
-// Base maps (swisstopo, free): a dark "operations" recolouring of the light base map, the light map itself, and satellite.
-import type { StyleSpecification, LayerSpecification } from "maplibre-gl";
+// One base style for the whole session (swisstopo light vector map + SWISSIMAGE satellite layer).
+// Switching satellite fades a raster layer; switching light/dark recolours the vector layers in place.
+// Nothing reloads, so overlays and trains stay put and the change is smooth.
+import type { LayerSpecification, Map as LibreMap, StyleSpecification } from "maplibre-gl";
 
 const LIGHT = "https://vectortiles.geo.admin.ch/styles/ch.swisstopo.lightbasemap.vt/style.json";
-export type Basemap = "dark" | "light" | "satellite";
+export type Theme = "light" | "dark";
 
-function darken(style: StyleSpecification): StyleSpecification {
-  const layers = style.layers.map((l): LayerSpecification => {
-    const id = l.id.toLowerCase();
-    const water = /water|lake|river|see|fluss|gewaesser/.test(id);
-    if (l.type === "background") return { ...l, paint: { "background-color": "#0a0f17" } };
-    if (l.type === "fill") {
-      const colour = water ? "#0d2234" : /forest|wood|wald/.test(id) ? "#0e1914" : /building/.test(id) ? "#161d29" : "#0f151f";
-      return { ...l, paint: { ...(l.paint ?? {}), "fill-color": colour, "fill-outline-color": colour, "fill-opacity": water ? 1 : 0.85 } } as LayerSpecification;
-    }
-    if (l.type === "line") {
-      const colour = water ? "#12314a" : /boundary|border|grenze/.test(id) ? "#3a4659" : /rail|bahn/.test(id) ? "#26303f" : "#1b2330";
-      return { ...l, paint: { ...(l.paint ?? {}), "line-color": colour } } as LayerSpecification;
-    }
-    if (l.type === "symbol") {
-      const paint = { ...(l.paint ?? {}), "text-color": water ? "#4d7ea8" : "#8592a6", "text-halo-color": "#0a0f17", "text-halo-width": 1.2 };
-      return { ...l, paint, layout: { ...(l.layout ?? {}), "icon-image": "" } } as LayerSpecification;
-    }
-    if (l.type === "raster" || l.type === "hillshade") return { ...l, paint: { ...(l.paint ?? {}), ...(l.type === "raster" ? { "raster-opacity": 0.15 } : {}) } } as LayerSpecification;
-    return l;
-  });
-  return { ...style, layers };
+let original = new Map<string, Record<string, unknown>>(); // light paint of every base layer
+let baseIds: string[] = [];
+
+export async function baseStyle(): Promise<StyleSpecification> {
+  const style = (await fetch(LIGHT).then((r) => r.json())) as StyleSpecification;
+  original = new Map(style.layers.map((l) => [l.id, { ...((l as { paint?: Record<string, unknown> }).paint ?? {}) }]));
+  baseIds = style.layers.map((l) => l.id);
+  style.sources.swissimage = {
+    type: "raster",
+    tiles: ["https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.swissimage/default/current/3857/{z}/{x}/{y}.jpeg"],
+    tileSize: 256,
+    maxzoom: 19,
+    attribution: "© swisstopo",
+  };
+  // imagery above the map's areas and roads, below its labels
+  const firstSymbol = style.layers.findIndex((l) => l.type === "symbol");
+  style.layers.splice(firstSymbol < 0 ? style.layers.length : firstSymbol, 0, {
+    id: "swissimage",
+    type: "raster",
+    source: "swissimage",
+    layout: { visibility: "none" },
+    paint: { "raster-opacity": 0, "raster-opacity-transition": { duration: 450, delay: 0 }, "raster-fade-duration": 250 },
+  } as LayerSpecification);
+  style.transition = { duration: 350, delay: 0 };
+  return style;
 }
 
-let light: StyleSpecification | undefined;
-export async function basemap(kind: Basemap): Promise<StyleSpecification> {
-  light ??= (await fetch(LIGHT).then((r) => r.json())) as StyleSpecification;
-  if (kind === "light") return light;
-  if (kind === "dark") return darken(structuredClone(light));
-  return {
-    version: 8,
-    glyphs: light.glyphs,
-    sources: {
-      swissimage: {
-        type: "raster",
-        tiles: ["https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.swissimage/default/current/3857/{z}/{x}/{y}.jpeg"],
-        tileSize: 256,
-        maxzoom: 19,
-        attribution: "© swisstopo",
-      },
-    },
-    layers: [{ id: "swissimage", type: "raster", source: "swissimage", paint: { "raster-brightness-max": 0.85 } }],
-  };
+function darkPaint(l: LayerSpecification): Record<string, unknown> {
+  const id = l.id.toLowerCase();
+  const water = /water|lake|river|see|fluss|gewaesser/.test(id);
+  if (l.type === "background") return { "background-color": "#101418" };
+  if (l.type === "fill") {
+    const c = water ? "#0e2233" : /forest|wood|wald/.test(id) ? "#122019" : /building/.test(id) ? "#1d232b" : "#151a20";
+    return { "fill-color": c, "fill-outline-color": c };
+  }
+  if (l.type === "line") return { "line-color": water ? "#16324a" : /boundary|border|grenze/.test(id) ? "#46505e" : /rail|bahn/.test(id) ? "#2c3440" : "#232a33" };
+  if (l.type === "symbol") return { "text-color": water ? "#5d8bb0" : "#9aa3ae", "text-halo-color": "#101418", "text-halo-width": 1.2 };
+  if (l.type === "raster" || l.type === "hillshade") return l.type === "raster" ? { "raster-opacity": 0.18 } : {};
+  return {};
+}
+
+/** Recolour the base map for a theme and show or hide the satellite imagery. */
+export function applyBase(map: LibreMap, theme: Theme, satellite: boolean) {
+  if (!map.getLayer("swissimage")) return; // style not ready (or replaced): nothing to recolour yet
+  const style = map.getStyle();
+  for (const l of style.layers) {
+    if (!baseIds.includes(l.id)) continue;
+    const target = theme === "dark" ? { ...original.get(l.id), ...darkPaint(l) } : original.get(l.id) ?? {};
+    for (const [k, v] of Object.entries(target)) {
+      if (k.endsWith("-transition")) continue;
+      try {
+        map.setPaintProperty(l.id, k as never, v as never);
+      } catch {
+        /* property not valid for this layer type */
+      }
+    }
+  }
+  if (satellite) {
+    map.setLayoutProperty("swissimage", "visibility", "visible");
+    map.setPaintProperty("swissimage", "raster-opacity", theme === "dark" ? 0.8 : 1);
+  } else {
+    map.setPaintProperty("swissimage", "raster-opacity", 0);
+    setTimeout(() => {
+      if (map.getLayer("swissimage") && map.getPaintProperty("swissimage", "raster-opacity") === 0) map.setLayoutProperty("swissimage", "visibility", "none");
+    }, 500);
+  }
 }

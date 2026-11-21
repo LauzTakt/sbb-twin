@@ -3,13 +3,16 @@ import type { Map as LibreMap } from "maplibre-gl";
 import type { SnapshotRow } from "./feed";
 
 type T = { id: string; from: [number, number]; to: [number, number]; bearing: number; speed: number; state: string; delay: number; line: string; cat: string; atStop: string | null; continuity: number };
-export const COLOURS = { moving: "#3ddc97", late: "#ffc65a", station: "#7fb2ff", stoppedOnLine: "#ff5d6c", cancelled: "#8b93a1", selected: "#ff4fd8" };
+// SBB palette: green on time, orange late, blue at a station, red stopped on the line, grey cancelled, charcoal selected
+export const COLOURS = { moving: "#00973b", late: "#f27e00", station: "#2d327d", stoppedOnLine: "#eb0000", cancelled: "#8d8d8d", selected: "#212121" };
 /** Colour from observable facts only: moving / at a station / stopped on the open line, and lateness. */
-export function colourOf(motion: string, delay: number, atStop: string | null) {
-  if (motion === "cancelled") return COLOURS.cancelled;
-  if (motion === "stopped" && !atStop) return COLOURS.stoppedOnLine;
-  if (delay >= 180) return COLOURS.late;
-  return motion === "moving" ? COLOURS.moving : COLOURS.station;
+// On dark or satellite maps the dark SBB blue and charcoal lose contrast: lighter equivalents there.
+export const DARK_COLOURS = { ...COLOURS, station: "#8f9cff", cancelled: "#a3a9b1", selected: "#ffffff" };
+export function colourOf(motion: string, delay: number, atStop: string | null, pal: typeof COLOURS = COLOURS) {
+  if (motion === "cancelled") return pal.cancelled;
+  if (motion === "stopped" && !atStop) return pal.stoppedOnLine;
+  if (delay >= 180) return pal.late;
+  return motion === "moving" ? pal.moving : pal.station;
 }
 const lerp = (a: [number, number], b: [number, number], k: number): [number, number] => [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k];
 
@@ -24,6 +27,7 @@ export class TrainCanvas {
   following = false;
   visible = true;
   count = 0;
+  theme: "light" | "dark" = "light";
 
   constructor(private map: LibreMap) {
     this.canvas.className = "trains-canvas";
@@ -39,11 +43,19 @@ export class TrainCanvas {
     };
     map.on("resize", resize);
     resize();
-    const loop = () => {
-      this.draw();
-      this.raf = requestAnimationFrame(loop);
+    // Draw inside the map's own frame so markers move exactly with the map while panning or zooming;
+    // between map interactions, keep asking the map for frames so the trains keep gliding.
+    map.on("render", () => this.draw());
+    const tick = () => {
+      // move the camera before the map renders this frame, so the followed train stays still on screen
+      if (this.following && this.selected && this.visible) {
+        const p = this.position(this.selected);
+        if (p) this.map.jumpTo({ center: p });
+      }
+      this.map.triggerRepaint();
+      this.raf = requestAnimationFrame(tick);
     };
-    loop();
+    tick();
   }
 
   update(rows: SnapshotRow[]) {
@@ -93,15 +105,11 @@ export class TrainCanvas {
     if (!this.visible) return;
     const k = this.k();
     const zoom = map.getZoom();
-    const size = zoom < 8 ? 3.2 : zoom < 10 ? 4.2 : zoom < 12 ? 5.5 : 7;
+    const size = zoom < 8 ? 4 : zoom < 10 ? 5 : zoom < 12 ? 6.5 : 8.5;
     const rot = map.getBearing();
     const labels = zoom >= 10.5;
     const view = map.getCanvas().getBoundingClientRect();
-    if (this.following && this.selected) {
-      const p = this.position(this.selected);
-      if (p) map.jumpTo({ center: p });
-    }
-    ctx.font = "600 11px Inter, system-ui, sans-serif";
+    ctx.font = '700 12px "SBB Web", "Helvetica Neue", Arial, sans-serif';
     ctx.textBaseline = "middle";
     const draw = (t: T, selected: boolean) => {
       const p = map.project(lerp(t.from, t.to, k));
@@ -110,23 +118,23 @@ export class TrainCanvas {
       ctx.save();
       ctx.translate(p.x, p.y);
       if (selected) {
-        // pulsing magenta ring: the selected train stands out at any zoom
+        // pulsing sky-blue ring around a charcoal marker: the selected train stands out on any map
         const pulse = (performance.now() % 1400) / 1400;
         ctx.beginPath();
-        ctx.arc(0, 0, r * (2 + pulse * 2.2), 0, Math.PI * 2);
-        ctx.strokeStyle = `rgba(255,79,216,${0.85 * (1 - pulse)})`;
-        ctx.lineWidth = 2.5;
+        ctx.arc(0, 0, r * (2 + pulse * 2.4), 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(0,121,199,${0.9 * (1 - pulse)})`;
+        ctx.lineWidth = 3;
         ctx.stroke();
         ctx.beginPath();
-        ctx.arc(0, 0, r * 2, 0, Math.PI * 2);
-        ctx.fillStyle = "rgba(255,79,216,0.22)";
+        ctx.arc(0, 0, r * 2.1, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(0,121,199,0.18)";
         ctx.fill();
       }
       if (this.simulated.has(t.id)) {
         ctx.beginPath();
-        ctx.arc(0, 0, r * 1.9, 0, Math.PI * 2);
-        ctx.strokeStyle = "#ffffff";
-        ctx.lineWidth = 1.5;
+        ctx.arc(0, 0, r * 1.95, 0, Math.PI * 2);
+        ctx.strokeStyle = this.theme === "light" ? "#212121" : "#ffffff";
+        ctx.lineWidth = 1.6;
         ctx.setLineDash([3, 2]);
         ctx.stroke();
         ctx.setLineDash([]);
@@ -141,19 +149,37 @@ export class TrainCanvas {
         ctx.lineTo(-r, r);
         ctx.closePath();
       }
-      ctx.fillStyle = selected ? COLOURS.selected : colourOf(t.state, t.delay, t.atStop);
-      ctx.strokeStyle = selected ? "#ffffff" : "rgba(5,8,13,0.85)";
-      ctx.lineWidth = selected ? 2 : 1.2;
-      ctx.fill();
+      // contrast on every base map: a thin dark halo, then a white outline, then the colour
+      ctx.lineJoin = "round";
+      ctx.strokeStyle = "rgba(0,0,0,0.45)";
+      ctx.lineWidth = 4.2;
       ctx.stroke();
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      const pal = this.theme === "dark" ? DARK_COLOURS : COLOURS;
+      ctx.fillStyle = selected ? pal.selected : colourOf(t.state, t.delay, t.atStop, pal);
+      ctx.fill();
       ctx.restore();
       if (labels || selected) {
-        const text = t.line + (t.delay >= 60 ? ` +${Math.round(t.delay / 60)}′` : "");
-        ctx.fillStyle = selected ? COLOURS.selected : "rgba(5,8,13,0.75)";
-        const tw = ctx.measureText(text).width;
-        ctx.fillRect(p.x + r + 4, p.y - 8, tw + 8, 16);
-        ctx.fillStyle = selected ? "#1a0016" : "#e8edf5";
-        ctx.fillText(text, p.x + r + 8, p.y);
+        // SBB-style tag: white pill, line in charcoal, delay in red
+        const late = t.delay >= 60 ? ` +${Math.round(t.delay / 60)}′` : "";
+        const lw = ctx.measureText(t.line).width;
+        const dw = late ? ctx.measureText(late).width : 0;
+        const x = p.x + r + 6;
+        ctx.fillStyle = selected ? "#212121" : "rgba(255,255,255,0.95)";
+        ctx.strokeStyle = "rgba(0,0,0,0.18)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.roundRect(x, p.y - 9, lw + dw + 10, 18, 4);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = selected ? "#ffffff" : "#212121";
+        ctx.fillText(t.line, x + 5, p.y + 0.5);
+        if (late) {
+          ctx.fillStyle = selected ? "#ff8a8a" : "#eb0000";
+          ctx.fillText(late, x + 5 + lw, p.y + 0.5);
+        }
       }
     };
     for (const t of this.trains.values()) if (t.id !== this.selected) draw(t, false);

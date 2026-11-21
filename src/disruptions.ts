@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { edgesGeometry, sectionEdges } from "./geometry.ts";
 import { stationIndex, stops } from "./timetable.ts";
 
-export type Effect = "section_closure" | "speed_restriction" | "signal_failure" | "station_closure" | "train_breakdown" | "train_delay" | "cancellation" | "train_speed" | "skip_stop";
+export type Effect = "section_closure" | "speed_restriction" | "signal_failure" | "station_closure" | "train_breakdown" | "train_delay" | "cancellation" | "train_speed" | "skip_stop" | "target_speed" | "obstacle";
 export type ScopeKind = "section" | "station" | "train";
 export type DisruptionType = {
   id: string;
@@ -12,7 +12,7 @@ export type DisruptionType = {
   effect: Effect;
   scope: ScopeKind;
   defaultMinutes: number | null;
-  params?: { maxKmh?: number; holdMinutes?: number };
+  params?: { maxKmh?: number; holdMinutes?: number; kmh?: number; brakeMs2?: number; distanceM?: number };
   behaviour: string;
 };
 
@@ -30,12 +30,16 @@ export const TYPES: DisruptionType[] = [
   { id: "cancellation", label: "Train cancelled", reasonCode: "EG_063", effect: "cancellation", scope: "train", defaultMinutes: null, behaviour: "The train ends its run at the next station and leaves service." },
   { id: "train_speed_limit", label: "Speed limit for a train", reasonCode: "EG_014", effect: "train_speed", scope: "train", defaultMinutes: null, params: { maxKmh: 60 }, behaviour: "The train runs at most at the given speed (it brakes down to it) until the limit is removed." },
   { id: "skip_next_stop", label: "Skip the next stop", reasonCode: "EG_063", effect: "skip_stop", scope: "train", defaultMinutes: null, behaviour: "The train passes its next stop without stopping." },
+  { id: "target_speed", label: "Target speed for a train", reasonCode: "EG_063", effect: "target_speed", scope: "train", defaultMinutes: null, params: { kmh: 120 }, behaviour: "The train accelerates or brakes to this speed and cruises there between its stops (it still stops at them and never leaves early)." },
+  { id: "emergency_brake", label: "Emergency brake", reasonCode: "EG_014", effect: "train_breakdown", scope: "train", defaultMinutes: null, params: { brakeMs2: 1.2 }, behaviour: "The train brakes at 1.2 m/s² and stays where it stops; following trains are held behind it." },
+  { id: "obstacle_collision", label: "Obstacle on the track ahead", reasonCode: "EG_100", effect: "obstacle", scope: "train", defaultMinutes: null, params: { distanceM: 400 }, behaviour: "An obstacle appears ahead: the train emergency-brakes; without enough distance it hits it at the remaining speed and is immobilised." },
 ];
 
 export type Scope =
   | { kind: "section"; from: string; to: string }
   | { kind: "station"; station: string }
-  | { kind: "train"; trainId: string };
+  | { kind: "train"; trainId: string }
+  | { kind: "area"; lat: number; lon: number; radiusKm: number };
 
 export type Disruption = {
   id: string;
@@ -45,7 +49,7 @@ export type Disruption = {
   effect: Effect;
   scope: Scope;
   where: string; // human-readable place
-  params: { maxKmh?: number; holdMinutes?: number };
+  params: { maxKmh?: number; holdMinutes?: number; kmh?: number; brakeMs2?: number; distanceM?: number; atLeg?: number; atS?: number; impactKmh?: number; collidedAt?: number; withTrain?: string };
   startedAt: number;
   endsAt: number | null;
   endedAt?: number;
@@ -79,12 +83,35 @@ const stationName = (id: string) => stops[stationIndex(id) ?? -1]?.name ?? id;
 export function describeScope(scope: Scope): string {
   if (scope.kind === "section") return `${stationName(scope.from)} – ${stationName(scope.to)}`;
   if (scope.kind === "station") return stationName(scope.station);
+  if (scope.kind === "area") return `${scope.radiusKm} km around ${scope.lat.toFixed(3)}, ${scope.lon.toFixed(3)}`;
   return scope.trainId;
+}
+
+/** A disruption created by rail-twin itself (weather consequences, rear-end collisions), not from the API. */
+export function addSystemDisruption(input: { type: string; label: string; reasonCode: string; effect: Effect; scope: Scope; where: string; params?: Disruption["params"]; edges?: Set<number>; endsAt?: number | null; origin: string }): Disruption {
+  const d: Disruption = {
+    id: `d-${randomUUID().slice(0, 8)}`,
+    type: input.type,
+    label: input.label,
+    reasonCode: input.reasonCode,
+    effect: input.effect,
+    scope: input.scope,
+    where: input.where,
+    params: { ...input.params },
+    startedAt: Date.now(),
+    endsAt: input.endsAt ?? null,
+    note: input.origin,
+    edges: input.edges ?? new Set(),
+    geometry: input.edges?.size ? edgesGeometry(input.edges) : null,
+    affected: new Set(),
+  };
+  disruptions.set(d.id, d);
+  return d;
 }
 
 export class InputError extends Error {}
 
-export type TrainLookup = (id: string) => { label: string; nextStation?: number } | undefined;
+export type TrainLookup = (id: string) => { label: string; nextStation?: number; obstacleAt?: (distanceM: number) => { leg: number; s: number } | undefined } | undefined;
 export function createDisruption(input: { type: string; scope: Scope; minutes?: number | null; params?: Disruption["params"]; note?: string }, train?: TrainLookup): Disruption {
   const type = TYPES.find((t) => t.id === input.type);
   if (!type) throw new InputError(`Unknown disruption type "${input.type}"`);
@@ -105,6 +132,11 @@ export function createDisruption(input: { type: string; scope: Scope; minutes?: 
     const t = train?.(scope.trainId);
     if (!t) throw new InputError("That train is not in service now");
     if (type.effect === "skip_stop") station = t.nextStation;
+    if (type.effect === "obstacle") {
+      const at = t.obstacleAt?.(Math.max(30, Number(input.params?.distanceM ?? type.params?.distanceM ?? 400)));
+      if (!at) throw new InputError("No track ahead of this train");
+      input = { ...input, params: { ...input.params, atLeg: at.leg, atS: at.s } };
+    }
   }
   const minutes = input.minutes === undefined ? type.defaultMinutes : input.minutes;
   const now = Date.now();

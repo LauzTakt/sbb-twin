@@ -1,7 +1,7 @@
 // What rail-twin publishes on MQTT: payload builders and the per-tick publication.
 import { randomUUID } from "node:crypto";
 import { clear, publish, brokerStats } from "./mqtt.ts";
-import { byTrainId, delayOf, edgeName, expectedArrival, expectedDeparture, nextCall, timetableDate, trains, tripMeta, type Train } from "./engine.ts";
+import { byTrainId, collisions, delayOf, edgeName, expectedArrival, expectedDeparture, nextCall, timetableDate, trains, tripMeta, type Train } from "./engine.ts";
 import { stops } from "./timetable.ts";
 import { disruptions, incidents, type Disruption, type Incident } from "./disruptions.ts";
 import { live } from "./realtime.ts";
@@ -126,6 +126,7 @@ let lastStatus = 0;
 
 export function publishTick(t: number, removed: Train[]) {
   tickNo++;
+  for (const c of collisions.splice(0)) event("disruption", { type: "train.collision", trainId: c.trainId, id: c.disruptionId, impactKmh: c.impactKmh, withTrain: c.withTrain ?? null });
   const fleet: unknown[] = [];
   for (const tr of trains.values()) {
     const id = tr.trip.trainId;
@@ -153,7 +154,7 @@ export function publishTick(t: number, removed: Train[]) {
   }
   publish("fleet", { v: 1, streamId, tick: tickNo, ts: t, fields: FLEET_FIELDS, trains: fleet });
   for (const d of disruptions.values()) {
-    const sig = `${d.endedAt ?? ""}|${d.affected.size}`;
+    const sig = `${d.endedAt ?? ""}|${d.affected.size}|${d.params.collidedAt ?? ""}`;
     if (disruptionSig.get(d.id) === sig) continue;
     if (d.endedAt && disruptionSig.get(d.id) && !disruptionSig.get(d.id)!.startsWith(String(d.endedAt))) event("disruption", { type: "disruption.ended", id: d.id, label: d.label, where: d.where });
     disruptionSig.set(d.id, sig);

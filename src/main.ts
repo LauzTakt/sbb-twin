@@ -12,6 +12,7 @@ import { applyRealtime, loadTimetable, tick, trains } from "./engine.ts";
 import { live, pollRealtime } from "./realtime.ts";
 import { event, publishTick } from "./feed.ts";
 import { pollWeather, publishWeather, weather } from "./weather.ts";
+import { expireWeather } from "./god.ts";
 
 process.on("unhandledRejection", (e) => console.error("[rail-twin] unhandled:", (e as Error)?.message ?? e));
 
@@ -74,6 +75,7 @@ const refreshWeather = async () => {
 };
 void refreshWeather().then(() => console.log(`[rail-twin] weather: ${weather.stations.size} MeteoSwiss stations`));
 setInterval(refreshWeather, 5 * 60_000).unref();
+setInterval(expireWeather, 10_000).unref();
 setInterval(async () => {
   if (await loadTimetable().catch((e) => (console.error("[rail-twin] timetable:", e.message), false))) event("system", { type: "system.timetable", note: "new service day loaded" });
 }, 60_000).unref();

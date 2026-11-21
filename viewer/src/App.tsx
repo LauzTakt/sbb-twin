@@ -2,10 +2,10 @@ import * as maplibregl from "maplibre-gl";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import type { GeoJSONSource, ImageSource, Map as LibreMap } from "maplibre-gl";
 import type { MqttClient } from "mqtt";
-import { Activity, CloudSun, Crosshair, Layers, Link2, Pause, RefreshCcw, Siren, TrainFront, X, Zap } from "lucide-react";
+import { Activity, CloudSun, Crosshair, Layers, Link2, Moon, Pause, RefreshCcw, ShieldCheck, ShieldOff, Siren, Sun, TrainFront, X, Zap } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api, brokerUrl, connectFeed, watchTrain, type Disruption, type Event, type Incident, type Status, type TemperatureGrid, type WeatherSnapshot } from "./feed";
-import { basemap, type Basemap } from "./map";
+import { api, brokerUrl, connectFeed, watchTrain, type Disruption, type Event, type Incident, type Status, type TemperatureGrid, type WeatherOverride, type WeatherSnapshot } from "./feed";
+import { applyBase, baseStyle, type Theme } from "./map";
 import { COLOURS, TrainCanvas } from "./trains";
 import { gridImage, RAMP, rampColour, temperatureAt } from "./weatherLayer";
 
@@ -82,14 +82,28 @@ export function App() {
   const [events, setEvents] = useState<Event[]>([]);
   const [weather, setWeather] = useState<WeatherSnapshot>();
   const [grid, setGrid] = useState<TemperatureGrid>();
-  const [style, setStyle] = useState<Basemap>("dark");
+  // the whole page is light or dark; the map is either the drawn map or satellite imagery
+  const [theme, setTheme] = useState<Theme>(() => {
+    try {
+      return localStorage.getItem("rail-twin-theme") === "dark" ? "dark" : "light";
+    } catch {
+      return "light";
+    }
+  });
+  const [satellite, setSatellite] = useState(false);
+  const look = useRef({ theme, satellite });
+  const [overrides, setOverrides] = useState<Record<string, WeatherOverride>>({});
+  const [protection, setProtection] = useState(true);
+  const placing = useRef<Record<string, unknown> | undefined>(undefined);
+  const [placingLabel, setPlacingLabel] = useState<string>();
   const [showTemp, setShowTemp] = useState(false);
   const [showTrains, setShowTrains] = useState(true);
-  const [tab, setTab] = useState<"provoke" | "incidents" | "events" | "connect">("provoke");
+  const [tab, setTab] = useState<"god" | "incidents" | "events" | "connect">("god");
   // ?train=<trainId> opens the app on that train, following it
   const [selected, setSelected] = useState<string | undefined>(() => new URLSearchParams(location.search).get("train") ?? undefined);
   const [following, setFollowing] = useState(() => new URLSearchParams(location.search).has("train"));
   const [toast, setToast] = useState<string>();
+  const [ready, setReady] = useState(false);
   const [clock, setClock] = useState(Date.now());
   useEffect(() => {
     const id = setInterval(() => setClock(Date.now()), 1000);
@@ -105,12 +119,28 @@ export function App() {
     let alive = true;
     void (async () => {
       // locked to Switzerland: zoom freely, never leave these bounds (they match the temperature map)
-      const m = new maplibregl.Map({ container: mapEl.current!, style: await basemap("dark"), center: [8.2, 46.8], zoom: 7.3, attributionControl: { compact: true }, maxPitch: 60, maxBounds: [[5.4, 45.55], [11.0, 48.05]], renderWorldCopies: false });
+      const m = new maplibregl.Map({ container: mapEl.current!, style: await baseStyle(), center: [8.2, 46.8], zoom: 7.3, attributionControl: { compact: true }, maxPitch: 60, maxBounds: [[5.4, 45.55], [11.0, 48.05]], renderWorldCopies: false });
       if (!alive) return m.remove();
       mapRef.current = m;
+      (window as unknown as { railMap?: LibreMap }).railMap = m; // handy for debugging in the console
       layer.current = new TrainCanvas(m);
-      m.on("style.load", () => addOverlays(m));
+      setReady(true);
+      m.on("load", () => {
+        addOverlays(m);
+        restyle(m);
+      });
       m.on("click", (e) => {
+        if (placing.current) {
+          // god mode: put the prepared weather change where the map was clicked
+          const body = { ...placing.current, lat: e.lngLat.lat, lon: e.lngLat.lng };
+          placing.current = undefined;
+          setPlacingLabel(undefined);
+          m.getCanvas().style.cursor = "";
+          void api<{ override: WeatherOverride; consequences: { label: string }[] }>("/weather/overrides", { method: "POST", json: body })
+            .then((r) => say(`${r.override.label} placed${r.consequences.length ? ` · ${r.consequences.map((c) => c.label).join(", ")}` : ""}`))
+            .catch((err) => say(err.message));
+          return;
+        }
         const id = layer.current?.hit(e.point.x, e.point.y);
         setSelected(id);
         if (!id) setFollowing(false);
@@ -132,7 +162,10 @@ export function App() {
         event: (e) => setEvents((x) => [e, ...x].slice(0, 80)),
         weather: setWeather,
         grid: setGrid,
+        override: (id, o) => setOverrides((x) => (o ? { ...x, [id]: o } : Object.fromEntries(Object.entries(x).filter(([k]) => k !== id)))),
+        settings: (s) => setProtection(s.protection),
       });
+      void api<{ protection: boolean }>("/god").then((g) => setProtection(g.protection)).catch(() => {});
     })();
     return () => {
       alive = false;
@@ -149,10 +182,11 @@ export function App() {
     layer.current.selected = selected;
     layer.current.following = following && Boolean(selected);
     layer.current.visible = showTrains;
-  }, [selected, following, showTrains]);
+    layer.current.theme = look.current.theme === "light" && !look.current.satellite ? "light" : "dark";
+  }, [selected, following, showTrains, ready]);
 
-  // ---- overlays (re-added after every basemap change)
-  const data = useRef({ disruptions: empty as FC, weather: empty as FC, grid: undefined as ReturnType<typeof gridImage> | undefined, temp: false });
+  // ---- overlays (added once; the base map never reloads)
+  const data = useRef({ disruptions: empty as FC, weather: empty as FC, areas: empty as FC, grid: undefined as ReturnType<typeof gridImage> | undefined, temp: false });
   function addTemperature(m: LibreMap) {
     const d = data.current;
     if (!d.grid || m.getSource("temperature")) return;
@@ -164,11 +198,21 @@ export function App() {
   }
   function addOverlays(m: LibreMap) {
     const d = data.current;
-    const dark = style !== "light";
+    // railways abroad (OpenStreetMap via OpenFreeMap), under the Swiss BAV network
+    if (!m.getSource("osm")) {
+      m.addSource("osm", { type: "vector", url: "https://tiles.openfreemap.org/planet", attribution: "© OpenStreetMap contributors" });
+      m.addLayer({ id: "rail-abroad", type: "line", source: "osm", "source-layer": "transportation", filter: ["all", ["==", ["get", "class"], "rail"], ["!", ["has", "service"]], ["!", ["in", ["get", "subclass"], ["literal", ["subway", "tram", "light_rail", "funicular"]]]]], paint: { "line-color": "#686868", "line-width": ["interpolate", ["linear"], ["zoom"], 6, 0.6, 10, 1.3, 14, 2.4], "line-opacity": 0.6 } });
+    }
     addTemperature(m);
     if (!m.getSource("network")) {
       m.addSource("network", { type: "geojson", data: "/api/network.geojson" });
-      m.addLayer({ id: "network", type: "line", source: "network", paint: { "line-color": dark ? "#2f4262" : "#8a95a8", "line-width": ["interpolate", ["linear"], ["zoom"], 6, 0.6, 10, 1.4, 14, 2.5], "line-opacity": 0.9 } });
+      m.addLayer({ id: "network", type: "line", source: "network", paint: { "line-color": "#686868", "line-width": ["interpolate", ["linear"], ["zoom"], 6, 0.7, 10, 1.5, 14, 2.6], "line-opacity": 0.75 } });
+    }
+    if (!m.getSource("areas")) {
+      m.addSource("areas", { type: "geojson", data: d.areas as never });
+      m.addLayer({ id: "area-fill", type: "fill", source: "areas", paint: { "fill-color": ["get", "colour"], "fill-opacity": 0.14 } });
+      m.addLayer({ id: "area-line", type: "line", source: "areas", paint: { "line-color": ["get", "colour"], "line-width": 2, "line-dasharray": [3, 2] } });
+      m.addLayer({ id: "area-label", type: "symbol", source: "areas", layout: { "text-field": ["get", "label"], "text-size": 13, "text-font": ["Frutiger Neue Bold"], "symbol-placement": "point" }, paint: { "text-color": ["get", "colour"], "text-halo-color": "#ffffff", "text-halo-width": 2 } });
     }
     if (!m.getSource("disruptions")) {
       m.addSource("disruptions", { type: "geojson", data: d.disruptions as never });
@@ -178,23 +222,70 @@ export function App() {
     }
     if (!m.getSource("weather")) {
       m.addSource("weather", { type: "geojson", data: d.weather as never });
-      m.addLayer({ id: "weather-label", type: "symbol", source: "weather", layout: { visibility: d.temp ? "visible" : "none", "text-field": ["get", "label"], "text-size": ["interpolate", ["linear"], ["zoom"], 7, 10.5, 10, 13], "text-font": ["Frutiger Neue Bold"], "text-allow-overlap": false, "text-padding": 6 }, paint: { "text-color": "#ffffff", "text-halo-color": "rgba(10,15,23,0.85)", "text-halo-width": 1.8 } });
+      m.addLayer({ id: "weather-label", type: "symbol", source: "weather", layout: { visibility: d.temp ? "visible" : "none", "text-field": ["get", "label"], "text-size": ["interpolate", ["linear"], ["zoom"], 7, 11, 10, 13.5], "text-font": ["Frutiger Neue Bold"], "text-allow-overlap": false, "text-padding": 6 }, paint: { "text-color": "#212121", "text-halo-color": "rgba(255,255,255,0.92)", "text-halo-width": 2 } });
     }
   }
+  /** Light/dark page and map, or satellite: recolour in place (no reload). */
+  function restyle(m: LibreMap) {
+    const { theme: th, satellite: sat } = look.current;
+    applyBase(m, th, sat);
+    const rail = sat ? "#ffffff" : th === "dark" ? "#53647f" : "#686868";
+    if (m.getLayer("network")) {
+      m.setPaintProperty("network", "line-color", rail);
+      m.setPaintProperty("network", "line-opacity", sat ? 0.6 : 0.75);
+    }
+    if (m.getLayer("rail-abroad")) m.setPaintProperty("rail-abroad", "line-color", rail);
+    const dark = th === "dark" || sat;
+    if (m.getLayer("weather-label")) {
+      m.setPaintProperty("weather-label", "text-color", dark ? "#ffffff" : "#212121");
+      m.setPaintProperty("weather-label", "text-halo-color", dark ? "rgba(16,20,24,0.9)" : "rgba(255,255,255,0.92)");
+    }
+    if (m.getLayer("area-label")) m.setPaintProperty("area-label", "text-halo-color", dark ? "#101418" : "#ffffff");
+    if (layer.current) layer.current.theme = dark ? "dark" : "light";
+  }
   useEffect(() => {
+    look.current = { theme, satellite };
+    document.documentElement.dataset.theme = theme;
+    try {
+      localStorage.setItem("rail-twin-theme", theme);
+    } catch {
+      /* private mode */
+    }
     const m = mapRef.current;
-    if (!m) return;
-    void basemap(style).then((s) => m.setStyle(s, { diff: false }));
+    if (m?.isStyleLoaded()) restyle(m);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [style]);
+  }, [theme, satellite]);
+  useEffect(() => {
+    // weather changes drawn as soft circles
+    const circle = (o: WeatherOverride) => {
+      const pts: number[][] = [];
+      for (let k = 0; k <= 64; k++) {
+        const a = (k / 64) * 2 * Math.PI;
+        pts.push([o.lon + ((o.radiusKm / (111.32 * Math.cos((o.lat * Math.PI) / 180))) * Math.cos(a)), o.lat + (o.radiusKm / 111.32) * Math.sin(a)]);
+      }
+      return pts;
+    };
+    const describe = (o: WeatherOverride) =>
+      [o.tempC !== undefined ? `${o.tempC}°` : o.tempDeltaC !== undefined ? `${o.tempDeltaC > 0 ? "+" : ""}${o.tempDeltaC}°` : "", o.gustKmh ? `${o.gustKmh} km/h` : "", o.precipMm ? `${o.precipMm} mm` : ""].filter(Boolean).join(" · ");
+    const colour = (o: WeatherOverride) => ((o.tempC ?? 0) >= 25 || (o.tempDeltaC ?? 0) > 0 ? "#eb0000" : (o.tempC ?? 99) <= 0 || (o.tempDeltaC ?? 0) < 0 ? "#0079c7" : "#2d327d");
+    const list = Object.values(overrides).filter((o) => o.status === "active");
+    data.current.areas = {
+      type: "FeatureCollection",
+      features: list.flatMap((o) => [
+        { type: "Feature" as const, properties: { colour: colour(o), label: "" }, geometry: { type: "Polygon", coordinates: [circle(o)] } },
+        { type: "Feature" as const, properties: { colour: colour(o), label: `${o.label}\n${describe(o)}` }, geometry: { type: "Point", coordinates: [o.lon, o.lat] } },
+      ]),
+    };
+    (mapRef.current?.getSource("areas") as GeoJSONSource | undefined)?.setData(data.current.areas as never);
+  }, [overrides]);
   useEffect(() => {
     const features = [
       ...Object.values(disruptions)
         .filter((d) => d.status === "active" && d.geometry)
-        .map((d) => ({ type: "Feature" as const, properties: { colour: "#ff4d5e" }, geometry: d.geometry as FC["features"][number]["geometry"] })),
+        .map((d) => ({ type: "Feature" as const, properties: { colour: "#eb0000" }, geometry: d.geometry as FC["features"][number]["geometry"] })),
       ...Object.values(incidents)
         .filter((i) => i.geometry)
-        .map((i) => ({ type: "Feature" as const, properties: { colour: "#ffb020" }, geometry: i.geometry as FC["features"][number]["geometry"] })),
+        .map((i) => ({ type: "Feature" as const, properties: { colour: "#f27e00" }, geometry: i.geometry as FC["features"][number]["geometry"] })),
     ];
     data.current.disruptions = { type: "FeatureCollection", features };
     (mapRef.current?.getSource("disruptions") as GeoJSONSource | undefined)?.setData(data.current.disruptions as never);
@@ -241,8 +332,11 @@ export function App() {
     <div className="app">
       <header className="bar">
         <div className="brand">
-          <TrainFront size={20} /> rail-twin
-          <span className={`conn ${conn}`}>{conn === "online" ? "live" : conn}</span>
+          <span className="mark">
+            <TrainFront size={19} />
+          </span>
+          rail-twin
+          <span className={`conn ${conn}`}>{conn === "online" ? "Live" : conn === "offline" ? "Offline" : "Connecting"}</span>
         </div>
         <div className="stats">
           <span className="clock">{hms(clock)}</span>
@@ -260,12 +354,16 @@ export function App() {
         </div>
         <div className="tools">
           <div className="seg" role="group" aria-label="Base map">
-            {(["dark", "light", "satellite"] as const).map((b) => (
-              <button key={b} aria-pressed={style === b} onClick={() => setStyle(b)}>
-                {b}
-              </button>
-            ))}
+            <button aria-pressed={!satellite} onClick={() => setSatellite(false)}>
+              Map
+            </button>
+            <button aria-pressed={satellite} onClick={() => setSatellite(true)}>
+              Satellite
+            </button>
           </div>
+          <button className="toggle icon-only" onClick={() => setTheme((t) => (t === "light" ? "dark" : "light"))} aria-label={theme === "light" ? "Dark theme" : "Light theme"} title={theme === "light" ? "Dark theme" : "Light theme"}>
+            {theme === "light" ? <Moon size={16} /> : <Sun size={16} />}
+          </button>
           <button className="toggle" aria-pressed={showTrains} onClick={() => setShowTrains((x) => !x)}>
             <Layers size={15} /> Trains
           </button>
@@ -282,7 +380,7 @@ export function App() {
         <nav className="tabs">
           {(
             [
-              ["provoke", "Provoke", Zap],
+              ["god", "God mode", Zap],
               ["incidents", "Incidents", Siren],
               ["events", "Events", Activity],
               ["connect", "Connect", Link2],
@@ -294,10 +392,63 @@ export function App() {
           ))}
         </nav>
         <div className="pane">
-          {tab === "provoke" && <Provoke selected={selected} disruptions={Object.values(disruptions)} say={say} />}
+          {tab === "god" && (
+            <GodMode
+              disruptions={Object.values(disruptions)}
+              overrides={Object.values(overrides)}
+              protection={protection}
+              placingLabel={placingLabel}
+              onPlace={(body, label) => {
+                placing.current = body;
+                setPlacingLabel(label);
+                if (mapRef.current) mapRef.current.getCanvas().style.cursor = "crosshair";
+              }}
+              onCancelPlace={() => {
+                placing.current = undefined;
+                setPlacingLabel(undefined);
+                if (mapRef.current) mapRef.current.getCanvas().style.cursor = "";
+              }}
+              say={say}
+            />
+          )}
           {tab === "incidents" && <Incidents incidents={Object.values(incidents)} say={say} />}
           {tab === "events" && <Events events={events} />}
           {tab === "connect" && <Connect />}
+        </div>
+        <div className="legend">
+          {(
+            [
+              ["Moving", COLOURS.moving],
+              ["Late ≥ 3 min", COLOURS.late],
+              ["At a station", COLOURS.station],
+              ["Stopped on the line", COLOURS.stoppedOnLine],
+              ["Cancelled", COLOURS.cancelled],
+            ] as const
+          ).map(([l, c]) => (
+            <span key={l}>
+              <i style={{ background: c }} />
+              {l}
+            </span>
+          ))}
+          <span>
+            <i style={{ background: theme === "dark" || satellite ? "#ffffff" : COLOURS.selected }} />
+            Selected
+          </span>
+          <span>
+            <i className="ring" />
+            Simulated (provoked)
+          </span>
+          {showTemp && (
+            <div className="ramp">
+              <div style={{ background: `linear-gradient(90deg, ${RAMP.map(([t, c]) => `${c} ${((t + 20) / 55) * 100}%`).join(",")})` }} />
+              <small>
+                <span>−20°</span>
+                <span>0°</span>
+                <span>15°</span>
+                <span>35°</span>
+              </small>
+            </div>
+          )}
         </div>
       </aside>
       {selected && client.current && (
@@ -317,41 +468,6 @@ export function App() {
           say={say}
         />
       )}
-      <div className="legend">
-        {(
-          [
-            ["Moving", COLOURS.moving],
-            ["Late ≥ 3 min", COLOURS.late],
-            ["At a station", COLOURS.station],
-            ["Stopped on the line", COLOURS.stoppedOnLine],
-            ["Cancelled", COLOURS.cancelled],
-          ] as const
-        ).map(([l, c]) => (
-          <span key={l}>
-            <i style={{ background: c }} />
-            {l}
-          </span>
-        ))}
-        <span>
-          <i style={{ background: COLOURS.selected }} />
-          Selected
-        </span>
-        <span>
-          <i className="ring" />
-          Simulated (provoked)
-        </span>
-        {showTemp && (
-          <div className="ramp">
-            <div style={{ background: `linear-gradient(90deg, ${RAMP.map(([t, c]) => `${c} ${((t + 20) / 55) * 100}%`).join(",")})` }} />
-            <small>
-              <span>−20°</span>
-              <span>0°</span>
-              <span>15°</span>
-              <span>35°</span>
-            </small>
-          </div>
-        )}
-      </div>
       {toast && <p className="toast">{toast}</p>}
     </div>
   );
@@ -361,8 +477,11 @@ function TrainCard({ id, client, simulated, mods, following, grid, onFollow, onC
   const [pos, setPos] = useState<Pos>();
   const [info, setInfo] = useState<Info>();
   const [maxKmh, setMaxKmh] = useState("60");
+  const [cruise, setCruise] = useState("120");
   const [hold, setHold] = useState("8");
-  const stopped = mods.find((d) => d.effect === "train_breakdown");
+  const [obstacle, setObstacle] = useState("400");
+  const stopped = mods.find((d) => d.effect === "train_breakdown" || (d.effect === "obstacle" && d.params?.collidedAt));
+  const crashed = mods.find((d) => d.effect === "obstacle" && d.params?.collidedAt);
   useEffect(() => watchTrain(client, id, (p) => setPos(p as unknown as Pos), (i) => setInfo(i as unknown as Info)), [client, id]);
   const provoke = async (type: string, params?: Record<string, number>) => {
     const r = await api<{ disruption: { label: string } }>("/disruptions", { method: "POST", json: { type, scope: { kind: "train", trainId: id }, params } }).catch((e) => (say(e.message), null));
@@ -431,25 +550,47 @@ function TrainCard({ id, client, simulated, mods, following, grid, onFollow, onC
         <button aria-pressed={following} onClick={onFollow}>
           <Crosshair size={15} /> {following ? "Following" : "Follow"}
         </button>
+        <button
+          onClick={() => void api<{ ended: string[] }>(`/trains/${id}/release`, { method: "POST", json: {} }).then((r) => say(r.ended.length ? "Released: the train moves on (late until synced)" : "Nothing to release"))}
+          disabled={!mods.length}
+          title="End every change on this train: it moves on, keeping its delay"
+        >
+          Release
+        </button>
         <button onClick={() => void sync()} disabled={!simulated && !mods.length} title="Drop every change: the train reads the real data again">
           <RefreshCcw size={15} /> Sync to real data
         </button>
       </footer>
       <div className="modify">
         <h3>Modify this train</h3>
+        {crashed && <p className="crash">Collision at {crashed.params.impactKmh} km/h</p>}
         <div className="mod-row">
           {stopped ? (
             <button className="go" onClick={() => void api(`/disruptions/${stopped.id}/end`, { method: "POST", json: {} }).then(() => say("Train released: it continues, late"))}>
               Resume
             </button>
           ) : (
-            <button className="stop" onClick={() => void provoke("rolling_stock_failure")}>
-              <Pause size={14} /> Stop now
-            </button>
+            <>
+              <button className="stop" onClick={() => void provoke("rolling_stock_failure")} title="Service braking, 0.7 m/s²">
+                <Pause size={14} /> Stop
+              </button>
+              <button className="stop" onClick={() => void provoke("emergency_brake")} title="Emergency braking, 1.2 m/s²">
+                Emergency stop
+              </button>
+            </>
           )}
           <button onClick={() => void provoke("skip_next_stop")}>Skip next stop</button>
           <button className="danger" onClick={() => void provoke("cancellation")}>
-            Cancel train
+            Cancel
+          </button>
+        </div>
+        <div className="mod-row">
+          <label>
+            Target speed
+            <input value={cruise} onChange={(e) => setCruise(e.target.value.replace(/\D/g, ""))} inputMode="numeric" /> km/h
+          </label>
+          <button disabled={!cruise} onClick={() => void provoke("target_speed", { kmh: Number(cruise) })}>
+            Apply
           </button>
         </div>
         <div className="mod-row">
@@ -459,6 +600,15 @@ function TrainCard({ id, client, simulated, mods, following, grid, onFollow, onC
           </label>
           <button disabled={!maxKmh} onClick={() => void provoke("train_speed_limit", { maxKmh: Number(maxKmh) })}>
             Apply
+          </button>
+        </div>
+        <div className="mod-row">
+          <label>
+            Obstacle ahead
+            <input value={obstacle} onChange={(e) => setObstacle(e.target.value.replace(/\D/g, ""))} inputMode="numeric" /> m
+          </label>
+          <button className="danger" disabled={!obstacle} onClick={() => void provoke("obstacle_collision", { distanceM: Number(obstacle) })}>
+            Place
           </button>
         </div>
         <div className="mod-row">
@@ -477,6 +627,8 @@ function TrainCard({ id, client, simulated, mods, following, grid, onFollow, onC
                 <span>
                   {d.label}
                   {d.params?.maxKmh && d.effect === "train_speed" ? ` · ${d.params.maxKmh} km/h` : ""}
+                  {d.params?.kmh && d.effect === "target_speed" ? ` · ${d.params.kmh} km/h` : ""}
+                  {d.effect === "obstacle" ? (d.params?.collidedAt ? ` · hit at ${d.params.impactKmh} km/h` : ` · ${d.params?.distanceM} m ahead`) : ""}
                   {d.params?.holdMinutes && d.effect === "train_delay" ? ` · ${d.params.holdMinutes} min` : ""}
                 </span>
                 <button onClick={() => void api(`/disruptions/${d.id}/end`, { method: "POST", json: {} })}>Remove</button>
@@ -490,8 +642,12 @@ function TrainCard({ id, client, simulated, mods, following, grid, onFollow, onC
   );
 }
 
-function Provoke({ selected, disruptions, say }: { selected?: string; disruptions: Disruption[]; say: (t: string) => void }) {
+type Preset = { id: string; label: string; tempC?: number; tempDeltaC?: number; precipMm?: number; windKmh?: number; gustKmh?: number };
+const NETWORK_TYPES = (t: DType) => t.scope === "section" || t.scope === "station";
+
+function GodMode({ disruptions, overrides, protection, placingLabel, onPlace, onCancelPlace, say }: { disruptions: Disruption[]; overrides: WeatherOverride[]; protection: boolean; placingLabel?: string; onPlace: (body: Record<string, unknown>, label: string) => void; onCancelPlace: () => void; say: (t: string) => void }) {
   const [types, setTypes] = useState<DType[]>([]);
+  const [presets, setPresets] = useState<Preset[]>([]);
   const [typeId, setTypeId] = useState("overhead_line_fault");
   const [from, setFrom] = useState<Station>();
   const [to, setTo] = useState<Station>();
@@ -499,27 +655,48 @@ function Provoke({ selected, disruptions, say }: { selected?: string; disruption
   const [minutes, setMinutes] = useState<string>("");
   const [maxKmh, setMaxKmh] = useState("40");
   const [hold, setHold] = useState("8");
-  const [mark, setMark] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [preset, setPreset] = useState("heatwave");
+  const [customTemp, setCustomTemp] = useState("");
+  const [radius, setRadius] = useState("20");
+  const [wMinutes, setWMinutes] = useState("60");
   useEffect(() => {
-    void api<DType[]>("/disruption-types").then(setTypes);
+    void api<DType[]>("/disruption-types").then((t) => setTypes(t.filter(NETWORK_TYPES)));
+    void api<{ presets: Preset[] }>("/god").then((g) => setPresets(g.presets));
   }, []);
   const type = types.find((t) => t.id === typeId);
   useEffect(() => setMinutes(type?.defaultMinutes ? String(type.defaultMinutes) : ""), [type]);
-  const ready = type && (type.scope === "section" ? from && to : type.scope === "station" ? station : selected);
+  const ready = type && (type.scope === "section" ? from && to : station);
   const submit = async () => {
     if (!type || !ready) return;
     setBusy(true);
-    const scope = type.scope === "section" ? { kind: "section", from: from!.id, to: to!.id } : type.scope === "station" ? { kind: "station", station: station!.id } : { kind: "train", trainId: selected };
-    const params = type.effect === "speed_restriction" ? { maxKmh: Number(maxKmh) } : type.effect === "train_delay" || type.effect === "signal_failure" ? { holdMinutes: Number(hold) } : undefined;
-    const r = await api<{ disruption: { label: string; where: string } }>("/disruptions", { method: "POST", json: { type: type.id, scope, minutes: minutes ? Number(minutes) : null, params, mark } }).catch((e) => (say(e.message), null));
+    const scope = type.scope === "section" ? { kind: "section", from: from!.id, to: to!.id } : { kind: "station", station: station!.id };
+    const params = type.effect === "speed_restriction" ? { maxKmh: Number(maxKmh) } : type.effect === "signal_failure" ? { holdMinutes: Number(hold) } : undefined;
+    const r = await api<{ disruption: { label: string; where: string } }>("/disruptions", { method: "POST", json: { type: type.id, scope, minutes: minutes ? Number(minutes) : null, params, mark: true } }).catch((e) => (say(e.message), null));
     setBusy(false);
-    if (r) say(`${r.disruption.label} provoked: ${r.disruption.where}`);
+    if (r) say(`${r.disruption.label}: ${r.disruption.where}`);
   };
-  const list = [...disruptions].sort((a, b) => Number(a.status !== "active") - Number(b.status !== "active") || b.startedAt - a.startedAt);
+  const place = () => {
+    const p = presets.find((x) => x.id === preset);
+    const body: Record<string, unknown> = customTemp ? { label: `${customTemp} °C`, tempC: Number(customTemp) } : { preset };
+    body.radiusKm = Number(radius) || 20;
+    body.minutes = wMinutes ? Number(wMinutes) : null;
+    onPlace(body, customTemp ? `${customTemp} °C` : (p?.label ?? "Weather"));
+  };
+  const toggleProtection = async () => {
+    const r = await api<{ protection: boolean }>("/god/protection", { method: "POST", json: { on: !protection } }).catch((e) => (say(e.message), null));
+    if (r) say(r.protection ? "Train protection on: trains never run into each other" : "Train protection off: drivers only see what is ahead");
+  };
+  const releaseAll = async () => {
+    const r = await api<{ ended: number }>("/god/release-all", { method: "POST", json: {} }).catch((e) => (say(e.message), null));
+    if (r) say(`${r.ended} changes ended`);
+  };
+  const live = disruptions.filter((d) => d.status === "active").sort((a, b) => b.startedAt - a.startedAt);
+  const weatherLive = overrides.filter((o) => o.status === "active");
+  const ended = disruptions.filter((d) => d.status !== "active").sort((a, b) => (b.endedAt ?? 0) - (a.endedAt ?? 0)).slice(0, 6);
   return (
     <>
-      <h3>Provoke a disruption</h3>
+      <h3>Network</h3>
       <label className="field">
         <span>Type</span>
         <select value={typeId} onChange={(e) => setTypeId(e.target.value)}>
@@ -537,7 +714,6 @@ function Provoke({ selected, disruptions, say }: { selected?: string; disruption
         </div>
       )}
       {type?.scope === "station" && <StationPicker label="Station" value={station} onChange={setStation} />}
-      {type?.scope === "train" && <p className="hint strong">{selected ? `Train: ${selected}` : "Click a train on the map to choose it."}</p>}
       <div className="row">
         <label className="field">
           <span>Duration (min)</span>
@@ -549,39 +725,113 @@ function Provoke({ selected, disruptions, say }: { selected?: string; disruption
             <input value={maxKmh} onChange={(e) => setMaxKmh(e.target.value.replace(/\D/g, ""))} />
           </label>
         )}
-        {(type?.effect === "train_delay" || type?.effect === "signal_failure") && (
+        {type?.effect === "signal_failure" && (
           <label className="field">
             <span>Hold (min)</span>
             <input value={hold} onChange={(e) => setHold(e.target.value.replace(/\D/g, ""))} />
           </label>
         )}
       </div>
-      <label className="check">
-        <input type="checkbox" checked={mark} onChange={(e) => setMark(e.target.checked)} /> Also mark a public incident
-      </label>
       <button className="primary wide" disabled={!ready || busy} onClick={() => void submit()}>
         <Zap size={15} /> Provoke
       </button>
-      <h3>Disruptions</h3>
-      {!list.length && <p className="hint">None yet.</p>}
+
+      <h3>Weather</h3>
+      <div className="chips">
+        {presets.map((p) => (
+          <button
+            key={p.id}
+            aria-pressed={!customTemp && preset === p.id}
+            onClick={() => {
+              setPreset(p.id);
+              setCustomTemp("");
+            }}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+      <div className="row">
+        <label className="field">
+          <span>Or set °C</span>
+          <input value={customTemp} onChange={(e) => setCustomTemp(e.target.value.replace(/[^\d-]/g, ""))} placeholder="e.g. 42" />
+        </label>
+        <label className="field">
+          <span>Radius (km)</span>
+          <input value={radius} onChange={(e) => setRadius(e.target.value.replace(/\D/g, ""))} />
+        </label>
+        <label className="field">
+          <span>Duration (min)</span>
+          <input value={wMinutes} onChange={(e) => setWMinutes(e.target.value.replace(/\D/g, ""))} placeholder="until ended" />
+        </label>
+      </div>
+      {placingLabel ? (
+        <div className="placing">
+          <span>Click on the map to place: {placingLabel}</span>
+          <button onClick={onCancelPlace}>Cancel</button>
+        </div>
+      ) : (
+        <button className="primary wide" onClick={place}>
+          <CloudSun size={15} /> Place on the map
+        </button>
+      )}
+
+      <h3>Safety</h3>
+      <button className={`switch ${protection ? "on" : "off"}`} onClick={() => void toggleProtection()} aria-pressed={protection}>
+        {protection ? <ShieldCheck size={18} /> : <ShieldOff size={18} />}
+        <span>
+          <b>Train protection {protection ? "on" : "off"}</b>
+          <small>{protection ? "Trains always stop behind a stopped train" : "Drivers only see a stopped train 500 m ahead"}</small>
+        </span>
+      </button>
+
+      <h3>Active</h3>
+      {!live.length && !weatherLive.length && <p className="hint">Nothing changed: every train follows the real data.</p>}
       <ul className="items">
-        {list.map((d) => (
+        {weatherLive.map((o) => (
+          <li key={o.id} data-kind="weather">
+            <div>
+              <b>{o.label}</b>
+              <span>
+                {o.radiusKm} km{o.tempC !== undefined ? ` · ${o.tempC} °C` : ""}
+                {o.tempDeltaC !== undefined ? ` · ${o.tempDeltaC > 0 ? "+" : ""}${o.tempDeltaC} °C` : ""}
+                {o.gustKmh ? ` · gusts ${o.gustKmh} km/h` : ""}
+                {o.precipMm ? ` · ${o.precipMm} mm` : ""}
+              </span>
+              <small>since {hm(o.startedAt)}{o.endsAt ? ` · until ${hm(o.endsAt)}` : ""}</small>
+            </div>
+            <button onClick={() => void api(`/weather/overrides/${o.id}/end`, { method: "POST", json: {} })}>End</button>
+          </li>
+        ))}
+        {live.map((d) => (
           <li key={d.id} data-status={d.status}>
             <div>
               <b>{d.label}</b>
               <span>{d.where}</span>
               <small>
-                {d.status === "active" ? `since ${hm(d.startedAt)}${d.endsAt ? ` · until ${hm(d.endsAt)}` : ""}` : `ended ${hm(d.endedAt)}`} · {d.affectedTrains.length} trains affected
+                since {hm(d.startedAt)}
+                {d.endsAt ? ` · until ${hm(d.endsAt)}` : ""} · {d.affectedTrains.length} trains
               </small>
             </div>
-            {d.status === "active" ? (
-              <button onClick={() => void api(`/disruptions/${d.id}/end`, { method: "POST", json: {} }).then(() => say("Disruption ended: trains resume, still late until synced"))}>End</button>
-            ) : (
-              <button onClick={() => void api(`/disruptions/${d.id}`, { method: "DELETE" })}>Remove</button>
-            )}
+            <button onClick={() => void api(`/disruptions/${d.id}/end`, { method: "POST", json: {} })}>End</button>
+          </li>
+        ))}
+        {ended.map((d) => (
+          <li key={d.id} data-status={d.status}>
+            <div>
+              <b>{d.label}</b>
+              <span>{d.where}</span>
+              <small>ended {hm(d.endedAt)} · {d.affectedTrains.length} trains</small>
+            </div>
+            <button onClick={() => void api(`/disruptions/${d.id}`, { method: "DELETE" })}>Remove</button>
           </li>
         ))}
       </ul>
+      <div className="row actions">
+        <button className="secondary" onClick={() => void releaseAll()}>
+          End everything
+        </button>
+      </div>
     </>
   );
 }
