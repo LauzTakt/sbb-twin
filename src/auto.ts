@@ -52,6 +52,9 @@ export function autoIncidents(t: number, crashes: { trainId: string; impactKmh: 
     }
     add("collision", tr, "critical", `Collision: ${label(tr)} (${Math.round(c.impactKmh)} km/h)`, true);
   }
+  // a train that already has an incident from Control (e.g. a provoked breakdown) is not flagged twice as stopped
+  const flagged = new Set<string>();
+  for (const i of incidents.values()) if (i.source !== "auto" && "trainId" in i.scope) flagged.add(i.scope.trainId);
   for (const tr of trains.values()) {
     const id = tr.trip.trainId;
     // only where the twin's map is (cross-border trains far into France, Germany or Italy are not flagged)
@@ -63,7 +66,7 @@ export function autoIncidents(t: number, crashes: { trainId: string; impactKmh: 
     // stopped on the open line (a collided train already has its incident)
     if (tr.leg >= 0 && tr.speed < 0.5) {
       if (!stoppedSince.has(id)) stoppedSince.set(id, t);
-      if (t - stoppedSince.get(id)! >= STOPPED_S * 1000 && !collided.has(id)) add("stopped", tr, "major", `Train stopped on the line: ${label(tr)}`, true);
+      if (t - stoppedSince.get(id)! >= STOPPED_S * 1000 && !collided.has(id) && !flagged.has(id)) add("stopped", tr, "major", `Train stopped on the line: ${label(tr)}`, true);
     } else stoppedSince.delete(id);
     const delay = delayOf(tr, t);
     const lateId = idOf("late", id);

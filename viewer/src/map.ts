@@ -4,26 +4,6 @@
 import type { LayerSpecification, Map as LibreMap, StyleSpecification } from "maplibre-gl";
 
 const LIGHT = "https://vectortiles.geo.admin.ch/styles/ch.swisstopo.lightbasemap.vt/style.json";
-// swisstopo's colour base map: the same layers in colour (forests, meadows, water, roads). Used for the 3D world.
-const COLOUR = "https://vectortiles.geo.admin.ch/styles/ch.swisstopo.basemap.vt/style.json";
-let colourPaint = new Map<string, Record<string, unknown>>();
-let colourLoad: Promise<void> | undefined;
-/** Loads the colour palette once (only its colours and opacities: shapes and widths stay the grey map's). */
-export function loadColour() {
-  colourLoad ??= fetch(COLOUR)
-    .then((r) => r.json() as Promise<StyleSpecification>)
-    .then((style) => {
-      for (const l of style.layers) {
-        if (l.type === "symbol" || l.type === "raster") continue;
-        const paint = Object.fromEntries(Object.entries((l as { paint?: Record<string, unknown> }).paint ?? {}).filter(([k]) => /-(color|opacity)$/.test(k) && k !== "fill-outline-color"));
-        if (Object.keys(paint).length) colourPaint.set(l.id, paint);
-      }
-    })
-    .catch(() => {
-      colourLoad = undefined; // try again next time
-    });
-  return colourLoad;
-}
 export type Theme = "light" | "dark";
 
 let original = new Map<string, Record<string, unknown>>(); // light paint of every base layer
@@ -72,7 +52,7 @@ function darkPaint(l: LayerSpecification): Record<string, unknown> {
 // and red means a disruption here: those base-map lines are hidden.
 const HIDDEN = /^(tunnel_|l1_|l2_)?public_transport(_aerialway)?$/;
 
-export function applyBase(map: LibreMap, theme: Theme, satellite: boolean, colour = false) {
+export function applyBase(map: LibreMap, theme: Theme, satellite: boolean) {
   if (!map.getLayer("swissimage")) return; // style not ready (or replaced): nothing to recolour yet
   const style = map.getStyle();
   for (const l of style.layers) if (HIDDEN.test(l.id) && map.getLayoutProperty(l.id, "visibility") !== "none") map.setLayoutProperty(l.id, "visibility", "none");
@@ -80,10 +60,9 @@ export function applyBase(map: LibreMap, theme: Theme, satellite: boolean, colou
     if (!baseIds.includes(l.id)) continue;
     const base = original.get(l.id) ?? {};
     const dark = darkPaint(l);
-    const tint = colour && theme === "light" ? (colourPaint.get(l.id) ?? {}) : {};
-    const target: Record<string, unknown> = theme === "dark" ? { ...base, ...dark } : { ...base, ...tint };
-    // back to the plain light map: properties only the dark theme or the colour map set go back to their defaults
-    if (theme === "light") for (const k of [...Object.keys(dark), ...Object.keys(colourPaint.get(l.id) ?? {})]) if (!(k in base) && !(k in tint)) target[k] = undefined;
+    const target: Record<string, unknown> = theme === "dark" ? { ...base, ...dark } : { ...base };
+    // back to light: properties only the dark theme sets go back to their defaults
+    if (theme === "light") for (const k of Object.keys(dark)) if (!(k in base)) target[k] = undefined;
     for (const [k, v] of Object.entries(target)) {
       if (k.endsWith("-transition")) continue;
       try {
