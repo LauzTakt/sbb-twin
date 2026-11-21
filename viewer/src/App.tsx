@@ -4,7 +4,7 @@ import type { GeoJSONSource, ImageSource, Map as LibreMap } from "maplibre-gl";
 import { Activity, CircleDot, CloudSnow, CloudSun, Crosshair, Layers, Link2, Moon, Mountain, Pause, RefreshCcw, ShieldCheck, ShieldOff, Siren, Sun, Thermometer, TrainFront, Wind, X, Zap } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, brokerUrl, connectLive, type ControlState, type Live, type RealAlert, type Disruption, type Event, type Incident, type Status, type TemperatureGrid, type WeatherOverride, type WeatherSnapshot } from "./feed";
-import { applyBase, baseStyle, type Theme } from "./map";
+import { applyBase, baseStyle, type Theme, loadColour } from "./map";
 import { COLOURS, TrainCanvas } from "./trains";
 import { gridImage, precipImage, RAIN_LEGEND, RAMP, rampColour, SNOW_LEGEND, temperatureAt } from "./weatherLayer";
 import { WeatherParticles } from "./particles";
@@ -129,7 +129,7 @@ export function App() {
     }
   });
   const [satellite, setSatellite] = useState(false);
-  const look = useRef({ theme, satellite });
+  const look = useRef({ theme, satellite, threeD: false });
   const prevTheme = useRef(theme);
   const [overrides, setOverrides] = useState<Record<string, WeatherOverride>>({});
   const [protection, setProtection] = useState(true);
@@ -257,8 +257,12 @@ export function App() {
     const m = mapRef.current;
     const t = layer.current;
     if (!m || !t) return;
+    look.current = { ...look.current, threeD };
     if (threeD) void enable3D(m, t);
     else disable3D(m, t);
+    if (threeD) void loadColour().then(() => look.current.threeD && restyle(m));
+    else restyle(m);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [threeD, ready]);
   // the twin sends its whole control state whenever it changes: the page shows exactly that, nothing older
   const applyState = useRef((s: ControlState) => {
@@ -358,8 +362,8 @@ export function App() {
   }
   /** Light/dark page and map, or satellite: recolour in place (no reload). */
   function restyle(m: LibreMap) {
-    const { theme: th, satellite: sat } = look.current;
-    applyBase(m, th, sat);
+    const { theme: th, satellite: sat, threeD: world } = look.current;
+    applyBase(m, th, sat, world);
     const rail = sat ? "#ffffff" : th === "dark" ? "#9aa6b8" : "#444444";
     const halo = sat ? "rgba(0,0,0,0.55)" : th === "dark" ? "#0b0e11" : "#ffffff";
     if (m.getLayer("network")) {
@@ -388,7 +392,7 @@ export function App() {
     if (m.getLayer("wind-arrow")) m.setPaintProperty("wind-arrow", "icon-halo-color", dark ? "rgba(16,20,24,0.92)" : "rgba(255,255,255,0.95)");
   }
   useEffect(() => {
-    look.current = { theme, satellite };
+    look.current = { ...look.current, theme, satellite };
     document.documentElement.dataset.theme = theme;
     try {
       localStorage.setItem("sbb-twin-theme", theme);
@@ -638,7 +642,11 @@ export function App() {
           <span>
             <b>{active.length}</b> disruptions
           </span>
-          <span className="rt" title="Age of the official GTFS-RT predictions">RT {status?.realtime.feedAgeSec ?? "–"} s</span>
+          {(status?.realtime.feedAgeSec ?? 0) > 180 && (
+            <span className="warn" title="The official real-time predictions are late: trains follow their last known delays">
+              live data {Math.round((status?.realtime.feedAgeSec ?? 0) / 60)} min old
+            </span>
+          )}
           {weather?.measuredAt && (
             <span className="wx" title="MeteoSwiss measurement time">
               weather {hm(weather.measuredAt)}
@@ -753,7 +761,7 @@ export function App() {
             </span>
           ))}
           <span>
-            <i style={{ background: theme === "dark" || satellite ? "#ffffff" : COLOURS.selected }} />
+            <i className="selected" />
             Selected
           </span>
           <span>
@@ -1370,7 +1378,7 @@ function Incidents({ incidents, alerts, picked, onUnmark, onCreated, say }: { in
       <button className="primary wide" disabled={!title.trim()} onClick={() => void submit()}>
         <Siren size={15} /> Mark
       </button>
-      <h3>Marked incidents</h3>
+      <h3>Incidents</h3>
       {!incidents.length && <p className="hint">None.</p>}
       <ul className="items">
         {[...incidents]
@@ -1382,10 +1390,10 @@ function Incidents({ incidents, alerts, picked, onUnmark, onCreated, say }: { in
                 <span>{i.where}</span>
                 <small>
                   {i.severity} · {hm(i.createdAt)}
-                  {i.disruptionId ? " · from a provoked disruption" : ""}
+                  {i.source === "auto" ? " · automatic" : i.disruptionId ? " · from a provoked disruption" : ""}
                 </small>
               </div>
-              <button onClick={() => onUnmark(i.id)}>Unmark</button>
+              {i.source !== "auto" && <button onClick={() => onUnmark(i.id)}>Unmark</button>}
             </li>
           ))}
       </ul>

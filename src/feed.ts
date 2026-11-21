@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { clear, publish, brokerStats } from "./mqtt.ts";
 import * as channel from "./channel.ts";
 import { alertsState } from "./alerts.ts";
+import { autoIncidents } from "./auto.ts";
 import { config } from "./config.ts";
 import { byTrainId, collisions, delayOf, edgeName, expectedArrival, expectedDeparture, nextCall, settings, timetableDate, trains, tripMeta, type Train } from "./engine.ts";
 import { stops } from "./timetable.ts";
@@ -158,7 +159,14 @@ let lastStatus = 0;
 
 export function publishTick(t: number, removed: Train[]) {
   tickNo++;
-  for (const c of collisions.splice(0)) event("disruption", { type: "train.collision", trainId: c.trainId, id: c.disruptionId, impactKmh: c.impactKmh, withTrain: c.withTrain ?? null });
+  const crashes = collisions.splice(0);
+  for (const c of crashes) event("disruption", { type: "train.collision", trainId: c.trainId, id: c.disruptionId, impactKmh: c.impactKmh, withTrain: c.withTrain ?? null });
+  // automatic incidents (collisions, trains stopped on the line, long delays, cancellations): public like marked ones
+  for (const ch of autoIncidents(t, crashes)) {
+    if (ch.kind === "closed") clear(`incidents/${ch.incident.id}`);
+    else publish(`incidents/${ch.incident.id}`, incidentPayload(ch.incident), { retain: true, qos: 1 });
+    if (ch.kind !== "updated") event("incident", { type: ch.kind === "opened" ? "incident.marked" : "incident.unmarked", id: ch.incident.id, title: ch.incident.title, severity: ch.incident.severity, source: "auto" });
+  }
   const fleet: unknown[] = [];
   for (const tr of trains.values()) {
     const id = tr.trip.trainId;

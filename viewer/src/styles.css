@@ -506,6 +506,11 @@ textarea:focus-visible {
   border: 1.5px solid var(--white);
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
 }
+.legend i.selected {
+  background: transparent;
+  border: 2px solid var(--white);
+  box-shadow: 0 0 0 2.5px #0079c7;
+}
 .legend i.ring {
   border: 1.5px dashed var(--charcoal);
   box-shadow: none;

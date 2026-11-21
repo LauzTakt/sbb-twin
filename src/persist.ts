@@ -1,4 +1,4 @@
-// God-mode state survives restarts: disruptions, weather changes, marked incidents and switches are saved to disk
+// Control state survives restarts: disruptions, weather changes, marked incidents and switches are saved to disk
 // (every couple of seconds when something changed) and restored at startup.
 import { existsSync, readFileSync, writeFileSync, renameSync } from "node:fs";
 import { join } from "node:path";
@@ -14,7 +14,7 @@ function snapshot(): Saved {
   return {
     disruptions: [...disruptions.values()].map((d) => ({ ...d, edges: [...d.edges], affected: [...d.affected] })),
     overrides: [...weather.overrides.values()],
-    incidents: [...incidents.values()],
+    incidents: [...incidents.values()].filter((i) => i.source !== "auto"), // automatic ones are recomputed
     settings: { ...settings },
   };
 }

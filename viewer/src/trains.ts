@@ -129,7 +129,7 @@ export class TrainCanvas {
       ctx.save();
       ctx.translate(p.x, p.y);
       if (selected) {
-        // pulsing sky-blue ring around a charcoal marker: the selected train stands out on any map
+        // pulsing sky-blue ring: the selected train stands out on any map, in its own colour
         const pulse = (performance.now() % 1400) / 1400;
         ctx.beginPath();
         ctx.arc(0, 0, r * (2 + pulse * 2.4), 0, Math.PI * 2);
@@ -160,16 +160,16 @@ export class TrainCanvas {
         ctx.lineTo(-r, r);
         ctx.closePath();
       }
-      // contrast on every base map: a thin dark halo, then a white outline, then the colour
+      // contrast on every base map: a thin dark halo (the selected train: a sky-blue contour), a white outline, the colour
       ctx.lineJoin = "round";
-      ctx.strokeStyle = "rgba(0,0,0,0.45)";
-      ctx.lineWidth = 4.2;
+      ctx.strokeStyle = selected ? "#0079c7" : "rgba(0,0,0,0.45)";
+      ctx.lineWidth = selected ? 8 : 4.2;
       ctx.stroke();
       ctx.strokeStyle = "#ffffff";
       ctx.lineWidth = 2;
       ctx.stroke();
       const pal = this.theme === "dark" ? DARK_COLOURS : COLOURS;
-      ctx.fillStyle = selected ? pal.selected : colourOf(t.state, t.delay, t.atStop, pal);
+      ctx.fillStyle = colourOf(t.state, t.delay, t.atStop, pal); // selecting never changes the colour
       ctx.fill();
       ctx.restore();
       if (labels || selected) {
