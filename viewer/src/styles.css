@@ -856,3 +856,9 @@ textarea:focus-visible {
     display: none;
   }
 }
+
+.items li.picked {
+  outline: 2px solid var(--sky);
+  outline-offset: 1px;
+  background: color-mix(in srgb, var(--sky) 7%, var(--white));
+}

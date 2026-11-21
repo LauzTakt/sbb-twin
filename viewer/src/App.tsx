@@ -27,6 +27,14 @@ const ago = (ms: number) => {
 };
 const lineColour = (cat: string) => (/^(IC|ICE|EC|IR|TGV|RJX|EN|NJ|ICN)$/.test(cat) ? "#eb0000" : cat === "EV" ? "#ff9f1c" : /^(RE|IRE)$/.test(cat) ? "#2d327d" : "#39424e");
 const empty = { type: "FeatureCollection" as const, features: [] };
+/** Rough size of an event's geometry in km, so the smallest one under the cursor wins the click. */
+function extent(g: { type: string; coordinates: unknown } | null): number {
+  if (!g || g.type === "Point") return 0;
+  const lines = (g.type === "MultiLineString" ? g.coordinates : g.type === "LineString" ? [g.coordinates] : []) as number[][][];
+  let km = 0;
+  for (const l of lines) for (let i = 1; i < l.length; i++) km += Math.hypot((l[i][0] - l[i - 1][0]) * 76, (l[i][1] - l[i - 1][1]) * 111);
+  return km;
+}
 
 function StationPicker({ label, value, onChange, options }: { label: string; value?: Station; onChange: (s?: Station) => void; options?: (Station & { km?: number })[] }) {
   const [q, setQ] = useState("");
@@ -105,6 +113,7 @@ export function App() {
   const [overrides, setOverrides] = useState<Record<string, WeatherOverride>>({});
   const [protection, setProtection] = useState(true);
   const placing = useRef<Record<string, unknown> | undefined>(undefined);
+  const [picked, setPicked] = useState<{ kind: "disruption" | "incident" | "weather"; id: string }>();
   const [placingLabel, setPlacingLabel] = useState<string>();
   const [showTemp, setShowTemp] = useState(false);
   const [showTrains, setShowTrains] = useState(true);
@@ -152,8 +161,29 @@ export function App() {
           return;
         }
         const id = layer.current?.hit(e.point.x, e.point.y);
-        setSelected(id);
-        if (!id) setFollowing(false);
+        if (id) {
+          setSelected(id);
+          return;
+        }
+        // no train there: the smallest event under the cursor (a station before a section before a weather area)
+        const box: [[number, number], [number, number]] = [
+          [e.point.x - 7, e.point.y - 7],
+          [e.point.x + 7, e.point.y + 7],
+        ];
+        const layers = ["disruption-point", "disruption-line", "disruption-glow", "area-fill"].filter((l) => m.getLayer(l));
+        const hit = m
+          .queryRenderedFeatures(box, { layers })
+          .filter((f) => f.properties?.id)
+          .sort((a, b) => Number(a.properties.size) - Number(b.properties.size))[0];
+        if (hit) {
+          const kind = hit.properties.kind as "disruption" | "incident" | "weather";
+          setPicked({ kind, id: String(hit.properties.id) });
+          setTab(kind === "incident" ? "incidents" : "god");
+          return;
+        }
+        setPicked(undefined);
+        setSelected(undefined);
+        setFollowing(false);
       });
       m.on("dragstart", () => setFollowing(false));
       client.current = connectFeed({
@@ -222,6 +252,7 @@ export function App() {
       m.addSource("areas", { type: "geojson", data: d.areas as never });
       m.addLayer({ id: "area-fill", type: "fill", source: "areas", paint: { "fill-color": ["get", "colour"], "fill-opacity": 0.14 } });
       m.addLayer({ id: "area-line", type: "line", source: "areas", paint: { "line-color": ["get", "colour"], "line-width": 2, "line-dasharray": [3, 2] } });
+      m.addLayer({ id: "area-picked", type: "line", source: "areas", filter: ["==", ["get", "id"], ""], paint: { "line-color": "#0079c7", "line-width": 4 } });
       m.addLayer({ id: "area-label", type: "symbol", source: "areas", layout: { "text-field": ["get", "label"], "text-size": 13, "text-font": ["Frutiger Neue Bold"], "symbol-placement": "point" }, paint: { "text-color": ["get", "colour"], "text-halo-color": "#ffffff", "text-halo-width": 2 } });
     }
     if (!m.getSource("disruptions")) {
@@ -229,6 +260,8 @@ export function App() {
       m.addLayer({ id: "disruption-glow", type: "line", source: "disruptions", filter: ["==", ["geometry-type"], "MultiLineString"], paint: { "line-color": ["get", "colour"], "line-width": 12, "line-opacity": 0.25, "line-blur": 4 } });
       m.addLayer({ id: "disruption-line", type: "line", source: "disruptions", filter: ["==", ["geometry-type"], "MultiLineString"], paint: { "line-color": ["get", "colour"], "line-width": 3.5, "line-dasharray": [2, 1.2] } });
       m.addLayer({ id: "disruption-point", type: "circle", source: "disruptions", filter: ["==", ["geometry-type"], "Point"], paint: { "circle-radius": 11, "circle-color": "rgba(0,0,0,0)", "circle-stroke-color": ["get", "colour"], "circle-stroke-width": 3 } });
+      m.addLayer({ id: "picked-line", type: "line", source: "disruptions", filter: ["==", ["get", "id"], ""], paint: { "line-color": "#0079c7", "line-width": 7, "line-opacity": 0.85 } });
+      m.addLayer({ id: "picked-point", type: "circle", source: "disruptions", filter: ["==", ["get", "id"], ""], paint: { "circle-radius": 16, "circle-color": "rgba(0,121,199,0.15)", "circle-stroke-color": "#0079c7", "circle-stroke-width": 3 } });
     }
     if (!m.getSource("weather")) {
       m.addSource("weather", { type: "geojson", data: d.weather as never });
@@ -282,7 +315,7 @@ export function App() {
     data.current.areas = {
       type: "FeatureCollection",
       features: list.flatMap((o) => [
-        { type: "Feature" as const, properties: { colour: colour(o), label: "" }, geometry: { type: "Polygon", coordinates: [circle(o)] } },
+        { type: "Feature" as const, properties: { colour: colour(o), label: "", id: o.id, kind: "weather", size: o.radiusKm * 2 }, geometry: { type: "Polygon", coordinates: [circle(o)] } },
         { type: "Feature" as const, properties: { colour: colour(o), label: `${o.label}\n${describe(o)}` }, geometry: { type: "Point", coordinates: [o.lon, o.lat] } },
       ]),
     };
@@ -292,10 +325,10 @@ export function App() {
     const features = [
       ...Object.values(disruptions)
         .filter((d) => d.status === "active" && d.geometry)
-        .map((d) => ({ type: "Feature" as const, properties: { colour: "#eb0000" }, geometry: d.geometry as FC["features"][number]["geometry"] })),
+        .map((d) => ({ type: "Feature" as const, properties: { colour: "#eb0000", id: d.id, kind: "disruption", size: extent(d.geometry) }, geometry: d.geometry as FC["features"][number]["geometry"] })),
       ...Object.values(incidents)
         .filter((i) => i.geometry)
-        .map((i) => ({ type: "Feature" as const, properties: { colour: "#f27e00" }, geometry: i.geometry as FC["features"][number]["geometry"] })),
+        .map((i) => ({ type: "Feature" as const, properties: { colour: "#f27e00", id: i.id, kind: "incident", size: extent(i.geometry) }, geometry: i.geometry as FC["features"][number]["geometry"] })),
     ];
     data.current.disruptions = { type: "FeatureCollection", features };
     (mapRef.current?.getSource("disruptions") as GeoJSONSource | undefined)?.setData(data.current.disruptions as never);
@@ -331,6 +364,16 @@ export function App() {
     if (m && showTemp && !m.getSource("temperature")) addTemperature(m);
     for (const id of ["temperature", "weather-label"]) if (m?.getLayer(id)) m.setLayoutProperty(id, "visibility", showTemp ? "visible" : "none");
   }, [showTemp]);
+
+  // the picked event: highlighted on the map, scrolled to in the list
+  useEffect(() => {
+    const m = mapRef.current;
+    const id = picked?.id ?? "";
+    for (const l of ["picked-line", "picked-point", "area-picked"]) if (m?.getLayer(l)) m.setFilter(l, ["==", ["get", "id"], id]);
+    if (!picked) return;
+    const t = setTimeout(() => document.querySelector(`[data-id="${picked.id}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 120);
+    return () => clearTimeout(t);
+  }, [picked, tab]);
 
   // ---- actions
   const syncAll = async () => {
@@ -410,6 +453,7 @@ export function App() {
             <GodMode
               disruptions={Object.values(disruptions)}
               overrides={Object.values(overrides)}
+              picked={picked?.id}
               protection={protection}
               setProtection={setProtection}
               placingLabel={placingLabel}
@@ -426,7 +470,7 @@ export function App() {
               say={say}
             />
           )}
-          {tab === "incidents" && <Incidents incidents={Object.values(incidents)} say={say} />}
+          {tab === "incidents" && <Incidents incidents={Object.values(incidents)} picked={picked?.id} say={say} />}
           {tab === "events" && <Events events={events} />}
           {tab === "connect" && <Connect />}
         </div>
@@ -660,7 +704,7 @@ function TrainCard({ id, client, simulated, mods, following, grid, onFollow, onC
 type Preset = { id: string; label: string; tempC?: number; tempDeltaC?: number; precipMm?: number; windKmh?: number; gustKmh?: number };
 const NETWORK_TYPES = (t: DType) => t.scope === "section" || t.scope === "station";
 
-function GodMode({ disruptions, overrides, protection, setProtection, placingLabel, onPlace, onCancelPlace, say }: { disruptions: Disruption[]; overrides: WeatherOverride[]; protection: boolean; setProtection: (on: boolean) => void; placingLabel?: string; onPlace: (body: Record<string, unknown>, label: string) => void; onCancelPlace: () => void; say: (t: string) => void }) {
+function GodMode({ disruptions, overrides, picked, protection, setProtection, placingLabel, onPlace, onCancelPlace, say }: { disruptions: Disruption[]; overrides: WeatherOverride[]; picked?: string; protection: boolean; setProtection: (on: boolean) => void; placingLabel?: string; onPlace: (body: Record<string, unknown>, label: string) => void; onCancelPlace: () => void; say: (t: string) => void }) {
   const [types, setTypes] = useState<DType[]>([]);
   const [presets, setPresets] = useState<Preset[]>([]);
   const [typeId, setTypeId] = useState("overhead_line_fault");
@@ -815,7 +859,7 @@ function GodMode({ disruptions, overrides, protection, setProtection, placingLab
       {!live.length && !weatherLive.length && <p className="hint">Nothing changed: every train follows the real data.</p>}
       <ul className="items">
         {weatherLive.map((o) => (
-          <li key={o.id} data-kind="weather">
+          <li key={o.id} data-kind="weather" data-id={o.id} className={picked === o.id ? "picked" : undefined}>
             <div>
               <b>{o.label}</b>
               <span>
@@ -830,7 +874,7 @@ function GodMode({ disruptions, overrides, protection, setProtection, placingLab
           </li>
         ))}
         {live.map((d) => (
-          <li key={d.id} data-status={d.status}>
+          <li key={d.id} data-status={d.status} data-id={d.id} className={picked === d.id ? "picked" : undefined}>
             <div>
               <b>{d.label}</b>
               <span>{d.where}</span>
@@ -862,7 +906,7 @@ function GodMode({ disruptions, overrides, protection, setProtection, placingLab
   );
 }
 
-function Incidents({ incidents, say }: { incidents: Incident[]; say: (t: string) => void }) {
+function Incidents({ incidents, picked, say }: { incidents: Incident[]; picked?: string; say: (t: string) => void }) {
   const [title, setTitle] = useState("");
   const [severity, setSeverity] = useState("major");
   const [station, setStation] = useState<Station>();
@@ -906,7 +950,7 @@ function Incidents({ incidents, say }: { incidents: Incident[]; say: (t: string)
         {[...incidents]
           .sort((a, b) => b.createdAt - a.createdAt)
           .map((i) => (
-            <li key={i.id} data-severity={i.severity}>
+            <li key={i.id} data-severity={i.severity} data-id={i.id} className={picked === i.id ? "picked" : undefined}>
               <div>
                 <b>{i.title}</b>
                 <span>{i.where}</span>
