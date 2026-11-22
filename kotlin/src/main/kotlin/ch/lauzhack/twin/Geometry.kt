@@ -98,7 +98,7 @@ object Geometry {
 
     fun sectionEdges(a: Stop, b: Stop): MutableSet<Int> {
         val entry = paths["${a.id}>${b.id}"] ?: paths["${b.id}>${a.id}"]
-        if (entry != null) return entry.mapTo(HashSet()) { Math.abs(it) }
+        if (entry != null) return entry.mapTo(LinkedHashSet()) { Math.abs(it) }
         return route(a.id, b.id).toMutableSet()
     }
 
@@ -136,7 +136,7 @@ object Geometry {
     }
 
     fun edgesWithin(lat: Double, lon: Double, radiusKm: Double): MutableSet<Int> {
-        val out = HashSet<Int>()
+        val out = LinkedHashSet<Int>()
         if (!loaded) return out
         val r = radiusKm * 1000
         edges.forEachIndexed { i, e ->
