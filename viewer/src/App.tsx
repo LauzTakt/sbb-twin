@@ -5,7 +5,7 @@ import { CircleDot, Crosshair, Layers, Monitor, Moon, Plus, RefreshCcw, Sun, Tra
 import { useEffect, useRef, useState } from "react";
 import type { Resumption, ScorecardsResponse } from "../../src/contracts/forecasts";
 import { api, connectLive, send, type Disruption, type Item, type Live, type SnapshotRow, type Status } from "./feed";
-import { ForecastsPanel, ResumedCard, useForecasts } from "./Forecasts";
+import { ResumedCard } from "./Forecasts";
 import { RISK, riskPaint, type RiskSegment } from "./risk";
 import { Control } from "./Control";
 import { baseStyle, OWN, setMapTheme } from "./map";
@@ -55,13 +55,12 @@ export function App() {
   const [alertItems, setItems] = useState<Item[]>([]);
   const [disruptions, setDisruptions] = useState<Disruption[]>([]);
   const [forecasts, setForecasts] = useState<Resumption[]>([]);
-  const [tab, setTab] = useState<"disruptions" | "bulletins" | "forecasts">(() => (new URLSearchParams(location.search).get("tab") === "forecasts" ? "forecasts" : "disruptions"));
+  const [tab, setTab] = useState<"disruptions" | "bulletins">("disruptions");
   const [risk, setRisk] = useState(() => new URLSearchParams(location.search).get("risk") === "1"); // the section risk layer
   const riskRef = useRef(risk);
   riskRef.current = risk;
   const [riskInfo, setRiskInfo] = useState<{ placeholder: boolean; recall: Record<string, Record<string, number>> }>();
   const [segment, setSegment] = useState<RiskSegment>();
-  const forecastData = useForecasts();
   const [registering, setRegistering] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [picked, setPicked] = useState<string>();
@@ -388,9 +387,7 @@ export function App() {
           <div className="tabs" role="tablist">
             <button aria-pressed={tab === "disruptions"} onClick={() => setTab("disruptions")}>Disruptions</button>
             <button aria-pressed={tab === "bulletins"} onClick={() => setTab("bulletins")}>Bulletins</button>
-            <button aria-pressed={tab === "forecasts"} onClick={() => setTab("forecasts")}>Forecasts</button>
           </div>
-          {tab === "forecasts" && <ForecastsPanel data={forecastData} picked={picked} onPick={(id) => (setPicked(id), setSelected(undefined), setStation(undefined))} />}
           {tab === "bulletins" && (
             <ul className="items bulletins">
               {!sorted.some((i) => i.description) && <p className="hint">No bulletin for the current disruptions.</p>}
@@ -420,14 +417,14 @@ export function App() {
             ))}
           </ul>
           </>}
-          {tab !== "forecasts" && <div className="legend">
+          <div className="legend">
             <span><i style={{ background: "#00973b" }} />Moving</span>
             <span><i style={{ background: "#f27e00" }} />Late 3 min or more</span>
             <span><i style={{ background: "var(--train-station)" }} />At a station</span>
             <span><i style={{ background: "#eb0000" }} />Stopped on the line</span>
             <span><i className="line" style={{ background: "#eb0000" }} />Interrupted</span>
             <span><i className="line" style={{ background: "#f27e00" }} />Limited</span>
-          </div>}
+          </div>
         </aside>
       </main>
     </div>
