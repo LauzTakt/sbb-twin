@@ -38,6 +38,9 @@ export function validate(text: string, facts: BulletinFacts, template: string): 
   const t = fold(text.trim());
   if (!t) return ["empty"];
   if (t.split("\n").length !== template.split("\n").length) errors.push(`line structure: ${t.split("\n").length} lines, expected ${template.split("\n").length}`);
+  // the twin does not divert trains: a model copying "and diversions" from the examples adds a claim
+  const divert = /divers|umleitung|déviation|deviazion/i;
+  if (divert.test(t) && !divert.test(template)) errors.push("invented diversions");
   for (const l of facts.lines) if (!new RegExp(`(^|[^A-Za-z0-9])${esc(l)}([^A-Za-z0-9]|$)`).test(t)) errors.push(`missing line ${l}`);
   const stations = [facts.section.a, facts.section.b, ...(facts.replacementBus === "running" ? facts.busStops : [])].filter(Boolean) as string[];
   for (const s of [facts.section.a, facts.section.b].filter(Boolean) as string[]) if (!t.includes(fold(s))) errors.push(`missing station ${s}`);
@@ -69,6 +72,7 @@ function prompt(facts: BulletinFacts, template: string, lang: Lang) {
     `You write the public text of an SBB rail disruption bulletin in ${LANG_NAME[lang]}, in the style of the real SBB examples.`,
     "Rewrite the draft so it reads like the examples. Keep exactly one output line per draft line, in the same order, each line saying what its draft line says.",
     "Use only the facts given. Keep every station name, line name and time exactly as written. Do not add stations, lines, times, numbers, platforms, routes, reasons or advice that are not in the facts.",
+    `Write grammatical, natural ${LANG_NAME[lang]}. The examples are partly machine-translated: keep their structure and tone, never a grammar mistake.`,
     "Answer with the bulletin text only: no title, no quotes, no comments.",
   ].join("\n");
   const user = `Real SBB bulletins of the same kind (${LANG_NAME[lang]}):\n\n${shots}\n\nFacts (JSON):\n${JSON.stringify(facts)}\n\nDraft (English, ${template.split("\n").length} lines):\n${template}`;

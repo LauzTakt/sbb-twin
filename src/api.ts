@@ -268,7 +268,7 @@ export function api() {
     return "error" in r ? c.json({ error: r.error }, 404) : c.json(r);
   });
   app.get("/brief", (c) => {
-    const r = brief({ station: c.req.query("station"), from: c.req.query("from"), to: c.req.query("to") });
+    const r = brief({ station: c.req.query("station"), from: c.req.query("from"), to: c.req.query("to"), lat: c.req.query("lat"), lon: c.req.query("lon") });
     return "error" in r ? c.json({ error: r.error }, 404) : c.json(r);
   });
   app.get("/situation", (c) => {

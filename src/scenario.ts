@@ -108,13 +108,15 @@ const catRank = (line: string) => {
   return ["EC", "ICE", "TGV", "RJX", "NJ", "EN"].includes(c) ? 0 : ["IC", "ICN"].includes(c) ? 1 : ["IR", "IRE", "IRN"].includes(c) ? 2 : c === "RE" ? 3 : c === "R" ? 4 : ["S", "SN"].includes(c) ? 5 : 6;
 };
 const byLine = (a: string, b: string) => catRank(a) - catRank(b) || a.localeCompare(b, "en", { numeric: true });
-/** The lines of today's trains that run through the disruption. */
+/** The lines of the trains due through the disruption while it lasts (unknown end: the next three hours); none can pass. */
 function linesThrough(d: Disruption & { scenario: Scenario }) {
+  const from = d.scenario.start - 60_000;
+  const to = d.scenario.until ?? d.scenario.start + 3 * 3600_000;
   const out = new Set<string>();
   for (const trip of dayTrips()) {
     if (trip.cat === "EV" || out.has(trip.line)) continue;
     for (let k = 0; k < trip.stops.length - 1; k++)
-      if (hits(d, trip.stops[k], trip.stops[k + 1])) {
+      if (trip.dep[k] < to && trip.arr[k + 1] > from && hits(d, trip.stops[k], trip.stops[k + 1])) {
         out.add(trip.line);
         break;
       }
@@ -409,15 +411,6 @@ function messages(d: Disruption & { scenario: Scenario }, t: number): BulletinMe
   return out.sort((x, y) => x.ts - y.ts);
 }
 
-/** When limited, the lines still affected: those of the trains the disruption still cuts (as SBB lists them). */
-function linesCut(d: Disruption & { scenario: Scenario }) {
-  const out = new Set<string>();
-  for (const { trip } of candidates(d, dayTrips())) {
-    const ch = tripChanges.get(trip.key);
-    if (ch && ch.by === d.id && (ch.cut !== undefined || ch.startAt !== undefined) && !ch.committed) out.add(trip.line);
-  }
-  return [...out].filter((l) => d.scenario.lines.includes(l)).sort(byLine);
-}
 /** The public bulletin as it reads at time t (deterministic: the same record gives the same text). */
 export function render(d: Disruption & { scenario: Scenario }, t: number): Omit<Bulletin, "version" | "ts" | "source"> {
   const sc = d.scenario;
@@ -426,8 +419,9 @@ export function render(d: Disruption & { scenario: Scenario }, t: number): Omit<
   const where = L.where(A, B);
   const place = B ? `${A} - ${B}` : A;
   const st = stateAt(d, t, t);
-  const lines = st.state === "limited" ? linesCut(d) : sc.lines;
-  const base = { id: d.id, lang: "en" as const, lines: lines.length ? lines : sc.lines, messages: messages(d, t) };
+  // only an interrupted bulletin names lines (no train through the section can pass); with limited service which lines
+  // are hit is the control centre's call, which the data cannot reproduce, so none is named (text and data alike)
+  const base = { id: d.id, lang: "en" as const, lines: st.state === "interrupted" ? sc.lines : [], messages: messages(d, t) };
   if (st.state === "resumed") return { ...base, lifecycle: "ENDED", title: L.title("resumed", place), description: L.resumed(where) };
   const cause = causeOf(sc.cause.code);
   const bus = busState(d, t);
@@ -435,7 +429,7 @@ export function render(d: Disruption & { scenario: Scenario }, t: number): Omit<
     L.head(st.state, where),
     L.cause(cause?.clause.en ?? sc.cause.label.toLowerCase()),
     L.duration(st.durationType, st.until),
-    st.state === "interrupted" ? L.lines(base.lines) : null, // limited service: no line is named (which ones are hit is not deducible)
+    L.lines(base.lines),
     L.allow,
     st.state === "interrupted" ? L.none : announced(d, "one_track_open", t).some((m) => m.at <= t) ? L.oneTrack(st.kmh) : null,
     bus === "running" && B ? L.bus(where) : bus === "sought" && B ? L.sought(where) : null,
@@ -486,8 +480,9 @@ function publicIncident(d: Disruption & { scenario: Scenario }, b: Bulletin, t: 
 
 /** Publish a new bulletin version when the text changed. Returns it, or undefined if nothing changed. */
 function bulletin(d: Disruption & { scenario: Scenario }, t: number) {
-  const r = render(d, t);
   const last = latestBulletin(d);
+  if (last && t < last.ts) return undefined; // a tick that began before a decision must not publish the older state again
+  const r = render(d, t);
   const same = last && last.title === r.title && (last.template ?? last.description) === r.description && last.lifecycle === r.lifecycle && JSON.stringify(last.messages) === JSON.stringify(r.messages) && last.lines.join() === r.lines.join();
   if (same) return undefined;
   const b: Bulletin = { ...r, version: (last?.version ?? 0) + 1, ts: t, source: "template", template: r.description };
@@ -506,7 +501,7 @@ export function facts(d: Disruption & { scenario: Scenario }, t: number, b: Bull
     cause: causeOf(sc.cause.code)?.clause.en ?? sc.cause.label.toLowerCase(),
     durationType: st.durationType,
     until: st.until === null ? null : hhmm(st.until),
-    lines: st.state === "interrupted" ? b.lines : [],
+    lines: b.lines,
     noTrains: st.state === "interrupted",
     oneTrackKmh: st.state === "limited" && announced(d, "one_track_open", t).some((m) => m.at <= t) ? st.kmh : null,
     replacementBus: bus,

@@ -58,7 +58,7 @@ function disruptionBrief(d: S, t: number, at: Set<string>) {
     until: st.until,
     durationType: st.durationType,
     expectedEnd: d.endedAt ? null : expectedEnd(d, t),
-    lines: b?.lines ?? sc.lines,
+    lines: b ? b.lines : st.state === "interrupted" ? sc.lines : [],
     measures: sc.measures.filter((m) => m.announcedAt <= t).map((m) => ({ type: m.type, label: MEASURES.find((x) => x.type === m.type)?.label ?? m.type, at: m.at, withdrawAt: m.withdrawAt ?? null })),
     replacementBus: buses.length ? { route: sc.busStops.map(nameOf), next } : null,
     trainsCut: cut,
@@ -90,7 +90,38 @@ function stationPart(k: number, t: number) {
   return { station: place(k), departures };
 }
 
-export function brief(q: { station?: string; from?: string; to?: string }) {
+let served: { day: unknown; ks: number[] } | undefined;
+/** The served station nearest to a point (the passenger's location), with its distance in metres. */
+function nearest(lat: number, lon: number) {
+  const day = dayTrips();
+  if (!served || served.day !== day) {
+    const ks = new Set<number>();
+    for (const trip of day) for (const k of trip.stops) ks.add(k);
+    served = { day, ks: [...ks] };
+  }
+  const kx = 111_320 * Math.cos((lat * Math.PI) / 180);
+  let best = -1;
+  let bd = Infinity;
+  for (const k of served.ks) {
+    const d = Math.hypot((stops[k].lon - lon) * kx, (stops[k].lat - lat) * 110_540);
+    if (d < bd) {
+      bd = d;
+      best = k;
+    }
+  }
+  return best < 0 ? undefined : { k: best, distanceM: Math.round(bd) };
+}
+
+export function brief(q: { station?: string; from?: string; to?: string; lat?: string; lon?: string }): Record<string, unknown> {
+  // the passenger's location instead of a station: the nearest served station (as the origin when only "to" is given)
+  if (q.lat && q.lon && !q.station && !q.from) {
+    const lat = Number(q.lat);
+    const lon = Number(q.lon);
+    const n = Number.isFinite(lat) && Number.isFinite(lon) ? nearest(lat, lon) : undefined;
+    if (!n || n.distanceM > 50_000) return { error: "No station within 50 km of this point" };
+    const near = { ...place(n.k), distanceM: n.distanceM };
+    return { ...(q.to ? brief({ from: stops[n.k].id, to: q.to }) : brief({ station: stops[n.k].id })), nearest: near };
+  }
   const t = Date.now();
   const t0 = performance.now();
   if (q.from && q.to) {
