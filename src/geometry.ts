@@ -82,21 +82,13 @@ export function pathBetween(a: Stop, b: Stop): Path {
 }
 
 const roads = new Map<string, Path>();
-/** A road vehicle's way between two stops (replacement buses): the road registered for that stop pair (src/buses.ts:
- *  OSRM, from bus stop to bus stop), else a straight line; on no rail track either way. */
+/** A road vehicle's way between two stops (replacement buses): straight, on no rail track. */
 export function roadPath(a: Stop, b: Stop): Path {
   const key = `${a.id}>${b.id}`;
   let p = roads.get(key);
   if (!p) roads.set(key, (p = build([a.lon, a.lat, b.lon, b.lat], [0], false)));
   return p;
 }
-/** Register the road between two stops (lon,lat pairs). It stays fixed: a bus on it never jumps. */
-export function setRoadPath(aId: string, bId: string, coords: number[]): Path {
-  const p = build(coords, new Array(Math.max(1, coords.length / 2 - 1)).fill(0), false);
-  roads.set(`${aId}>${bId}`, p);
-  return p;
-}
-export const registeredRoad = (aId: string, bId: string) => roads.get(`${aId}>${bId}`);
 /** How a vehicle of this category gets from one stop to the next: buses (EV) by road, everything else on the rails. */
 export const travelPath = (cat: string, a: Stop, b: Stop) => (cat === "EV" ? roadPath(a, b) : pathBetween(a, b));
 

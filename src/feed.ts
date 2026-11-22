@@ -12,7 +12,6 @@ import { live } from "./realtime.ts";
 import { aiStats } from "./bulletinAI.ts";
 import { forget, isScenario, latestBulletin, scenarioFields } from "./scenario.ts";
 import { resumptions } from "./resumption.ts";
-import { busStopOf } from "./buses.ts";
 
 export const VERSION = "1.0.0";
 export const startedAt = Date.now();
@@ -55,10 +54,6 @@ export function positionPayload(tr: Train, t: number) {
   };
 }
 
-const busCall = (stationId: string) => {
-  const b = busStopOf(stationId);
-  return b ? { name: b.name, lat: b.lat, lon: b.lon, walkMin: b.walkMin } : null;
-};
 export function infoPayload(tr: Train, t: number) {
   const m = tripMeta(tr.trip.tripId);
   const n = tr.trip.arr.length;
@@ -69,7 +64,6 @@ export function infoPayload(tr: Train, t: number) {
   const last = lt.lastServed;
   const first = lt.firstServed;
   const cut = last < n - 1;
-  const bus = tr.trip.cat === "EV";
   return {
     v: 1,
     trainId: tr.trip.trainId,
@@ -101,7 +95,6 @@ export function infoPayload(tr: Train, t: number) {
       actualDep: i < n - 1 ? num(tr.actDep[i]) : null,
       skipped: Boolean(tr.skipped[i]) || i > last || i < first,
       cancelled: i > last || i < first,
-      ...(bus ? { busStop: busCall(stop(i).id) } : {}), // a replacement bus calls at the station's real bus stop
     })),
     updatedAt: t,
   };

@@ -198,9 +198,7 @@ export class TrainCanvas {
       }
       ctx.rotate(((t.bearing - rot) * Math.PI) / 180);
       ctx.beginPath();
-      const bus = t.cat === "EV"; // a replacement bus: always a bus body (front up), never a train's arrow or dot
-      if (bus) ctx.roundRect(-r * 0.85, -r * 1.3, r * 1.7, r * 2.6, r * 0.45);
-      else if (t.state !== "moving") ctx.arc(0, 0, r * 0.95, 0, Math.PI * 2);
+      if (t.state !== "moving") ctx.arc(0, 0, r * 0.95, 0, Math.PI * 2);
       else {
         ctx.moveTo(0, -r * 1.5);
         ctx.lineTo(r, r);
@@ -219,17 +217,6 @@ export class TrainCanvas {
       ctx.stroke();
       ctx.fillStyle = colourOf(t.state, t.delay, t.atStop, ink); // selecting never changes the colour
       ctx.fill();
-      if (bus) {
-        // the windscreen at the front and the wheels: readable as a bus from zoom 8 on
-        ctx.fillStyle = ink.outline;
-        ctx.beginPath();
-        ctx.roundRect(-r * 0.55, -r * 1.02, r * 1.1, r * 0.5, r * 0.15);
-        ctx.fill();
-        if (r >= 5) {
-          ctx.fillRect(-r * 0.55, r * 0.45, r * 0.3, r * 0.3);
-          ctx.fillRect(r * 0.25, r * 0.45, r * 0.3, r * 0.3);
-        }
-      }
       ctx.restore();
       if ((labels || selected) && !dim) {
         // SBB-style tag: white pill (dark on the dark map), line in charcoal, delay in red
