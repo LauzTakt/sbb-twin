@@ -1,0 +1,27 @@
+{
+ "name": "post_resumption",
+ "version": "1.0",
+ "a": -0.962943,
+ "b": -1.635479,
+ "bands": [
+  {
+   "min": 0.25,
+   "label": "check first"
+  },
+  {
+   "min": 0.12,
+   "label": "check"
+  },
+  {
+   "min": 0,
+   "label": "low"
+  }
+ ],
+ "formula": "risk = sigmoid(a + b * leadMinutes / 60)",
+ "leadMinutes": "minutes from the \"Service resumed\" notice to the train's first scheduled call at a station named in it (planned arrival, else departure)",
+ "roster": "regular trains (no extra services, no replacement buses) calling once at each named station, at most 120 scheduled minutes between them, first named call within 60 minutes after the notice; single-station notices use that station",
+ "trainedOn": "2024-03..2025-12",
+ "testedOn": "2026-01..2026-10",
+ "runsTrain": 1997,
+ "scorecard": "scorecard.json"
+}

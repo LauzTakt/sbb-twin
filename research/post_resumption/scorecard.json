@@ -1,0 +1,257 @@
+{
+ "model": "post_resumption",
+ "generatedAt": "2026-11-22T06:35:32+00:00",
+ "data": {
+  "incidentsTrain": 340,
+  "incidentsTest": 123,
+  "runsTrain": 1997,
+  "runsTest": 769,
+  "source": "VIA liveticker export (incident + incident_audit, 2026-10-12) for the \"Service resumed\" notices; SBB Ist-Daten 2024-03..2026-10 (monthly extracts at incident stations) for the train outcomes",
+  "resumptionNotices": 520,
+  "scoredNotices": 463,
+  "runsAllYears": 2766,
+  "notScored": {
+   "endpoint not in the operating records": 25,
+   "no eligible regular train in the hour": 31,
+   "month edge (rows may sit in the neighbouring month)": 1
+  }
+ },
+ "headline": "After SBB announced \"Service resumed\", 37% of the trains due in the first 15 minutes still lost a stop on the section in 2026, against 11% in the last 15 minutes of the hour; a model using only the minutes since the notice beat the historical rate in both forward years (2025 and 2026).",
+ "acceptance": {
+  "rule": "lower Brier than the baseline in both forward years and the 95% interval of the improvement above zero in both",
+  "passed": true
+ },
+ "metrics": [
+  {
+   "name": "Brier score, 2026 test (trained on 2024-25): 769 runs after 123 resumptions",
+   "lowerIsBetter": true,
+   "values": {
+    "model": 0.15615,
+    "baseline": 0.16492
+   },
+   "ci95": {
+    "model_vs_baseline": [
+     0.00652,
+     0.01159
+    ]
+   },
+   "improvement": 0.00878,
+   "note": "ci95 is the improvement (baseline minus model): paired bootstrap of 5,000 resamples of the 38 ISO weeks; above zero means the model is better. Baseline: the training-years cancellation rate, 15.5% for every train."
+  },
+  {
+   "name": "Brier score, 2025 test (trained on 2024): 1,043 runs after 170 resumptions",
+   "lowerIsBetter": true,
+   "values": {
+    "model": 0.12206,
+    "baseline": 0.12607
+   },
+   "ci95": {
+    "model_vs_baseline": [
+     0.00057,
+     0.00768
+    ]
+   },
+   "improvement": 0.00401,
+   "note": "ci95 is the improvement (baseline minus model): paired bootstrap of 5,000 resamples of the 50 ISO weeks; above zero means the model is better. Baseline: the training-years cancellation rate, 16.2% for every train."
+  },
+  {
+   "name": "Brier score with every resumption weighted equally, 2026 test",
+   "lowerIsBetter": true,
+   "values": {
+    "model": 0.1253,
+    "baseline": 0.13351
+   }
+  },
+  {
+   "name": "Brier score with every resumption weighted equally, 2025 test",
+   "lowerIsBetter": true,
+   "values": {
+    "model": 0.1264,
+    "baseline": 0.12974
+   }
+  }
+ ],
+ "calibration": [
+  {
+   "bin": "0-15 min after the notice",
+   "predicted": 0.2387,
+   "observed": 0.3744,
+   "n": 195,
+   "cancelled": 73
+  },
+  {
+   "bin": "15-30 min after the notice",
+   "predicted": 0.1728,
+   "observed": 0.1897,
+   "n": 195,
+   "cancelled": 37
+  },
+  {
+   "bin": "30-45 min after the notice",
+   "predicted": 0.1216,
+   "observed": 0.1368,
+   "n": 190,
+   "cancelled": 26
+  },
+  {
+   "bin": "45-60 min after the notice",
+   "predicted": 0.0852,
+   "observed": 0.1111,
+   "n": 189,
+   "cancelled": 21
+  }
+ ],
+ "calibrationByBand": [
+  {
+   "bin": "check first",
+   "predicted": 0.2623,
+   "observed": 0.4583,
+   "n": 72,
+   "cancelled": 33
+  },
+  {
+   "bin": "check",
+   "predicted": 0.178,
+   "observed": 0.2167,
+   "n": 420,
+   "cancelled": 91
+  },
+  {
+   "bin": "low",
+   "predicted": 0.0931,
+   "observed": 0.1191,
+   "n": 277,
+   "cancelled": 33
+  }
+ ],
+ "calibration2025": [
+  {
+   "bin": "0-15 min after the notice",
+   "predicted": 0.2443,
+   "observed": 0.2548,
+   "n": 259,
+   "cancelled": 66
+  },
+  {
+   "bin": "15-30 min after the notice",
+   "predicted": 0.179,
+   "observed": 0.1362,
+   "n": 279,
+   "cancelled": 38
+  },
+  {
+   "bin": "30-45 min after the notice",
+   "predicted": 0.1257,
+   "observed": 0.0806,
+   "n": 248,
+   "cancelled": 20
+  },
+  {
+   "bin": "45-60 min after the notice",
+   "predicted": 0.0882,
+   "observed": 0.1167,
+   "n": 257,
+   "cancelled": 30
+  }
+ ],
+ "observedAllYears": [
+  {
+   "bin": "0-15 min after the notice",
+   "observed": 0.2996,
+   "n": 711,
+   "cancelled": 213
+  },
+  {
+   "bin": "15-30 min after the notice",
+   "observed": 0.1474,
+   "n": 699,
+   "cancelled": 103
+  },
+  {
+   "bin": "30-45 min after the notice",
+   "observed": 0.1082,
+   "n": 693,
+   "cancelled": 75
+  },
+  {
+   "bin": "45-60 min after the notice",
+   "observed": 0.1131,
+   "n": 663,
+   "cancelled": 75
+  }
+ ],
+ "coefficients": {
+  "fold2026": {
+   "a": -0.962943,
+   "b": -1.635479,
+   "trainedOn": "2024-03..2025-12",
+   "runs": 1997,
+   "usedIn": "model.json"
+  },
+  "fold2025": {
+   "a": -0.919662,
+   "b": -1.618185,
+   "trainedOn": "2024-03..2024-12",
+   "runs": 954
+  },
+  "allYears": {
+   "a": -0.785566,
+   "b": -1.820373,
+   "trainedOn": "2024-03..2026-10",
+   "runs": 2766,
+   "note": "reference only: not tested on a later period"
+  }
+ },
+ "examples": [
+  {
+   "id": "2195004968685 R91 18:11",
+   "title": "Sion - Sierre/Siders, 2 Jan 2026: R91 due at Sion 18:11",
+   "announced": "Service resumed at 18:08; the train was due 2 min later",
+   "predicted": "26% · check first",
+   "actual": "cancelled at Sierre/Siders in the operating record"
+  },
+  {
+   "id": "2195004968685 IR95 18:19",
+   "title": "Sion - Sierre/Siders, 2 Jan 2026: IR95 due at Sion 18:19",
+   "announced": "Service resumed at 18:08; the train was due 10 min later",
+   "predicted": "22% · check",
+   "actual": "both named stops served"
+  },
+  {
+   "id": "2195004968685 IR95 18:27",
+   "title": "Sion - Sierre/Siders, 2 Jan 2026: IR95 due at Sierre/Siders 18:27",
+   "announced": "Service resumed at 18:08; the train was due 18 min later",
+   "predicted": "19% · check",
+   "actual": "both named stops served"
+  },
+  {
+   "id": "2195004968685 R91 18:36",
+   "title": "Sion - Sierre/Siders, 2 Jan 2026: R91 due at Sierre/Siders 18:36",
+   "announced": "Service resumed at 18:08; the train was due 27 min later",
+   "predicted": "15% · check",
+   "actual": "both named stops served"
+  },
+  {
+   "id": "2195004968685 IR90 18:51",
+   "title": "Sion - Sierre/Siders, 2 Jan 2026: IR90 due at Sierre/Siders 18:51",
+   "announced": "Service resumed at 18:08; the train was due 42 min later",
+   "predicted": "11% · low",
+   "actual": "both named stops served"
+  },
+  {
+   "id": "2195004968685 IR90 18:56",
+   "title": "Sion - Sierre/Siders, 2 Jan 2026: IR90 due at Sion 18:56",
+   "announced": "Service resumed at 18:08; the train was due 47 min later",
+   "predicted": "9% · low",
+   "actual": "both named stops served"
+  }
+ ],
+ "notes": [
+  "Calibration: the frozen 2024-25 fit predicted 15.5% on average in 2026 against 20.4% observed, mostly in the first quarter hour (24% predicted, 37% observed). In 2025 it predicted 16.0% against 14.8%. Show the bands and the observed shares, not precise probabilities.",
+  "The 2025 improvement is small: +0.00401, interval +0.00057 to +0.00768. Its lower bound ranged from +0.00038 to +0.00067 over ten bootstrap seeds.",
+  "The operating record holds the final status only. Some early trains were probably cancelled before the notice, so part of the early-train risk is \"this train is usually still off\". Live, an official cancellation or skipped stop must win over the band. Whether the model helps for trains whose status was still unknown at the notice is untested.",
+  "The probabilities are fitted on the liveticker's VIA notices. The advisor found the same gradient but lower absolute risks on SBB's public notices (not re-checked here).",
+  "The historical roster comes from runs that reached Ist-Daten; a live roster comes from the timetable. Nothing here was scored on live resumptions.",
+  "Reproduction: every count, Brier score, coefficient, gradient and calibration figure matches the advisor's report; only the bootstrap lower bounds differ in the fourth decimal (the advisor's resampling code was not recorded)."
+ ]
+}
