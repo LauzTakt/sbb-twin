@@ -53,6 +53,7 @@ export type RealAlert = {
   description: string;
   language: string;
   cause: string;
+  gtfsCause: string; // the feed's Cause enum name (UNKNOWN_CAUSE, WEATHER, ...): the forecast's cause key (src/forecast.ts)
   severity: "info" | "minor" | "major";
   url: string | null;
   activePeriods: { start: number | null; end: number | null }[];
@@ -65,6 +66,7 @@ export type RealAlert = {
 export const alertsState = { alerts: new Map<string, RealAlert>(), fetchedAt: 0, feedAt: 0, error: undefined as string | undefined };
 
 const CAUSES = ["unknown", "unknown", "other", "technical problem", "strike", "demonstration", "accident", "holiday", "other", "maintenance", "construction", "police activity", "medical emergency"];
+const GTFS_CAUSES = ["UNKNOWN_CAUSE", "UNKNOWN_CAUSE", "OTHER_CAUSE", "TECHNICAL_PROBLEM", "STRIKE", "DEMONSTRATION", "ACCIDENT", "HOLIDAY", "WEATHER", "MAINTENANCE", "CONSTRUCTION", "POLICE_ACTIVITY", "MEDICAL_EMERGENCY"];
 const SOURCE = "opentransportdata.swiss GTFS-RT service alerts";
 function text(t?: Translated) {
   const all = t?.translation ?? [];
@@ -185,6 +187,7 @@ function build(feed: Feed) {
       description: body.text,
       language: head.language,
       cause: CAUSES[a.cause ?? 1] ?? "unknown",
+      gtfsCause: GTFS_CAUSES[a.cause ?? 1] ?? "UNKNOWN_CAUSE",
       severity: severityOf(`${head.text} ${body.text.slice(0, 200)}`),
       url: text(a.url).text || null,
       activePeriods: periods,

@@ -6,3 +6,4 @@ viewer/dist
 data/state.json
 data/state.json.tmp
 __pycache__/
+data/*.forecast-shadow.json*

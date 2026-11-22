@@ -1,9 +1,11 @@
 import * as maplibregl from "maplibre-gl";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import type { GeoJSONSource, Map as LibreMap } from "maplibre-gl";
-import { CircleDot, Crosshair, Monitor, Moon, Plus, RefreshCcw, Sun, TrainFront, X } from "lucide-react";
+import { CircleDot, Crosshair, Layers, Monitor, Moon, Plus, RefreshCcw, Sun, TrainFront, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { api, connectLive, send, type Disruption, type Item, type Live, type SnapshotRow, type Status } from "./feed";
+import { api, connectLive, send, type Disruption, type Forecast, type Item, type Live, type SnapshotRow, type Status } from "./feed";
+import { ForecastsPanel, ResumedCard, useForecasts } from "./Forecasts";
+import { RISK, riskPaint, type RiskSegment } from "./risk";
 import { Control } from "./Control";
 import { baseStyle, OWN, setMapTheme } from "./map";
 import { applyPageTheme, onSystemThemeChange, readPref, resolveTheme, savePref, shownTheme, switchMs, systemTheme, type Pref, type Theme } from "./theme";
@@ -51,7 +53,14 @@ export function App() {
   const [status, setStatus] = useState<Status>();
   const [alertItems, setItems] = useState<Item[]>([]);
   const [disruptions, setDisruptions] = useState<Disruption[]>([]);
-  const [tab, setTab] = useState<"disruptions" | "bulletins">("disruptions");
+  const [forecasts, setForecasts] = useState<Forecast[]>([]);
+  const [tab, setTab] = useState<"disruptions" | "bulletins" | "forecasts">(() => (new URLSearchParams(location.search).get("tab") === "forecasts" ? "forecasts" : "disruptions"));
+  const [risk, setRisk] = useState(() => new URLSearchParams(location.search).get("risk") === "1"); // the section risk layer
+  const riskRef = useRef(risk);
+  riskRef.current = risk;
+  const [riskInfo, setRiskInfo] = useState<{ placeholder: boolean; n: number; recall: Record<string, Record<string, number>> }>();
+  const [segment, setSegment] = useState<RiskSegment>();
+  const forecastData = useForecasts();
   const [registering, setRegistering] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [picked, setPicked] = useState<string>();
@@ -66,7 +75,11 @@ export function App() {
   const [theme, setTheme] = useState<Theme>(shownTheme);
   const themeRef = useRef(theme);
   const mapLoaded = useRef(false);
-  const own: Item[] = disruptions.filter((d) => d.status === "active" && d.geometry).map((d) => ({ id: d.id, title: d.summary ?? d.label ?? "Disruption", where: d.where, severity: d.effect === "limited" ? "minor" : "major", note: d.cause?.label ?? "registered in the twin", trains: 0, geometry: d.geometry, description: d.description, source: "auto" as const }));
+  // registered disruptions, and the resumed ones while their trains to check are due (src/forecast.ts)
+  const resumed = new Map(forecasts.map((f) => [f.disruptionId, f]));
+  const own: Item[] = disruptions
+    .filter((d) => (d.status === "active" || resumed.has(d.id)) && d.geometry)
+    .map((d) => ({ id: d.id, title: d.summary ?? d.label ?? "Disruption", where: d.where, severity: d.status !== "active" ? "info" : d.effect === "limited" ? "minor" : "major", note: d.status !== "active" ? "service resumed · trains to check" : d.cause?.label ?? "registered in the twin", trains: 0, geometry: d.geometry, description: d.description, source: "auto" as const }));
   const items = [...own, ...alertItems];
   itemsRef.current = items;
 
@@ -94,10 +107,12 @@ export function App() {
           .queryRenderedFeatures(box, { layers: ["section-line", "section-point"].filter((l) => m.getLayer(l)) })
           .filter((f) => f.properties?.id)
           .sort((a, b) => Number(a.properties.size) - Number(b.properties.size))[0];
-        if (hit) return setPicked(String(hit.properties.id)), setSelected(undefined), setStation(undefined);
+        if (hit) return setPicked(String(hit.properties.id)), setSelected(undefined), setStation(undefined), setSegment(undefined);
+        const seg = m.getLayer("risk-line") ? m.queryRenderedFeatures(box, { layers: ["risk-line"] })[0] : undefined;
+        if (seg) return setSegment(seg.properties as unknown as RiskSegment), setSelected(undefined), setStation(undefined);
         const st = m.queryRenderedFeatures(box, { layers: ["stations-major", "stations-medium", "stations-minor"].filter((l) => m.getLayer(l)) })[0];
         if (st) return setStation({ id: String(st.properties.id), name: String(st.properties.name), trains: Number(st.properties.trains) }), setSelected(undefined), setPicked(undefined);
-        setPicked(undefined), setSelected(undefined), setStation(undefined), setFollowing(false);
+        setPicked(undefined), setSelected(undefined), setStation(undefined), setFollowing(false), setSegment(undefined);
       });
       m.on("dragstart", () => setFollowing(false));
       live.current = connectLive({
@@ -110,6 +125,7 @@ export function App() {
         },
         items: setItems,
         disruptions: setDisruptions,
+        forecasts: setForecasts,
       });
     })();
     return () => {
@@ -125,7 +141,7 @@ export function App() {
     const item = pickedRef.current;
     if (!item) {
       const ln = lineRef.current;
-      if (layer.current) layer.current.focus = ln ? new Set(rowsRef.current.filter((r) => r[7] === ln).map((r) => r[0])) : undefined;
+      if (layer.current) layer.current.focus = ln ? new Set(rowsRef.current.filter((r) => r[7] === ln).map((r) => r[0])) : riskRef.current ? new Set() : undefined;
       return;
     }
     const pts = points(item.geometry);
@@ -229,8 +245,41 @@ export function App() {
     const ms = switchMs();
     applyPageTheme(theme, ms);
     if (mapRef.current && mapLoaded.current) setMapTheme(mapRef.current, theme, ms);
+    if (mapRef.current?.getLayer("risk-line")) for (const [k, v] of Object.entries(riskPaint(theme))) mapRef.current.setPaintProperty("risk-line", k as never, v as never);
     layer.current?.setTheme(theme, ms);
   }, [theme]);
+  // the section risk map: loaded on first use, drawn under the disruptions, coloured by rank (top 5 / 10 / 20 %)
+  useEffect(() => {
+    const m = mapRef.current;
+    if (!m || !ready) return;
+    const apply = () => {
+      if (!m.getSource("risk")) {
+        if (!risk) return;
+        m.addSource("risk", { type: "geojson", data: "/api/forecasts/section-risk.geojson" });
+        m.addLayer({ id: "risk-line", type: "line", source: "risk", layout: { "line-cap": "round", "line-join": "round" }, paint: riskPaint(themeRef.current) as never }, m.getLayer("section-picked") ? "section-picked" : undefined);
+        void api<{ placeholder?: boolean; features: unknown[] }>("/forecasts/section-risk.geojson").then((fc) =>
+          api<{ section_risk: { scorecard: { metrics?: { name: string; values: Record<string, number> }[] } | null } }>("/forecasts/scorecards").then((sc) => {
+            // the out-of-time check: the share of 2026 disruptions in the top k % of sections ("recall@k")
+            const recall: Record<string, Record<string, number>> = {};
+            for (const x of sc.section_risk.scorecard?.metrics ?? []) {
+              const k = x.name.match(/top\s*(\d+)\s*%/i)?.[1];
+              if (k && (/recall/i.test(x.name) || /share of .*(incidents|disruptions)/i.test(x.name)) && x.values.model !== undefined) recall[k] = x.values;
+            }
+            setRiskInfo({ placeholder: fc.placeholder !== false, n: fc.features.length, recall });
+          }),
+        ).catch(() => undefined);
+      }
+      m.setLayoutProperty("risk-line", "visibility", risk ? "visible" : "none");
+    };
+    if (mapLoaded.current) apply();
+    else m.once("load", apply);
+    if (!risk) setSegment(undefined);
+    refocus();
+    const u = new URL(location.href);
+    if (risk) u.searchParams.set("risk", "1");
+    else u.searchParams.delete("risk");
+    history.replaceState(null, "", u);
+  }, [risk, ready]);
   useEffect(() => {
     if (!layer.current) return;
     layer.current.selected = selected;
@@ -308,13 +357,39 @@ export function App() {
             </button>
           </div>
         )}
+        <button className={`risk-toggle${risk ? " on" : ""}`} aria-pressed={risk} onClick={() => setRisk((r) => !r)} title="Which sections concentrate disruptions (ranked on 2024-25, checked on 2026)">
+          <Layers size={15} /> Risk map
+        </button>
+        {risk && (
+          <div className="risk-legend" aria-label="Section risk legend">
+            <b>Section risk</b>
+            {riskInfo?.placeholder && <em className="ph-tag">placeholder data</em>}
+            <ul>
+              {RISK.steps.map((st) => (
+                <li key={st.label}>
+                  <i style={{ background: `var(--risk-${st.key})`, height: st.key === "rest" ? 2 : 4 }} />
+                  {st.label}
+                </li>
+              ))}
+            </ul>
+            {riskInfo?.recall["10"] && (
+              <p>
+                Ranked on 2024-25, the top 10 % drew <b>{Math.round(riskInfo.recall["10"].model * 100)} %</b> of the 2026 disruptions
+                {riskInfo.recall["10"].trains !== undefined ? ` (the busiest 10 % by trains: ${Math.round(riskInfo.recall["10"].trains * 100)} %)` : ""}.
+              </p>
+            )}
+          </div>
+        )}
+        {segment && <SegmentCard s={segment} placeholder={riskInfo?.placeholder ?? true} onClose={() => setSegment(undefined)} />}
         {selected && live.current && <TrainCard key={selected} id={selected} live={live.current} following={following} onFollow={() => setFollowing((f) => !f)} onClose={() => (setSelected(undefined), setFollowing(false))} />}
         {station && <StationCard key={station.id} station={station} onTrain={(id) => (setSelected(id), setStation(undefined))} onClose={() => setStation(undefined)} />}
         <aside className="side">
           <div className="tabs" role="tablist">
             <button aria-pressed={tab === "disruptions"} onClick={() => setTab("disruptions")}>Disruptions</button>
             <button aria-pressed={tab === "bulletins"} onClick={() => setTab("bulletins")}>Bulletins</button>
+            <button aria-pressed={tab === "forecasts"} onClick={() => setTab("forecasts")}>Forecasts</button>
           </div>
+          {tab === "forecasts" && <ForecastsPanel data={forecastData} picked={picked} onPick={(id) => (setPicked(id), setSelected(undefined), setStation(undefined))} />}
           {tab === "bulletins" && (
             <ul className="items bulletins">
               {!sorted.some((i) => i.description) && <p className="hint">No bulletin for the current disruptions.</p>}
@@ -339,24 +414,48 @@ export function App() {
                   {i.where && <span>{i.where}</span>}
                   <small>{[i.note, i.trains ? `${i.trains} train${i.trains > 1 ? "s" : ""}` : ""].filter(Boolean).join(" · ")}</small>
                 </button>
+                {picked === i.id && resumed.has(i.id) && <ResumedCard r={resumed.get(i.id)!} />}
               </li>
             ))}
           </ul>
           </>}
-          <div className="legend">
+          {tab !== "forecasts" && <div className="legend">
             <span><i style={{ background: "#00973b" }} />Moving</span>
             <span><i style={{ background: "#f27e00" }} />Late 3 min or more</span>
             <span><i style={{ background: "var(--train-station)" }} />At a station</span>
             <span><i style={{ background: "#eb0000" }} />Stopped on the line</span>
             <span><i className="line" style={{ background: "#eb0000" }} />Interrupted</span>
             <span><i className="line" style={{ background: "#f27e00" }} />Limited</span>
-          </div>
+          </div>}
         </aside>
       </main>
     </div>
   );
 }
 const rank = (i: Item) => (i.severity === "critical" || i.severity === "major" ? 0 : i.severity === "minor" ? 1 : 2);
+
+/** A section of the risk map: its rank and the disruptions it had. */
+function SegmentCard({ s, placeholder, onClose }: { s: RiskSegment; placeholder: boolean; onClose: () => void }) {
+  const causes = Array.isArray(s.topCauses) ? s.topCauses : typeof s.topCauses === "string" ? (JSON.parse(s.topCauses) as string[]) : [];
+  return (
+    <section className="card" aria-label="Section risk">
+      <header>
+        <h3>{s.name}</h3>
+        <button className="icon" onClick={onClose} aria-label="Close">
+          <X size={18} />
+        </button>
+      </header>
+      <p className="sub">Rank {s.rank} on the risk map{s.km ? ` · ${s.km} km` : ""}{placeholder ? " · placeholder data" : ""}</p>
+      <div className="facts">
+        <div><b>{s.perYear !== undefined ? Number(s.perYear).toFixed(1) : Math.round(Number(s.risk) * 100)}</b><small>{s.perYear !== undefined ? "expected a year" : "risk (0–100)"}</small></div>
+        <div><b>{s.incidentsTrain ?? "–"}</b><small>disruptions 2024-25</small></div>
+        <div><b>{s.incidentsTest ?? "–"}</b><small>in 2026 (test)</small></div>
+      </div>
+      {s.trainsPerDay !== undefined && <p className="sub">{s.trainsPerDay} trains a day</p>}
+      {causes.length > 0 && <p className="sub">Most often: {causes.map((c) => c.replace("_", " ")).join(", ")}</p>}
+    </section>
+  );
+}
 
 function TrainCard({ id, live, following, onFollow, onClose }: { id: string; live: Live; following: boolean; onFollow: () => void; onClose: () => void }) {
   const [pos, setPos] = useState<Pos>();

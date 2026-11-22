@@ -20,6 +20,7 @@ import { publish } from "./mqtt.ts";
 import { alertsState, pollAlerts } from "./alerts.ts";
 import { bulletins } from "./feed.ts";
 import { scenarioTick } from "./scenario.ts";
+import { startForecasts } from "./forecast.ts";
 import { recordRemoved, replayTick, startReplay } from "./replay.ts";
 import { warmPlanner } from "./planner.ts";
 
@@ -60,6 +61,8 @@ async function serveViewer(req: IncomingMessage, res: ServerResponse) {
 }
 const server = createServer((req, res) => {
   if (req.url?.startsWith("/api/")) return handleApi(req, res);
+  // the forecast evidence page (a second Vite entry, viewer/forecasts.html)
+  if (/^\/forecasts\/?(\?.*)?$/.test(req.url ?? "")) req.url = `/forecasts.html${req.url!.includes("?") ? req.url!.slice(req.url!.indexOf("?")) : ""}`;
   if (vite) return vite.middlewares(req, res);
   void serveViewer(req, res);
 });
@@ -75,6 +78,7 @@ if (restored.disruptions + restored.incidents) console.log(`[sbb-twin] restored 
 for (const i of incidents.values()) publish(`incidents/${i.id}`, incidentPayload(i), { retain: true, qos: 1 });
 for (const b of bulletins()) publish(`bulletins/${b.id}`, { v: 1, ...b }, { retain: true, qos: 1 });
 setInterval(saveState, 2000).unref();
+startForecasts(); // live forecasts, the trains to check after a resumption, the shadow log (src/forecast.ts)
 server.listen(config.port, config.host, () =>
   console.log(`[sbb-twin] viewer + API http://${config.host}:${config.port}/ · MQTT ${config.mqttUrl ? `on ${new URL(config.mqttUrl).host} (read-only WebSocket proxy at /mqtt)` : `ws://${config.host}:${config.port}/mqtt`}`),
 );
