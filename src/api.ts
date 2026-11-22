@@ -1,7 +1,7 @@
 // HTTP control API for staff (provoke/end disruptions, mark/unmark incidents, sync) and read helpers.
 import { Hono } from "hono";
 import { InputError, TYPES, createDisruption, createIncident, disruptions, incidents } from "./disruptions.ts";
-import { byTrainId, neighbours, obstacleAhead, servedStations, stationBoard, sync, trains, expectedArrival, nextCall, delayOf } from "./engine.ts";
+import { byTrainId, neighbours, obstacleAhead, servedStations, stationBoard, sync, trains, expectedArrival, nextCall, delayOf, tripMeta } from "./engine.ts";
 import { searchStations, stationIndex } from "./timetable.ts";
 import { abroadGeoJson, networkGeoJson } from "./geometry.ts";
 import { bulletins, controlState, disruptionPayload, event, incidentPayload, infoPayload, positionPayload, pushState, removeDisruption, statusPayload } from "./feed.ts";
@@ -96,6 +96,42 @@ export function api() {
     return c.json({ position: positionPayload(tr, t), info: infoPayload(tr, t), truth: { mode: tr.mode === "sim" ? "simulated" : "real", causes: [...tr.causes] } });
   });
   app.get("/stations", (c) => c.json(searchStations(c.req.query("q") ?? "", 10)));
+  // the console's search box: stations, lines in service, and trains by public number, line or destination
+  let served: { at: number; counts: Map<string, number> } | undefined;
+  const fold = (x: string) => x.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  app.get("/search", (c) => {
+    const raw = (c.req.query("q") ?? "").trim().slice(0, 80);
+    if (!raw) return c.json({ stations: [], lines: [], trains: [] });
+    const t = Date.now();
+    if (!served || t - served.at > 600_000) served = { at: t, counts: new Map(servedStations().map((x) => [x.id, x.trains])) };
+    const q = fold(raw);
+    const qn = q.replace(/\s+/g, "");
+    const stations = searchStations(raw, 6).map((x) => ({ id: x.id, name: x.name, lon: x.lon, lat: x.lat, trains: served!.counts.get(x.id) ?? 0 }));
+    const lines = new Map<string, { line: string; category: string; trains: number }>();
+    const found: { trainId: string; line: string; category: string; number: string | null; headsign: string; delaySec: number; lat: number; lon: number; score: number }[] = [];
+    for (const tr of trains.values()) {
+      if (tr.cancelled) continue;
+      const line = String(tr.trip.line ?? "");
+      const ln = fold(line).replace(/\s+/g, "");
+      const number = tripMeta(tr.trip.tripId)?.[0] ?? null;
+      const lineHit = ln !== "" && (ln === qn || (qn.length >= 2 && ln.startsWith(qn)));
+      if (lineHit) {
+        const e = lines.get(line) ?? { line, category: tr.trip.cat, trains: 0 };
+        e.trains++;
+        lines.set(line, e);
+      }
+      const numHit = !!number && (number === qn || `${ln}${number}` === qn || (/^\d{2,}$/.test(qn) && number.startsWith(qn)));
+      const headHit = q.length >= 3 && fold(String(tr.trip.head ?? "")).includes(q);
+      if (numHit || headHit || lineHit)
+        found.push({ trainId: tr.trip.trainId, line, category: tr.trip.cat, number, headsign: String(tr.trip.head ?? ""), delaySec: Math.round(delayOf(tr, t)), lat: tr.lat, lon: tr.lon, score: numHit ? 0 : headHit ? 1 : 2 });
+    }
+    found.sort((a, b) => a.score - b.score || a.line.localeCompare(b.line, "en", { numeric: true }) || (a.number ?? "").localeCompare(b.number ?? "", "en", { numeric: true }));
+    return c.json({
+      stations,
+      lines: [...lines.values()].sort((a, b) => (fold(a.line) === qn ? -1 : 0) - (fold(b.line) === qn ? -1 : 0) || b.trains - a.trains).slice(0, 5),
+      trains: found.slice(0, 8).map(({ score, ...x }) => x),
+    });
+  });
   app.get("/stations.geojson", (c) => {
     c.header("content-type", "application/geo+json");
     c.header("cache-control", "public, max-age=600");

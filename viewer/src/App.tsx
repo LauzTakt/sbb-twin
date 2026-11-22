@@ -8,6 +8,7 @@ import { Control } from "./Control";
 import { baseStyle, OWN, setMapTheme } from "./map";
 import { applyPageTheme, onSystemThemeChange, readPref, resolveTheme, savePref, shownTheme, switchMs, systemTheme, type Pref, type Theme } from "./theme";
 import { TrainCanvas } from "./trains";
+import { Search } from "./Search";
 
 (maplibregl as unknown as { setWorkerUrl?: (u: string) => void }).setWorkerUrl?.(workerUrl);
 
@@ -58,6 +59,8 @@ export function App() {
   const [selected, setSelected] = useState<string | undefined>(() => new URLSearchParams(location.search).get("train") ?? undefined);
   const [following, setFollowing] = useState(false);
   const [station, setStation] = useState<{ id: string; name: string; trains: number }>();
+  const [line, setLine] = useState<string>(); // a line picked in the search box: its trains stay bright
+  const lineRef = useRef<string | undefined>(undefined);
   const [ready, setReady] = useState(false);
   const [pref, setPref] = useState<Pref>(readPref);
   const [theme, setTheme] = useState<Theme>(shownTheme);
@@ -120,7 +123,11 @@ export function App() {
   /** The trains involved in the picked disruption: the ones the server names, plus those running on or next to its track. */
   function refocus() {
     const item = pickedRef.current;
-    if (!item) return void (layer.current && (layer.current.focus = undefined));
+    if (!item) {
+      const ln = lineRef.current;
+      if (layer.current) layer.current.focus = ln ? new Set(rowsRef.current.filter((r) => r[7] === ln).map((r) => r[0])) : undefined;
+      return;
+    }
     const pts = points(item.geometry);
     const ids = new Set(item.trainIds ?? []);
     for (const r of rowsRef.current) {
@@ -173,6 +180,18 @@ export function App() {
     };
     (mapRef.current?.getSource("sections") as GeoJSONSource | undefined)?.setData(features.current as never);
   }, [items, ready]);
+  // a line picked in the search box: its trains stay bright, the others fade, the map frames them
+  useEffect(() => {
+    lineRef.current = line;
+    refocus();
+    const m = mapRef.current;
+    const rows = line ? rowsRef.current.filter((r) => r[7] === line) : [];
+    if (!m || !rows.length) return;
+    const b = new maplibregl.LngLatBounds([rows[0][2], rows[0][1]], [rows[0][2], rows[0][1]]);
+    for (const r of rows) b.extend([r[2], r[1]]);
+    m.fitBounds(b, { padding: 110, maxZoom: 11, duration: 800 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [line]);
   // the picked disruption: highlighted, the map moves to it, the list scrolls to it
   useEffect(() => {
     const m = mapRef.current;
@@ -229,6 +248,19 @@ export function App() {
           sbb-twin
           <span className={`conn ${conn}`}>{conn === "online" ? "Live" : conn === "offline" ? "Offline" : "Connecting"}</span>
         </div>
+        <Search
+          items={items}
+          onStation={(st) => {
+            setPicked(undefined), setSelected(undefined), setLine(undefined), setStation({ id: st.id, name: st.name, trains: st.trains });
+            mapRef.current?.flyTo({ center: [st.lon, st.lat], zoom: Math.max(mapRef.current.getZoom(), 11.5), duration: 800 });
+          }}
+          onTrain={(t) => {
+            setPicked(undefined), setStation(undefined), setLine(undefined), setSelected(t.trainId);
+            mapRef.current?.flyTo({ center: [t.lon, t.lat], zoom: Math.max(mapRef.current.getZoom(), 11), duration: 800 });
+          }}
+          onLine={(l) => (setPicked(undefined), setStation(undefined), setSelected(undefined), setLine(l.line))}
+          onIssue={(id) => (setLine(undefined), setSelected(undefined), setStation(undefined), setPicked(id))}
+        />
         <div className="top">
         <div className="stats">
           <span>
@@ -268,6 +300,14 @@ export function App() {
       )}
       <main>
         <div ref={mapEl} className="map" />
+        {line && (
+          <div className="line-chip">
+            Line <b>{line}</b> · {rowsRef.current.filter((r) => r[7] === line).length} trains
+            <button aria-label="Show all trains" onClick={() => setLine(undefined)}>
+              <X size={13} />
+            </button>
+          </div>
+        )}
         {selected && live.current && <TrainCard key={selected} id={selected} live={live.current} following={following} onFollow={() => setFollowing((f) => !f)} onClose={() => (setSelected(undefined), setFollowing(false))} />}
         {station && <StationCard key={station.id} station={station} onTrain={(id) => (setSelected(id), setStation(undefined))} onClose={() => setStation(undefined)} />}
         <aside className="side">
