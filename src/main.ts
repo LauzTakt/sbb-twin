@@ -7,18 +7,15 @@ import { extname, join, normalize } from "node:path";
 import { getRequestListener } from "@hono/node-server";
 import { config } from "./config.ts";
 import { api } from "./api.ts";
-import { startBroker } from "./mqtt.ts";
+import { publish, startBroker } from "./mqtt.ts";
 import { startChannel } from "./channel.ts";
 import { loadGeometry } from "./geometry.ts";
 import { applyRealtime, loadTimetable, tick, trains } from "./engine.ts";
 import { live, pollRealtime } from "./realtime.ts";
-import { event, publishTick } from "./feed.ts";
+import { bulletins, event, incidentPayload, publishTick } from "./feed.ts";
 import { loadState, saveState } from "./persist.ts";
 import { incidents } from "./disruptions.ts";
-import { incidentPayload } from "./feed.ts";
-import { publish } from "./mqtt.ts";
 import { alertsState, pollAlerts } from "./alerts.ts";
-import { bulletins } from "./feed.ts";
 import { scenarioTick } from "./scenario.ts";
 import { startForecasts } from "./forecast.ts";
 import { recordRemoved, replayTick, startReplay } from "./replay.ts";
@@ -106,7 +103,6 @@ setInterval(warmPlanner, 4000).unref(); // journeys and briefs answer from a rea
 setInterval(async () => {
   if (await pollRealtime()) applyRealtime();
 }, config.rtIntervalMs).unref();
-// MeteoSwiss publishes 10-minute values; poll every 5 minutes.
 // real SBB service alerts (when a key is set): at start and every few minutes
 void pollAlerts().then(() => config.gtfsSaKey && console.log(`[sbb-twin] service alerts: ${alertsState.alerts.size} touch the railway`));
 setInterval(() => void pollAlerts(), config.saIntervalMs).unref();

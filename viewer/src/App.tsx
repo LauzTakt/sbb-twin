@@ -3,7 +3,8 @@ import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import type { GeoJSONSource, Map as LibreMap } from "maplibre-gl";
 import { CircleDot, Crosshair, Layers, Monitor, Moon, Plus, RefreshCcw, Sun, TrainFront, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { api, connectLive, send, type Disruption, type Forecast, type Item, type Live, type SnapshotRow, type Status } from "./feed";
+import type { Resumption, ScorecardsResponse } from "../../src/contracts/forecasts";
+import { api, connectLive, send, type Disruption, type Item, type Live, type SnapshotRow, type Status } from "./feed";
 import { ForecastsPanel, ResumedCard, useForecasts } from "./Forecasts";
 import { RISK, riskPaint, type RiskSegment } from "./risk";
 import { Control } from "./Control";
@@ -53,12 +54,12 @@ export function App() {
   const [status, setStatus] = useState<Status>();
   const [alertItems, setItems] = useState<Item[]>([]);
   const [disruptions, setDisruptions] = useState<Disruption[]>([]);
-  const [forecasts, setForecasts] = useState<Forecast[]>([]);
+  const [forecasts, setForecasts] = useState<Resumption[]>([]);
   const [tab, setTab] = useState<"disruptions" | "bulletins" | "forecasts">(() => (new URLSearchParams(location.search).get("tab") === "forecasts" ? "forecasts" : "disruptions"));
   const [risk, setRisk] = useState(() => new URLSearchParams(location.search).get("risk") === "1"); // the section risk layer
   const riskRef = useRef(risk);
   riskRef.current = risk;
-  const [riskInfo, setRiskInfo] = useState<{ placeholder: boolean; n: number; recall: Record<string, Record<string, number>> }>();
+  const [riskInfo, setRiskInfo] = useState<{ placeholder: boolean; recall: Record<string, Record<string, number>> }>();
   const [segment, setSegment] = useState<RiskSegment>();
   const forecastData = useForecasts();
   const [registering, setRegistering] = useState(false);
@@ -257,15 +258,15 @@ export function App() {
         if (!risk) return;
         m.addSource("risk", { type: "geojson", data: "/api/forecasts/section-risk.geojson" });
         m.addLayer({ id: "risk-line", type: "line", source: "risk", layout: { "line-cap": "round", "line-join": "round" }, paint: riskPaint(themeRef.current) as never }, m.getLayer("section-picked") ? "section-picked" : undefined);
-        void api<{ placeholder?: boolean; features: unknown[] }>("/forecasts/section-risk.geojson").then((fc) =>
-          api<{ section_risk: { scorecard: { metrics?: { name: string; values: Record<string, number> }[] } | null } }>("/forecasts/scorecards").then((sc) => {
+        void api<{ placeholder?: boolean }>("/forecasts/section-risk.geojson").then((fc) =>
+          api<ScorecardsResponse>("/forecasts/scorecards").then((sc) => {
             // the out-of-time check: the share of 2026 disruptions in the top k % of sections ("recall@k")
             const recall: Record<string, Record<string, number>> = {};
             for (const x of sc.section_risk.scorecard?.metrics ?? []) {
               const k = x.name.match(/top\s*(\d+)\s*%/i)?.[1];
               if (k && (/recall/i.test(x.name) || /share of .*(incidents|disruptions)/i.test(x.name)) && x.values.model !== undefined) recall[k] = x.values;
             }
-            setRiskInfo({ placeholder: fc.placeholder !== false, n: fc.features.length, recall });
+            setRiskInfo({ placeholder: fc.placeholder !== false, recall });
           }),
         ).catch(() => undefined);
       }

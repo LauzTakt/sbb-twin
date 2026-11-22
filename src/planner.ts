@@ -5,11 +5,10 @@
 import { createHash } from "node:crypto";
 import { dayTrips, liveTimes, nextDate, servedStations, stationBoard, byTrainId, timetableDate } from "./engine.ts";
 import { loadDayMapped, searchStations, stationIndex, stops, type Trip } from "./timetable.ts";
-import { metres } from "./geometry.ts";
-import { serviceOrigin, zurich } from "./time.ts";
+import { edgesGeometry, metres, sectionEdges, travelPath } from "./geometry.ts";
+import { addDays, serviceOrigin, zurich } from "./time.ts";
 import { expectedEnd, isScenario } from "./scenario.ts";
 import { disruptions, effective, incidents, type Incident } from "./disruptions.ts";
-import { edgesGeometry, sectionEdges, travelPath } from "./geometry.ts";
 import { alertsState } from "./alerts.ts";
 
 const TRANSFER_MS = 4 * 60_000;
@@ -118,11 +117,10 @@ function ensureNextDay() {
 function horizonFor(after: number) {
   const z = zurich(after);
   const hour = Number(z.time.slice(0, 2));
-  if (hour >= 20) return Math.max(after + HORIZON_MS, serviceOrigin(addDay(z.date)) + 8 * 3600_000);
+  if (hour >= 20) return Math.max(after + HORIZON_MS, serviceOrigin(addDays(z.date, 1)) + 8 * 3600_000);
   if (hour < 5) return Math.max(after + HORIZON_MS, serviceOrigin(z.date) + 8 * 3600_000);
   return after + HORIZON_MS;
 }
-const addDay = (date: string) => new Date(Date.parse(`${date}T12:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
 function buildConnections(t: number, after: number) {
   ensureNextDay();
   const until = horizonFor(after);
@@ -153,7 +151,7 @@ function buildConnections(t: number, after: number) {
 type Parts = { trip: number; i: number; j: number }[];
 /** Connection scan with a bound on the trains used: for each number of trains (1..maxTrips) the earliest arrival,
  *  so a journey with fewer changes that arrives later is found too. Returns the options, fewest trains first. */
-function search(trips: Trip[], lives: (Live | undefined)[], conns: Conn[], from: number, to: number, after: number, closed: Set<number>, maxTrips: number) {
+function search(lives: (Live | undefined)[], conns: Conn[], from: number, to: number, after: number, closed: Set<number>, maxTrips: number) {
   const K = maxTrips;
   const best: Map<number, number>[] = Array.from({ length: K + 1 }, () => new Map());
   const how: Map<number, { trip: number; board: number; alight: number; prev: number }>[] = Array.from({ length: K + 1 }, () => new Map());
@@ -305,7 +303,10 @@ export function plan(fromQ: string, toQ: string, after = Date.now(), limit = 4, 
   const { trips, lives, conns } = connections(t, Math.min(after, t + HORIZON_MS));
   const { stations: closed } = closures();
   let searches = 0;
-  const run = (a: number, b: number, at: number, k: number) => (searches++, search(trips, lives, conns, a, b, at, closed, k));
+  const run = (a: number, b: number, at: number, k: number) => {
+    searches++;
+    return search(lives, conns, a, b, at, closed, k);
+  };
   /** Through a list of stations in order (via, or a section to wait for), each step with the trains left. */
   const chain = (points: number[], at: number, budget: number, onlyDirect?: [number, number]): Parts | null => {
     let parts: Parts = [];

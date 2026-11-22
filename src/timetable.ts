@@ -25,30 +25,43 @@ export let stops: Stop[] = [];
 const byId = new Map<string, number>();
 export const stationIndex = (id: string) => byId.get(id);
 
-export async function loadDay(date: string): Promise<Trip[]> {
+async function readDay(date: string): Promise<DayFile | undefined> {
   const file = join(config.daysDir, `day-${date}.json.gz`);
-  if (!existsSync(file)) throw new Error(`No timetable for ${date} in ${config.daysDir}`);
-  const day = JSON.parse(gunzipSync(await readFile(file)).toString()) as DayFile;
+  if (!existsSync(file)) return undefined;
+  return JSON.parse(gunzipSync(await readFile(file)).toString()) as DayFile;
+}
+
+function decodeTrips(day: DayFile, date: string, mappedStops?: (number | undefined)[]): Trip[] {
+  const origin = serviceOrigin(date);
+  const decode = ([key, cat, line, head, flat]: DayFile["trips"][number]): Trip | undefined => {
+    const [serviceDate, tripId, start] = key.split("/");
+    const n = flat.length / 3;
+    const stopIndices = new Int32Array(n);
+    const arr = new Float64Array(n);
+    const dep = new Float64Array(n);
+    for (let i = 0; i < n; i++) {
+      const fileIndex = flat[i * 3];
+      const index = mappedStops ? mappedStops[fileIndex] : fileIndex;
+      if (index === undefined) return undefined;
+      stopIndices[i] = index;
+      arr[i] = origin + flat[i * 3 + 1] * 1000;
+      dep[i] = origin + flat[i * 3 + 2] * 1000;
+    }
+    const trainId = `${serviceDate}_${tripId.replace(/^\./, "")}${start ? `_${start}` : ""}`.replace(/[+#/\s]/g, "-");
+    return { key, trainId, tripId, serviceDate, cat, line: line.replace(/\s+/g, ""), head, stops: stopIndices, arr, dep };
+  };
+  return day.trips.map(decode).filter((trip) => trip !== undefined);
+}
+
+export async function loadDay(date: string): Promise<Trip[]> {
+  const day = await readDay(date);
+  if (!day) throw new Error(`No timetable for ${date} in ${config.daysDir}`);
   if (!stops.length || day.stops.length !== stops.length) {
     stops = day.stops.map(([id, name, lon, lat]) => ({ id, name, lon, lat }));
     byId.clear();
     stops.forEach((s, i) => byId.set(s.id, i));
   }
-  const origin = serviceOrigin(date);
-  return day.trips.map(([key, cat, line, head, flat]) => {
-    const [serviceDate, tripId, start] = key.split("/");
-    const n = flat.length / 3;
-    const s = new Int32Array(n);
-    const arr = new Float64Array(n);
-    const dep = new Float64Array(n);
-    for (let i = 0; i < n; i++) {
-      s[i] = flat[i * 3];
-      arr[i] = origin + flat[i * 3 + 1] * 1000;
-      dep[i] = origin + flat[i * 3 + 2] * 1000;
-    }
-    const trainId = `${serviceDate}_${tripId.replace(/^\./, "")}${start ? `_${start}` : ""}`.replace(/[+#/\s]/g, "-");
-    return { key, trainId, tripId, serviceDate, cat, line: line.replace(/\s+/g, ""), head, stops: s, arr, dep };
-  });
+  return decodeTrips(day, date);
 }
 
 export function searchStations(q: string, limit = 8) {
@@ -62,31 +75,9 @@ export function searchStations(q: string, limit = 8) {
   return hits.slice(0, limit);
 }
 
-/** Another service day's trips on the current stop list (the planner reads the next morning with it), or [] when
- *  that day has no file. Unlike loadDay it never replaces the stop list: stops it does not know are dropped. */
+/** Read the next day's services against today's station index. Omit trips with an unknown stop. */
 export async function loadDayMapped(date: string): Promise<Trip[]> {
-  const file = join(config.daysDir, `day-${date}.json.gz`);
-  if (!existsSync(file)) return [];
-  const day = JSON.parse(gunzipSync(await readFile(file)).toString()) as DayFile;
-  const map = day.stops.map(([id]) => byId.get(id) ?? -1);
-  const origin = serviceOrigin(date);
-  const out: Trip[] = [];
-  for (const [key, cat, line, head, flat] of day.trips) {
-    const [serviceDate, tripId, start] = key.split("/");
-    const n = flat.length / 3;
-    const s = new Int32Array(n);
-    const arr = new Float64Array(n);
-    const dep = new Float64Array(n);
-    let ok = true;
-    for (let i = 0; i < n; i++) {
-      s[i] = map[flat[i * 3]] ?? -1;
-      if (s[i] < 0) ok = false;
-      arr[i] = origin + flat[i * 3 + 1] * 1000;
-      dep[i] = origin + flat[i * 3 + 2] * 1000;
-    }
-    if (!ok) continue;
-    const trainId = `${serviceDate}_${tripId.replace(/^\./, "")}${start ? `_${start}` : ""}`.replace(/[+#/\s]/g, "-");
-    out.push({ key, trainId, tripId, serviceDate, cat, line: line.replace(/\s+/g, ""), head, stops: s, arr, dep });
-  }
-  return out;
+  const day = await readDay(date);
+  if (!day) return [];
+  return decodeTrips(day, date, day.stops.map(([id]) => byId.get(id)));
 }

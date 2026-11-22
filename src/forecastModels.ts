@@ -2,6 +2,7 @@
 // applied in TypeScript; no Python runs here. Until a model lands, a clearly marked placeholder of the same shape
 // (data/forecast-placeholders/<model>/) keeps the twin buildable, and everything computed from it says "placeholder".
 // Files are checked again every minute, so a model that lands (git pull) is used without a restart.
+import type { ModelSource, Models, Scorecard } from "./contracts/forecasts.ts";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,8 +12,7 @@ const ROOT = here("../");
 const RESEARCH = process.env.RAIL_RESEARCH_DIR ?? here("../research/");
 const PLACEHOLDERS = here("../data/forecast-placeholders/");
 
-export type Source = "real" | "placeholder" | "missing";
-export type Loaded<T> = { data: T | null; source: Source; file: string; mtime: number };
+type Loaded<T> = { data: T | null; source: ModelSource; file: string; mtime: number };
 
 export type DurationModel = {
   name: string; version: string; trainedOn?: string; testedOn?: string;
@@ -29,7 +29,6 @@ export type DurationModel = {
 };
 export type ResumptionModel = { name: string; version: string; a: number; b: number; bands: { min: number; label: string }[]; trainedOn?: string; testedOn?: string; placeholder?: boolean };
 export type Segments = { type: "FeatureCollection"; placeholder?: boolean; features: { type: "Feature"; properties: Record<string, unknown>; geometry: unknown }[] };
-export type Scorecard = Record<string, unknown> & { placeholder?: boolean };
 
 function read<T>(model: string, file: string): Loaded<T> {
   for (const [path, source] of [[join(RESEARCH, model, file), "real"], [join(PLACEHOLDERS, model, file), "placeholder"]] as const) {
@@ -90,11 +89,11 @@ export function refreshModels() {
 }
 
 /** What /api/forecasts says about each model. */
-export function modelInfo() {
+export function modelInfo(): Models {
   const d = loaded("duration");
   const r = loaded("resumption");
   const s = loaded("segments");
-  const card = loaded("segmentsCard").data as { version?: string; generatedAt?: string } | null;
+  const card = loaded("segmentsCard").data;
   return {
     duration: { name: "duration", version: d.data?.version ?? "none", source: d.source, type: d.data?.type, trainedOn: d.data?.trainedOn, testedOn: d.data?.testedOn, file: d.file },
     post_resumption: { name: "post_resumption", version: r.data?.version ?? "none", source: r.source, type: "logistic", trainedOn: r.data?.trainedOn, testedOn: r.data?.testedOn, file: r.file },

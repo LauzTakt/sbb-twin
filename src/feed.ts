@@ -270,4 +270,3 @@ export function statusPayload(t = Date.now()) {
     bulletinAI: aiStats(),
   };
 }
-export const trainById = (id: string) => byTrainId.get(id);

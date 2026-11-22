@@ -5,7 +5,8 @@
 // (the interval includes zero) or worse, so nothing is claimed that the test does not show.
 import { ArrowLeft, Map as MapIcon, Monitor, Moon, Sun, TrainFront, TriangleAlert } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
-import type { ForecastsResponse, Metric, ModelInfo, Scorecard, ScorecardEntry, ScorecardsResponse, ShadowEntry, ShadowResponse } from "../forecastTypes";
+import type { ForecastsResponse, Metric, ModelInfo, Scorecard, ScorecardEntry, ScorecardsResponse, ShadowEntry, ShadowResponse } from "../../../src/contracts/forecasts";
+import { api } from "../feed";
 import { applyPageTheme, onSystemThemeChange, readPref, resolveTheme, savePref, shownTheme, switchMs, systemTheme, type Pref, type Theme } from "../theme";
 import { Bars, Calibration, Columns, Defs, Meter, TipLayer, type BarRow, type CalPoint } from "./charts";
 
@@ -83,12 +84,6 @@ const horizonOf = (name: string) => Number(name.match(/(\d+)\s*min/i)?.[1] ?? Na
 const kOf = (name: string) => Number(name.match(/(\d+(?:\.\d+)?)\s*%/)?.[1] ?? NaN);
 const inH = (min: number) => (min % 60 === 0 ? `${min / 60}${NB}h` : `${min}${NB}min`);
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
-
-async function get<T>(path: string): Promise<T> {
-  const r = await fetch(path);
-  if (!r.ok) throw new Error(`HTTP ${r.status}`);
-  return (await r.json()) as T;
-}
 
 // ---------------------------------------------------------------- verdicts from the 95 % intervals
 type Verdict = { other: string; lo: number; hi: number; result: "better" | "level" | "worse"; justBarely: boolean };
@@ -212,9 +207,9 @@ const mainKeys = (m: Metric) => {
 function MetricPanel({ metric, title, hint, format, max, placeholder, tickFormat, notes, unit = "brier", keys, accent = "model", verdict, rename }: { metric: Metric; title: string; hint: string; format: (v: number) => string; max?: number; placeholder: boolean; tickFormat?: (v: number) => string; notes: string; unit?: "brier" | "share" | "min"; keys?: string[]; accent?: string; verdict?: string; rename?: Record<string, string> }) {
   const shown = keys ?? mainKeys(metric);
   const rows: BarRow[] = shown.map((k) => ({ key: k, label: rename?.[k] ?? series(k), value: metric.values[k], kind: k === accent || (accent === "model" && k === "model_conformal") ? "model" : "base", ci: Array.isArray(metric.ci95?.[k]) ? metric.ci95![k] : undefined }));
-  const vs = verdicts(metric, notes).filter((v) => shown.includes(v.other));
-  const all = Object.keys(metric.values ?? {}).filter((k) => num(metric.values[k]) !== undefined);
   const gains = verdicts(metric, notes);
+  const vs = gains.filter((v) => shown.includes(v.other));
+  const all = Object.keys(metric.values ?? {}).filter((k) => num(metric.values[k]) !== undefined);
   const sentence = verdict ?? (vs.length ? verdictSentence(vs) : "");
   return (
     <Panel title={title} hint={hint} placeholder={placeholder}>
@@ -536,7 +531,6 @@ function DurationSection({ e }: { e?: ScorecardEntry }) {
   );
 }
 
-type BandCal = { bin: string; predicted: number; observed: number; n: number };
 function ResumptionSection({ e }: { e?: ScorecardEntry }) {
   if (!usable(e)) return <Empty>The post-resumption scorecard is not published yet (research/post_resumption/scorecard.json).</Empty>;
   const s = e.scorecard;
@@ -545,7 +539,7 @@ function ResumptionSection({ e }: { e?: ScorecardEntry }) {
   const main = s.metrics.filter((m) => m.ci95 && Object.keys(m.ci95).length);
   const rest = s.metrics.filter((m) => !main.includes(m));
   const max = Math.max(0, ...s.metrics.flatMap((m) => Object.values(m.values ?? {}).filter((v) => typeof v === "number")));
-  const bands = (Array.isArray(s.calibrationByBand) ? s.calibrationByBand : []) as BandCal[];
+  const bands = Array.isArray(s.calibrationByBand) ? s.calibrationByBand : [];
   const quarters = (s.calibration ?? []).filter((c) => Number.isFinite(c.observed));
   const first = quarters[0];
   const acceptance = s.acceptance as { rule?: string; passed?: boolean } | undefined;
@@ -715,7 +709,7 @@ function ShadowSection({ shadow }: { shadow?: ShadowResponse }) {
   const total = shadow.open + shadow.scored + shadow.unscored;
   const sc = shadow.score;
   const horizons = sc ? Object.keys(sc.brier).sort((a, b) => Number(a) - Number(b)) : [];
-  const max = sc ? Math.max(0, ...Object.values(sc.brier), ...Object.values(sc.operatorBrier ?? {})) : 0;
+  const max = sc ? Math.max(0, ...Object.values(sc.brier), ...Object.values(sc.operatorBrier ?? {}).filter((value) => value !== null)) : 0;
   // weeks of planned works carry no prediction: list the disruptions the model speaks about first
   const withPrediction = shadow.entries.filter((x) => !x.planned || x.prediction);
   const entries = [...withPrediction, ...shadow.entries.filter((x) => !withPrediction.includes(x))].slice(0, 8);
@@ -747,7 +741,8 @@ function ShadowSection({ shadow }: { shadow?: ShadowResponse }) {
         <div className="grid c3">
           {horizons.map((h) => {
             const rows: BarRow[] = [{ key: "model", label: series("model"), value: sc.brier[h], kind: "model" }];
-            if (sc.operatorBrier?.[h] !== undefined) rows.push({ key: "operator", label: series("operator"), value: sc.operatorBrier[h], kind: "base" });
+            const operatorScore = sc.operatorBrier?.[h];
+            if (operatorScore != null) rows.push({ key: "operator", label: series("operator"), value: operatorScore, kind: "base" });
             return (
               <Panel key={h} title={`Still disrupted ${inH(Number(h))} after first seen?`} hint={`Live Brier score over ${sc.n} ended ${sc.n === 1 ? "disruption" : "disruptions"}, lower is better`}>
                 <Bars rows={rows} format={brier} tickFormat={tick} max={max} title={`Live Brier at ${h} min`} />
@@ -882,9 +877,9 @@ export function Page() {
     const load = async () => {
       try {
         const [c, s, f] = await Promise.all([
-          get<ScorecardsResponse>("/api/forecasts/scorecards"),
-          get<ShadowResponse>("/api/forecasts/shadow").catch(() => undefined),
-          get<ForecastsResponse>("/api/forecasts").catch(() => undefined),
+          api<ScorecardsResponse>("/forecasts/scorecards"),
+          api<ShadowResponse>("/forecasts/shadow").catch(() => undefined),
+          api<ForecastsResponse>("/forecasts").catch(() => undefined),
         ]);
         if (!alive) return;
         setCards(c);
