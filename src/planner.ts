@@ -1509,9 +1509,13 @@ export function plan(fromQ: string, toQ: string, after = Date.now(), limit = 4, 
   const tSearch = performance.now(); // the search budget starts once the snapshot is there
   const { originWalk, destWalk } = endpoints(s, from, to);
   const horizon = horizonFor(after);
+  // the loaded service days: today's file (with the trips of earlier days still running) and the next day's
+  const days = [timetableDate(), nextDay?.trips.length ? nextDay.date : ""].filter(Boolean);
+  const coverFrom = days.length ? serviceOrigin(days[0]) : Infinity;
+  if (!Number.isFinite(after) || after < coverFrom || after > s.until)
+    return { error: `Outside the loaded timetable: ${Number.isFinite(after) ? `${zurich(after).date} ${zurich(after).time.slice(0, 5)}` : String(after)} (the twin has the service days ${days.join(" and ")}, until ${zurich(s.until).date} ${hhmm(s.until)})` };
   const incomplete = [...s.incomplete];
-  if (after < s.from) incomplete.push(`trains before ${hhmm(s.from)} are not in the snapshot`);
-  if (horizon > s.until) incomplete.push(`the timetable ends at ${hhmm(s.until)}`);
+  if (horizon > s.until) incomplete.push(`the timetable ends at ${zurich(s.until).date} ${hhmm(s.until)}: later journeys are not searched`);
   const base: Query = { s, origin: from, dest: to, L: maxTransfers + 1, mode: via !== undefined ? 1 : 0, via: via ?? -1, certain: true, horizon, originWalk, destWalk };
   let searches = 0;
   let scanned = 0;
