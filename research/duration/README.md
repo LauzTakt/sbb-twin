@@ -51,8 +51,8 @@ Intervals: 95% paired bootstrap over whole test weeks (2000 resamples), model mi
 | 120 min | 0.225 | 0.235 | **0.224** | 0.257 | -0.024 .. +0.007 | -0.065 .. +0.003 |
 | 240 min | **0.188** | 0.200 | 0.198 | 0.225 | -0.026 .. +0.002 | **-0.066 .. -0.013** |
 
-- From the first notice the model is best or level-best at every horizon. The gain is outside the noise against
-  SBB's announcement at 60 min and against the historical rate at 240 min; the rest is within noise (per-cause rates
+- From the first notice the model is best or level-best at every horizon. The gain is just outside the noise against
+  SBB's announcement at 60 min (upper bound -0.0001) and clearly against the historical rate at 240 min; the rest is within noise (per-cause rates
   are level at 120 min). The announcement taken literally (`operator_point`) is far worse: 0.31 / 0.39 / 0.23.
 - **End time** (132 incidents with an announced end), mean absolute error: model median 121 min, announced end 117,
   announced end + median correction 109, Didac's learned residual 108. The model median does not beat the
