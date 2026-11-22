@@ -50,7 +50,7 @@ counts once, spread over the segments of its section), 95 % paired bootstrap int
   track); "A - B and C" uses both branches; "A" alone goes to the segments at station A. Names are matched with the
   history study's normalisation (`/workspace/sbb/history/build_effects.py`, `norm`). A cross-border section is
   placed on its Swiss part (path to the Swiss node nearest the foreign station). Each incident's weight 1 is spread
-  evenly over its segments. Cause groups follow the contract (`planned`, `infrastructure`, `rolling_stock`,
+  evenly over its segments. Cause groups follow the contract and the EG mapping of `research/duration/model.json` (`planned`, `infrastructure`, `rolling_stock`,
   `person`, `external`, `other`) from the first active version's EG code.
 - **Model.** Poisson regression of each segment's training-period count on log km, log(1 + trains per day),
   single-track share and the log of past incidents on other segments within about 20 km (a Gaussian kernel that

@@ -11,19 +11,19 @@ Inputs (local, not committed):
   data/days/day-*.json.gz                   the twin's GTFS day files (served stations, trains per segment)
 
 Method (README.md has the details):
-  segments   the BAV track graph cut at every station served by a train and at every junction / track end, so
-             each segment is one stretch of track between two consecutive served stations (or a junction);
-             only segments with at least one scheduled train on a weekday are ranked.
-  exposure   km of track and trains per weekday (2026-11-23, every train run counted once per segment).
+  segments   the BAV track graph cut at every station served by a train (twin's GTFS day files), at every junction
+             and track end, and at every station a training incident names; each segment is one stretch of track
+             between two consecutive served stations (or a station and a junction). Ranked: segments with trains,
+             plus any segment a training incident touched.
+  exposure   km of track and trains per day (Monday 2026-11-23, every train run counted once per segment).
   incidents  each VIA incident "A - B" goes to the segments of the shortest track path from A to B ("A - B and C":
-             both branches), each incident spread evenly so it counts once; "A" alone: the segments at station A.
-  model      Poisson regression of the training-period counts on log km, log trains per day and the single-track
-             share, then Poisson-gamma empirical Bayes: each segment's rate is the regression's expectation
-             shrunk towards its own count, rate = mu * (y + a) / (mu + a), a from the negative binomial likelihood.
-  check      choose the variant on 2024-03..2024-12 -> 2025, refit on 2024-03..2025-12, test once on 2026-01..10:
-             share of test incidents that fall in the top 5/10/20 % of segments (recall@k), against rankings by
-             track length, by trains per day, by train-km and by the raw training counts, with paired bootstrap
-             95 % intervals (incidents resampled; a week-block bootstrap as a check).
+             both branches), spread evenly so it counts once; "A" alone: the segments at station A.
+  model      Poisson regression of the training-period counts on log km, log(1 + trains per day), single-track
+             share and the log of past incidents on other segments within ~h km, then Poisson-gamma empirical
+             Bayes: rate = mu * (y + a) / (mu + a). h and a are chosen on 2024-03..2024-12 -> 2025.
+  check      refit on 2024-03..2025-12, test once on 2026-01..2026-10-12: share of test incidents that fall in the
+             top 5/10/20 % of segments (recall@k), against rankings by track length, trains per day, train-km and
+             the raw training counts, with paired bootstrap 95 % intervals (incidents; weeks as a check).
 """
 import gzip
 import heapq
@@ -56,15 +56,15 @@ NBOOT = 2000
 SEED = 20261122
 SIMPLIFY_M = 15.0
 
-# Contract cause groups (research/forecast-contract.md, section 1).
+# Contract cause groups (research/forecast-contract.md, section 1), the same EG codes as research/duration/model.json.
 CAUSE = {
     'planned': ['EG_004', 'EG_158'],
-    'infrastructure': ['EG_001', 'EG_006', 'EG_008', 'EG_010', 'EG_011', 'EG_196'],
+    'infrastructure': ['EG_001', 'EG_006', 'EG_008', 'EG_010', 'EG_011', 'EG_028', 'EG_034', 'EG_196'],
     'rolling_stock': ['EG_013', 'EG_014', 'EG_111', 'EG_117', 'EG_119', 'EG_125', 'EG_191', 'EG_197'],
-    'person': ['EG_046', 'EG_047', 'EG_122', 'EG_194'],
+    'person': ['EG_046', 'EG_047', 'EG_122', 'EG_194', 'EG_199'],
     'external': ['EG_015', 'EG_016', 'EG_017', 'EG_018', 'EG_019', 'EG_020', 'EG_021', 'EG_022', 'EG_023',
                  'EG_025', 'EG_026', 'EG_030', 'EG_039', 'EG_049', 'EG_050', 'EG_052', 'EG_070', 'EG_100',
-                 'EG_101', 'EG_102', 'EG_104', 'EG_110', 'EG_112', 'EG_113', 'EG_114', 'EG_192', 'EG_193',
+                 'EG_101', 'EG_102', 'EG_104', 'EG_110', 'EG_112', 'EG_113', 'EG_114', 'EG_135', 'EG_190', 'EG_192', 'EG_193',
                  'EG_195', 'EG_198', 'EG_200'],
 }
 CAUSE_OF = {code: g for g, codes in CAUSE.items() for code in codes}
@@ -342,20 +342,6 @@ def nb_alpha(y, mu):
 def years(period):
     a, b = (pd.Timestamp(x) for x in PERIODS[period])
     return (b - a).days / 365.25
-
-
-def design(km, trains, single):
-    return np.column_stack([np.ones_like(km), np.log(km), np.log(trains), single])
-
-
-def fit_rates(y, X, period):
-    """Expected incidents per year per segment: regression prior and empirical-Bayes posterior."""
-    T = years(period)
-    beta = fit_poisson(X, y, np.full(len(y), math.log(T)))
-    mu = np.exp(X @ beta) * T                              # expected count in the period
-    a = nb_alpha(y, mu)
-    post = mu * (y + a) / (mu + a)
-    return {'prior': mu / T, 'eb': post / T, 'beta': beta, 'alpha': a}
 
 
 def top_masks(score, tiebreak):

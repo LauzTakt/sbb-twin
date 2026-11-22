@@ -1,6 +1,6 @@
 {
  "model": "section_risk",
- "generatedAt": "2026-11-22T06:44:13+00:00",
+ "generatedAt": "2026-11-22T06:46:35+00:00",
  "data": {
   "incidentsTrain": 391,
   "incidentsTest": 140,
