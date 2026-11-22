@@ -921,7 +921,7 @@ export function Page() {
             <span className="mark">
               <TrainFront size={19} />
             </span>
-            sbb-twin <span className="crumb">Forecasts</span>
+            takt-twin <span className="crumb">Forecasts</span>
           </div>
           <div className="top">
             <a className="back" href="/">

@@ -294,7 +294,7 @@ export function App() {
           <span className="mark">
             <TrainFront size={19} />
           </span>
-          sbb-twin
+          takt-twin
           <span className={`conn ${conn}`}>{conn === "online" ? "Live" : conn === "offline" ? "Offline" : "Connecting"}</span>
         </div>
         <Search
