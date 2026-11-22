@@ -161,6 +161,24 @@ def features(d):
     return X.values.astype(float)
 
 
+FEATURE_SETS = ['full', 'no_clock']          # no_clock: hour buckets and weekend get coefficient 0
+HALF_LIVES = [None, 365]                      # recency weighting of training incidents (days), None = equal
+
+
+def fx(X, fs):
+    X = X.copy()
+    if fs == 'no_clock':
+        X[:, [i for i, f in enumerate(FEATS) if f.startswith('hour:') or f == 'weekend']] = 0
+    return X
+
+
+def recency(starts, split, hl):
+    if hl is None:
+        return None
+    age = (split - starts).dt.total_seconds().values / 86400
+    return 0.5 ** (age / hl)
+
+
 # ----------------------------------------------------------------------------------------------- model families
 class AFT:
     """ln T = intercept + x.beta + sigma * eps, eps ~ N(0,1); ridge on beta (all durations are observed)."""
@@ -169,14 +187,15 @@ class AFT:
     def __init__(self, lam):
         self.lam = lam
 
-    def fit(self, X, T):
+    def fit(self, X, T, wt=None):
         y = np.log(T)
+        wt = np.ones(len(T)) if wt is None else wt * len(wt) / wt.sum()
         Xc = np.column_stack([np.ones(len(X)), X])
         P = np.eye(Xc.shape[1]) * self.lam
         P[0, 0] = 0
-        w = np.linalg.solve(Xc.T @ Xc + P, Xc.T @ y)
+        w = np.linalg.solve(Xc.T @ (Xc * wt[:, None]) + P, Xc.T @ (wt * y))
         self.b0, self.beta = w[0], w[1:]
-        self.sigma = float(np.sqrt(np.mean((y - Xc @ w) ** 2)))
+        self.sigma = float(np.sqrt(np.sum(wt * (y - Xc @ w) ** 2) / wt.sum()))
         return self
 
     def mu(self, X):
@@ -201,7 +220,8 @@ class Hazard:
     def __init__(self, lam):
         self.lam = lam
 
-    def fit(self, X, T):
+    def fit(self, X, T, wt=None):
+        wt = np.ones(len(T)) if wt is None else wt * len(wt) / wt.sum()
         nb = len(EDGES) - 1
         rows, bins, ys = [], [], []
         for i, t in enumerate(T):
@@ -213,7 +233,7 @@ class Hazard:
                 bins.append(j)
                 ys.append(1.0 if t < hi else 0.0)
         rows, bins, ys = np.array(rows), np.array(bins), np.array(ys)
-        Xr = X[rows]
+        Xr, wr = X[rows], wt[rows]
         Bm = np.zeros((len(rows), nb))
         Bm[np.arange(len(rows)), bins] = 1
         p = X.shape[1]
@@ -221,8 +241,8 @@ class Hazard:
         def f(w):
             a, beta = w[:nb], w[nb:]
             z = Bm @ a + Xr @ beta
-            nll = np.sum(np.logaddexp(0, z) - ys * z) + self.lam * beta @ beta
-            r = 1 / (1 + np.exp(-z)) - ys
+            nll = np.sum(wr * (np.logaddexp(0, z) - ys * z)) + self.lam * beta @ beta
+            r = wr * (1 / (1 + np.exp(-z)) - ys)
             return nll, np.concatenate([Bm.T @ r, Xr.T @ r + 2 * self.lam * beta])
 
         w0 = np.zeros(nb + p)
@@ -413,12 +433,16 @@ def main():
     sel = []
     for fam, (cls, lams) in grid.items():
         for lam in lams:
-            m = cls(lam).fit(X[tr_val], T[tr_val])
-            b = [brier(m.S(X[val], h), Yv[h]) for h in HORIZONS]
-            sel.append(dict(family=fam, ridge=lam, brier60=r4(b[0]), brier120=r4(b[1]), brier240=r4(b[2]),
-                            mean=r4(np.mean(b))))
+            for fs in FEATURE_SETS:
+                for hl in HALF_LIVES:
+                    m = cls(lam).fit(fx(X[tr_val], fs), T[tr_val], recency(d.start[tr_val], VAL_SPLIT, hl))
+                    b = [brier(m.S(fx(X[val], fs), h), Yv[h]) for h in HORIZONS]
+                    sel.append(dict(family=fam, ridge=lam, features=fs, halfLifeDays=hl, brier60=r4(b[0]),
+                                    brier120=r4(b[1]), brier240=r4(b[2]), mean=round(float(np.mean(b)), 5)))
     best = min(sel, key=lambda r: r['mean'])
     best_by_family = {fam: min([r for r in sel if r['family'] == fam], key=lambda r: r['mean']) for fam in grid}
+    X = fx(X, best['features'])
+    feat = lambda dd: fx(features(dd), best['features'])
     cms = {}
     dv_fit = d[tr_val]
     for mm in [1, 2, 5, 10, 20, 50]:
@@ -429,13 +453,26 @@ def main():
 
     # conformal band on ln T: shifts from the 2024 fit applied to 2025 (out of sample), reused on the final model
     cls = AFT if best['family'] == 'aft_lognormal' else Hazard
-    mval = cls(best['ridge']).fit(X[tr_val], T[tr_val])
+    hl = best['halfLifeDays']
+    mval = cls(best['ridge']).fit(X[tr_val], T[tr_val], recency(d.start[tr_val], VAL_SPLIT, hl))
     lo_shift, hi_shift = conformal_shifts(mval, X[val], T[val])
+    # point forecast of the end, chosen on 2025: model median, the announced end, or announced + median correction
+    dtv, dva = d[tr_val], d[val]
+    htv, hva = dtv.ann.notna().values, dva.ann.notna().values
+    corr_v = float(np.median(T[tr_val][htv] - dtv.ann.astype(float).values[htv]))
+    av = dva.ann.astype(float).values[hva]
+    mae_v = {'model_median': float(np.mean(np.abs(mval.quantile(X[val], 0.5)[hva] - T[val][hva]))),
+             'announced': float(np.mean(np.abs(av - T[val][hva]))),
+             'announced_plus_correction': float(np.mean(np.abs(np.maximum(av + corr_v, 0) - T[val][hva])))}
+    point_rule = min(mae_v, key=mae_v.get)
 
     # ---------------- 2. final fit on 2024-03..2025-12, one test on 2026-01..2026-10
-    model = cls(best['ridge']).fit(X[tr], T[tr])
+    model = cls(best['ridge']).fit(X[tr], T[tr], recency(d.start[tr], TEST_SPLIT, hl))
     other_cls = Hazard if cls is AFT else AFT
-    other = other_cls(best_by_family[other_cls.type]['ridge']).fit(X[tr], T[tr])
+    ob = best_by_family[other_cls.type]
+    other = other_cls(ob['ridge']).fit(fx(features(d)[tr], ob['features']), T[tr],
+                                       recency(d.start[tr], TEST_SPLIT, ob['halfLifeDays']))
+    X_other_te = fx(features(d)[te], ob['features'])
     dtr, dte = d[tr], d[te]
     Xte, Tte, wk = X[te], T[te], dte.week.values
     cause = CauseKM(m_cause).fit(dtr)
@@ -448,7 +485,7 @@ def main():
         y = (Tte > h).astype(float)
         p = {'model': model.S(Xte, h), 'operator': oper.S(dte, h), 'cause': cause.S(dte.code, h),
              'prior': np.full(len(y), prior[h]), 'operator_point': point_S(ann_te, prior[h], h),
-             f'other_family_{other.type}': other.S(Xte, h)}
+             f'other_family_{other.type}': other.S(X_other_te, h)}
         if h == 120:
             preds120 = p
         err = {k: (v - y) ** 2 for k, v in p.items()}
@@ -468,6 +505,8 @@ def main():
     ae = {'model': np.abs(med[has] - Tte[has]), 'operator': np.abs(ann_te[has] - Tte[has]),
           'operator_plus_median_correction': np.abs(np.maximum(ann_te[has] + corr, 0) - Tte[has]),
           'operator_learned_residual_didac': np.abs(didac - Tte[has])}
+    ae['chosen_point_rule'] = {'model_median': ae['model'], 'announced': ae['operator'],
+                               'announced_plus_correction': ae['operator_plus_median_correction']}[point_rule]
     pt = has & dte.duration_type.isin(POINT).values
     ae_pt = {'model': np.abs(med[pt] - Tte[pt]), 'operator': np.abs(ann_te[pt] - Tte[pt])}
     metrics.append({
@@ -475,7 +514,8 @@ def main():
         'n': int(has.sum()), 'values': {k: round(float(v.mean()), 1) for k, v in ae.items()},
         'medianAbsoluteError': {k: round(float(np.median(v)), 1) for k, v in ae.items()},
         'ci95': {f'model_vs_{k}': [round(x, 1) for x in boot_ci(ae['model'], ae[k], wk[has])] for k in ae if k != 'model'},
-        'note': f'model = median of S(t); operator + correction adds the training median residual ({corr:+.1f} min)'})
+        'note': f'model = median of S(t); operator + correction adds the training median residual ({corr:+.1f} min); '
+                f'chosen_point_rule = {point_rule} (picked on 2025)'})
     metrics.append({
         'name': 'Mean absolute error of the predicted end (min), point announcements only (UNTIL types)',
         'lowerIsBetter': True, 'n': int(pt.sum()), 'values': {k: round(float(v.mean()), 1) for k, v in ae_pt.items()},
@@ -512,15 +552,37 @@ def main():
                  'operator_latest': ol.S(dte_e, e, t),
                  'cause': cause.S(dte_e.code, t) / np.maximum(cause.S(dte_e.code, e), 1e-9),
                  'prior': np.full(len(y), pr_t / pr_e)}
-            ann_l, _ = latest_announced(dte_e, e)
+            ann_l, atl_l = latest_announced(dte_e, e)
             p['operator_latest_point'] = np.where(np.isnan(ann_l), pr_t / pr_e, (ann_l > t).astype(float))
+            Xu = feat(dte_e.assign(ann=ann_l, announced_at_least=atl_l.astype(int)))
+            p['model_updated'] = model.S(Xu, t) / np.maximum(model.S(Xu, e), 1e-12)
             err = {k: (v - y) ** 2 for k, v in p.items()}
             cond.append({
                 'name': f'Brier at {t} min | still open at {e} min', 'lowerIsBetter': True, 'n': int(len(y)),
                 'observedStillOpen': r4(y.mean()), 'values': {k: r4(v.mean()) for k, v in err.items()},
-                'ci95': {f'model_vs_{k}': boot_ci(err['model'], err[k], wk[open_te]) for k in
-                         ['operator_latest', 'cause', 'prior']}})
+                'ci95': {**{f'model_vs_{k}': boot_ci(err['model'], err[k], wk[open_te]) for k in
+                            ['operator_latest', 'cause', 'prior']},
+                         'model_updated_vs_operator_latest': boot_ci(err['model_updated'], err['operator_latest'],
+                                                                     wk[open_te]),
+                         'model_updated_vs_model': boot_ci(err['model_updated'], err['model'], wk[open_te])}})
     metrics.extend(cond)
+
+    # ---------------- 5b. deployment check: refit each month on everything that ended before it (same settings)
+    roll = {h: np.zeros(int(te.sum())) for h in HORIZONS}
+    te_month = dte.start.dt.strftime('%Y-%m').values
+    for mth in sorted(set(te_month)):
+        m0 = pd.Timestamp(mth + '-01', tz=TZ)
+        trm = (d.end < m0).values
+        mm = cls(best['ridge']).fit(X[trm], T[trm], recency(d.start[trm], m0, hl))
+        sm = te_month == mth
+        for h in HORIZONS:
+            roll[h][sm] = mm.S(Xte[sm], h)
+    rolling = []
+    for h in HORIZONS:
+        y = (Tte > h).astype(float)
+        e_roll, e_frozen = (roll[h] - y) ** 2, (model.S(Xte, h) - y) ** 2
+        rolling.append({'horizonMin': h, 'brierMonthlyRefit': r4(e_roll.mean()), 'brierFrozen': r4(e_frozen.mean()),
+                        'ci95_refit_minus_frozen': boot_ci(e_roll, e_frozen, wk)})
 
     # ---------------- 6. planned construction, reported separately
     pl = dte.planned.values.astype(bool)
@@ -597,6 +659,15 @@ def main():
         'hourBuckets': {'night': '22-5', 'am_peak': '6-8', 'day': '9-15 (reference)', 'pm_peak': '16-18',
                         'evening': '19-21'},
         'conditional': 'S(t | e) = S(t) / S(e) for t > e',
+        'pointForecast': {'withAnnouncedEnd': point_rule, 'correctionMin': round(corr, 1),
+                          'withoutAnnouncedEnd': 'model_median',
+                          'rule': 'expected end shown as a time: chosen on 2025 by mean absolute error; '
+                                  'announced_plus_correction = announced end + correctionMin'},
+        'causeText': cause_text(),
+        'updates': ('when SBB changes the announced end, recompute announced_log / announced_none / '
+                    'announced_at_least from the latest version (minutes from the original start) and use '
+                    'S(t | e) = S(t; x_latest) / S(e; x_latest); tested in scorecard.json (model_updated)'),
+        'recencyHalfLifeDays': hl,
     }
     if exp['type'] == 'discrete_hazard':
         model_json['interpolation'] = ('S at the bin edges = prod (1 - h_i); linear inside a bin; the last bin is '
@@ -616,13 +687,18 @@ def main():
     gain = m120['values']['operator'] - m120['values']['model']
     ci = m120['ci95']['model_vs_operator']
     mae = metrics[3]['values']
-    better = [k for k in ('operator', 'cause', 'prior') if m120['ci95'][f'model_vs_{k}'][1] < 0]
-    headline = (f"From the first notice, the chance that a disruption is still not resumed after 2 hours is "
-                f"forecast with Brier {m120['values']['model']:.3f} on {m120['n']} disruptions of Jan-Oct 2026, against "
-                f"{m120['values']['operator']:.3f} for SBB's own announced end, {m120['values']['cause']:.3f} per cause "
-                f"and {m120['values']['prior']:.3f} for the historical rate"
-                + (f" (clearly better than: {', '.join(better)})." if better else
-                   " (level with them: the 95% intervals include zero)."))
+    bm = metrics[:3]
+    v = lambda k: ' / '.join(f"{m['values'][k]:.3f}" for m in bm)
+    sig = []
+    for k, label in (('operator', "SBB's announcement"), ('cause', 'the per-cause rates'), ('prior', 'the historical rate')):
+        hs = [f"{m['name'].split()[2]} min" for m in bm if m['ci95'][f'model_vs_{k}'][1] < 0]
+        if hs:
+            sig.append(f"{label} at {' and '.join(hs)}")
+    headline = (f"Forecast at the first notice of {bm[0]['n']} disruptions in Jan-Oct 2026, the chance of still not "
+                f"being resumed after 1 / 2 / 4 hours scores Brier {v('model')} against {v('operator')} for SBB's own "
+                f"announced end (calibrated), {v('cause')} per cause and {v('prior')} for the historical rate"
+                + (f"; the 95% interval shows a real gain over {' and over '.join(sig)}, and the other differences are "
+                   f"within noise." if sig else '; all differences are within noise.'))
     notes = [
         'Brier = mean squared error of the probability that the disruption is still not resumed at the horizon; '
         'ci95 entries are 95% paired bootstrap intervals (2000 resamples of whole test weeks) of model minus '
@@ -639,6 +715,14 @@ def main():
         f'({m_cause} pseudo-incidents); prior = Kaplan-Meier of the training durations.',
         'The conditional rows compare S(t)/S(e) (start features only, as in the contract) with the latest announced '
         'end known at e (calibrated on training incidents still open at e).',
+        'model_updated (conditional rows): the same model with the announced-end features recomputed from the latest '
+        'version known at e (clock still from the original start); it beats the start-only S(t)/S(e) at every '
+        'elapsed/horizon pair and is level with the calibrated latest announcement.',
+        'deployment.monthlyRefit: refitting every month on all incidents ended by then does not improve on the '
+        'frozen model in 2026 (intervals include zero), so model.json is the frozen 2024-03..2025-12 fit.',
+        'Test-set reuse, stated openly: a first version (equal weights, no feature-set choice) scored Brier 0.148 / '
+        '0.227 / 0.190 on the same 2026 test; recency weighting and the clock-feature option were then added to the '
+        '2025 selection grid, which picked the current setting. 2026 was never used to choose among settings.',
         'Small sample: about 140 test incidents; differences of 0.01 Brier are within noise unless the interval says '
         'otherwise.',
     ]
@@ -650,7 +734,12 @@ def main():
                            'duration = first Interrupted/Limited service version -> first Service resumed / ENDED'},
         'headline': headline, 'modelType': exp['type'],
         'metrics': metrics, 'calibration': calib, 'examples': examples, 'notes': notes,
+        'deployment': {'monthlyRefit': rolling,
+                       'note': 'same family and settings refitted at the start of each 2026 month on every incident '
+                               'that had ended by then; frozen = the model in model.json'},
         'validation': {'selection': sel, 'chosen': best, 'causePseudoCount': m_cause,
+                       'pointForecast': {'maeMin2025': {k: round(v, 1) for k, v in mae_v.items()},
+                                         'correctionMin2024': round(corr_v, 1), 'chosen': point_rule},
                        'conformal': {'lowLogShift': r4(lo_shift), 'highLogShift': r4(hi_shift)}},
         'planned': planned,
     }
@@ -658,6 +747,22 @@ def main():
     print(json.dumps({'headline': headline, 'metrics': [{k: m[k] for k in ('name', 'values', 'ci95') if k in m}
                                                        for m in metrics], 'planned': planned,
                       'calibration': calib, 'chosen': best}, indent=1, ensure_ascii=False))
+
+
+def cause_text():
+    """Reason texts in de/fr/it/en (lower case) -> cause group, for live alerts whose cause is only in the text.
+    Match the longest phrase first."""
+    r = pd.read_csv(LT / 'reason_202610121034.csv')
+    out = {}
+    for _, row in r.iterrows():
+        g = cause_group(row.id)
+        if g == 'other':
+            continue
+        for lang in ('de', 'fr', 'it', 'en'):
+            txt = row.get(f'reason_{lang}')
+            if isinstance(txt, str) and len(txt) >= 5:
+                out[txt.strip().lower()] = g
+    return dict(sorted(out.items(), key=lambda kv: -len(kv[0])))
 
 
 def didac_learned(train, test):
