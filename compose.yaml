@@ -3,7 +3,6 @@ services:
     build: .
     ports:
       - "8787:8787" # viewer, API, MQTT over WebSocket at /mqtt
-      - "1883:1883" # MQTT over TCP
     environment:
       OTD_GTFS_RT_KEY: ${OTD_GTFS_RT_KEY:-} # opentransportdata.swiss key for GTFS-RT (optional)
     restart: unless-stopped
