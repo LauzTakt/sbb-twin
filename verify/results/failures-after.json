@@ -1,0 +1,296 @@
+{
+ "tag": "after",
+ "plannerCommit": "10c3bdc",
+ "generatedAt": "2026-11-22T09:08:31.445177+01:00",
+ "totals": {
+  "A": {
+   "cases": 217,
+   "identical": 165,
+   "explained": 52,
+   "invalidJourneys": 1,
+   "journeysValidated": 1238,
+   "resolverDisagreements": 0
+  },
+  "B": {
+   "cases": 720,
+   "futureCases": 520,
+   "futureAgree": 520,
+   "pastCasesExcluded": 200,
+   "agree": 686,
+   "fail-later": 34,
+   "invalidJourneys": 0,
+   "journeys": 4079
+  },
+  "D": {
+   "label": "after",
+   "seed": 1,
+   "cases": 60,
+   "counts": {
+    "oracle:agree": 74,
+    "invalidJourneys": 7,
+    "inv_remove_fail": 1,
+    "inv_addbus_fail": 0,
+    "inv_caps_fail": 3,
+    "oracle:planner-only": 11,
+    "oracle:fail-later:projection-diff": 2,
+    "oracle:planner-better": 3,
+    "oracle:fail-invalid-certain": 1
+   }
+  }
+ },
+ "counts": {
+  "Gate C under measures: closure crossing or cancelled call (journey uses a call our projection cuts/holds)": 6,
+  "oracle disagreement to check (planner better and valid)": 3,
+  "invariant: a higher maxTransfers gave a worse optimum": 3,
+  "measure projection difference (not counted as a planner failure)": 2,
+  "Gate C: ranking (change count reported wrong, e.g. in-seat continuation counted)": 1,
+  "closure crossing (certain journey invalid under the closure)": 1,
+  "Gate C under measures: measure projection difference (bus timing)": 1,
+  "invariant: a closure improved the planner's optimum": 1
+ },
+ "explained": {
+  "oracle": 14,
+  "same arrival": 11,
+  "twin earlier by 420s": 8,
+  "different access point": 11,
+  "reference best uses modes we do not load": 5,
+  "twin earlier by 120s": 2,
+  "twin earlier by 360s": 1,
+  "B past departure time (live state), excluded": 34,
+  "D projection difference (twin measure effect differs from the documented contract)": 2
+ },
+ "causes": {
+  "Gate C under measures: closure crossing or cancelled call (journey uses a call our projection cuts/holds)": {
+   "count": 6,
+   "examples": [
+    {
+     "gate": "D/C",
+     "od": "Locarno > Bellinzona",
+     "time": "09:20:00",
+     "scenario": "closure Giubiasco-Cadenazzo UNTIL 35m measures=['short_turn:both']",
+     "planner": "09:22:00->10:22:00 ['Walk', 'EV1', 'Walk', 'S20']",
+     "why": "leg 4 S20: no call at Cadenazzo (8505404) departing 10:11:00 (nearest -660s)"
+    },
+    {
+     "gate": "D/C",
+     "od": "Thun > Interlaken West",
+     "time": "09:07:00",
+     "scenario": "closure Bern-Münsingen UNTIL 150m measures=['short_turn:both'] +bus",
+     "planner": "12:32:00->13:01:00 ['IC61']",
+     "why": "leg 1 IC61: no call at Thun (8507100) departing 12:32:00 (nearest -480s)"
+    },
+    {
+     "gate": "D/C",
+     "od": "Thun > Interlaken West",
+     "time": "09:07:00",
+     "scenario": "closure Bern-Münsingen UNTIL 150m measures=['short_turn:both'] +bus",
+     "planner": "12:32:00->13:01:00 ['IC61']",
+     "why": "leg 1 IC61: no call at Thun (8507100) departing 12:32:00 (nearest -480s)"
+    }
+   ]
+  },
+  "oracle disagreement to check (planner better and valid)": {
+   "count": 3,
+   "examples": [
+    {
+     "gate": "D",
+     "od": "Zürich HB > Aarau",
+     "time": "09:41:00",
+     "scenario": "closure Zürich Altstetten-Zürich HB UNTIL 150m measures=[] +bus",
+     "stage": "closure",
+     "planner": "10:10:00->11:40:00 3ch",
+     "oracle": "12:07:00->12:31:00 0ch [IC5 Zürich HB 12:07:00]",
+     "why": "planner confirmed 10:10:00->11:40:00 3ch vs oracle confirmed 12:07:00->12:31:00 0ch [12:07:00->12:31:00 0ch [IC5 Zürich HB 12:07:00]]"
+    },
+    {
+     "gate": "D",
+     "od": "Zürich HB > Aarau",
+     "time": "09:41:00",
+     "scenario": "closure Zürich Altstetten-Zürich HB UNTIL 150m measures=[] +bus",
+     "stage": "closure+bus",
+     "planner": "10:10:00->11:40:00 3ch",
+     "oracle": "12:07:00->12:31:00 0ch [IC5 Zürich HB 12:07:00]",
+     "why": "planner confirmed 10:10:00->11:40:00 3ch vs oracle confirmed 12:07:00->12:31:00 0ch [12:07:00->12:31:00 0ch [IC5 Zürich HB 12:07:00]]"
+    },
+    {
+     "gate": "D",
+     "od": "Olten > Zürich HB",
+     "time": "09:42:00",
+     "scenario": "closure Zürich Altstetten-Zürich HB UNTIL_AT_LEAST 75m measures=[]",
+     "stage": "closure",
+     "planner": "09:50:00->11:27:00 2ch",
+     "oracle": "10:04:00->11:35:00 2ch [IR16 Olten 10:04:00 > S6 Baden 10:51:00 > S8 Zürich Oerlikon 11:30:00]",
+     "why": "planner confirmed 09:50:00->11:27:00 2ch vs oracle confirmed 10:04:00->11:35:00 2ch [10:04:00->11:35:00 2ch [IR16 Olten 10:04:00 > S6 Baden 10:51:00 > S8 Zürich Oerlikon 11:30:00]]"
+    }
+   ]
+  },
+  "invariant: a higher maxTransfers gave a worse optimum": {
+   "count": 3,
+   "examples": [
+    {
+     "gate": "D",
+     "od": "Aarau > Baden",
+     "time": "09:11:00",
+     "scenario": "closure Aarau-Rupperswil UNTIL_AT_LEAST 80m measures=['short_turn:both'] +bus",
+     "evidence": {
+      "bestArrByCap": {
+       "1": "10:29:00",
+       "2": "10:29:00",
+       "3": "11:51:00"
+      }
+     }
+    },
+    {
+     "gate": "D",
+     "od": "Interlaken Ost > Spiez",
+     "time": "10:27:00",
+     "scenario": "closure Spiez-Interlaken West UNTIL_AT_LEAST 50m measures=['short_turn:both']",
+     "evidence": {
+      "bestArrByCap": {
+       "1": "11:23:00",
+       "2": "14:37:00",
+       "3": "14:37:00"
+      }
+     }
+    },
+    {
+     "gate": "D",
+     "od": "Bern > Interlaken Ost",
+     "time": "09:08:30",
+     "scenario": "closure Münsingen-Bern UNTIL_AT_LEAST 35m measures=['short_turn:A']",
+     "evidence": {
+      "bestArrByCap": {
+       "1": "11:08:00",
+       "2": "10:38:00",
+       "3": "13:54:00"
+      }
+     }
+    }
+   ]
+  },
+  "measure projection difference (not counted as a planner failure)": {
+   "count": 2,
+   "examples": [
+    {
+     "gate": "D",
+     "od": "Locarno > Bellinzona",
+     "time": "09:20:00",
+     "scenario": "closure Giubiasco-Cadenazzo UNTIL 35m measures=['short_turn:both']",
+     "stage": "closure",
+     "planner": "09:22:00->10:22:00 1ch",
+     "oracle": "09:22:00->10:20:00 1ch [EV1 Locarno, Stazione 09:25:00 > S20 Cadenazzo 10:00:00]",
+     "why": "planner confirmed 09:22:00->10:22:00 1ch vs oracle confirmed 09:22:00->10:20:00 1ch [09:22:00->10:20:00 1ch [EV1 Locarno, Stazione 09:25:00 > S20 Cadenazzo 10:00:00]]",
+     "probes": [
+      {
+       "line": "EV1",
+       "at": "Locarno, Stazione 09:25:00",
+       "found": true,
+       "dep": "09:25:00",
+       "arr": "09:56:00",
+       "shiftedSec": 0,
+       "twinLine": "EV1"
+      },
+      {
+       "line": "S20",
+       "at": "Cadenazzo 10:00:00",
+       "found": true,
+       "dep": "10:11:00",
+       "arr": "10:22:00",
+       "shiftedSec": 660,
+       "twinLine": "S20"
+      }
+     ]
+    },
+    {
+     "gate": "D",
+     "od": "Zürich HB > Aarau",
+     "time": "09:07:30",
+     "scenario": "closure Brugg AG-Baden UNKNOWN 110m measures=['short_turn:both']",
+     "stage": "closure",
+     "planner": "09:38:00->10:05:00 0ch",
+     "oracle": "09:08:00->09:35:00 0ch [IR37 Zürich HB 09:08:00]",
+     "why": "planner confirmed 09:38:00->10:05:00 0ch vs oracle confirmed 09:08:00->09:35:00 0ch [09:08:00->09:35:00 0ch [IR37 Zürich HB 09:08:00]]",
+     "probes": [
+      {
+       "line": "IR37",
+       "at": "Zürich HB 09:08:00",
+       "found": false,
+       "offered": [
+        "RE37 09:38:00",
+        "IC5 10:04:00",
+        "IR37 10:08:00",
+        "RE37 10:38:00",
+        "IC5 11:04:00",
+        "IR37 11:08:00"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  "Gate C: ranking (change count reported wrong, e.g. in-seat continuation counted)": {
+   "count": 1,
+   "examples": [
+    {
+     "gate": "A/C",
+     "od": "Thun > Luzern",
+     "time": "23:20",
+     "planner": "05:40:00->07:43:00 ['S41', 'S2', 'S6', 'S6']",
+     "reference": "published GTFS",
+     "why": "reported 3 changes, the rides need 2"
+    }
+   ]
+  },
+  "closure crossing (certain journey invalid under the closure)": {
+   "count": 1,
+   "examples": [
+    {
+     "gate": "D",
+     "od": "Olten > Zürich HB",
+     "time": "09:21:00",
+     "scenario": "closure Aarau-Olten UNTIL 35m measures=['short_turn:A'] +bus",
+     "stage": "closure+bus",
+     "planner": "09:27:00->10:22:00 1ch",
+     "oracle": "09:52:00->10:28:00 0ch [IR35 Olten 09:52:00]",
+     "why": "planner confirmed 09:27:00->10:22:00 1ch vs oracle confirmed 09:52:00->10:28:00 0ch [09:52:00->10:28:00 0ch [IR35 Olten 09:52:00]]"
+    }
+   ]
+  },
+  "Gate C under measures: measure projection difference (bus timing)": {
+   "count": 1,
+   "examples": [
+    {
+     "gate": "D/C",
+     "od": "Olten > Zürich HB",
+     "time": "09:21:00",
+     "scenario": "closure Aarau-Olten UNTIL 35m measures=['short_turn:A'] +bus",
+     "planner": "09:27:00->10:22:00 ['EV', 'RE37']",
+     "why": "leg 1 bus 20261122_EV-f5d19088-8d065a-B0927 Olten 09:27:00 -> Aarau 09:49:00: not a bus of the projected measure (timing model or route differs)"
+    }
+   ]
+  },
+  "invariant: a closure improved the planner's optimum": {
+   "count": 1,
+   "examples": [
+    {
+     "gate": "D",
+     "od": "Aarau > Zürich HB",
+     "time": "09:36:00",
+     "scenario": "closure Lenzburg-Aarau UNTIL_AT_LEAST 20m measures=['short_turn:both'] +bus",
+     "evidence": {
+      "before": [
+       1795339320,
+       0,
+       -1795337580
+      ],
+      "after": [
+       1795338120,
+       0,
+       -1795336620
+      ]
+     }
+    }
+   ]
+  }
+ }
+}
