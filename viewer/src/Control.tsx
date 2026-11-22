@@ -278,12 +278,11 @@ export function Control({ disruptions, onClose }: { disruptions: Disruption[]; o
           </div>
           <h2 className="gap">Bulletin</h2>
           <p className="bulletin big"><b>{done.bulletin?.title ?? done.disruption.summary}</b>{"\n"}{done.bulletin?.description ?? done.disruption.description}</p>
+          <p className="hint">You can change it later from the list on the right: add buses, reopen partly or end it.</p>
           <div className="footer">
             <button className="ghost" onClick={reset}>Register another</button>
             <button className="primary" onClick={onClose}>Done</button>
           </div>
-          <h2 className="gap">Registered in the twin</h2>
-          <Active disruptions={disruptions} act={act} />
         </>
       )}
     </>
