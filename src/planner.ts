@@ -22,7 +22,6 @@ import { DEFAULT_TRANSFER_SEC, loadRouting, pairKey, pairSec, pairsFrom, pairsTo
 
 const HORIZON_MS = 6 * 3600_000;
 const PARETO_WINDOW_MS = 90 * 60_000; // an option with fewer changes is offered when it arrives within 90 min of the best
-const TWIN_BUS_TRANSFER_SEC = 240; // the twin's own replacement buses have no quay: rail <-> bus at a station takes this (or the station's published time if longer)
 const SNAPSHOT_MAX_AGE_MS = 30_000; // trains the twin simulates move their predictions: rebuild at least this often then
 
 type Place = { id: string; name: string; lon: number; lat: number };
@@ -891,7 +890,7 @@ function buildAdjacency(nQ: number, nNodes: number, used: Uint8Array, stationOfQ
     const b = k % 2_097_152;
     if (a < nQ && b < nQ && stationOfQuay[a] >= 0 && stationOfQuay[a] === stationOfQuay[b]) stationSec.set(stationOfQuay[a], Math.max(stationSec.get(stationOfQuay[a]) ?? 0, sec));
   }
-  const busSec = (s: number) => Math.max(TWIN_BUS_TRANSFER_SEC, stationSec.get(s) ?? 0);
+  const busSec = (s: number) => stationSec.get(s) ?? DEFAULT_TRANSFER_SEC;
   const lists: [number, number][][] = new Array(nNodes);
   for (let v = 0; v < nNodes; v++) {
     if (!used[v] || nodeStation[v] < 0) continue;
@@ -902,10 +901,21 @@ function buildAdjacency(nQ: number, nNodes: number, used: Uint8Array, stationOfQ
       const old = out.get(w);
       if (old === undefined || sec < old) out.set(w, sec);
     };
+    const walks = (q: number) => {
+      for (const w of pairsFrom.get(q) ?? []) {
+        if (w >= nQ) continue;
+        const sec = pairSec.get(pairKey(q, w))!;
+        add(w, sec);
+        if (stationOfQuay[w] >= 0 && stationOfQuay[w] !== s) add(nQ + stationOfQuay[w], sec); // a twin bus at the linked station
+      }
+    };
     if (v < nQ) {
       for (const w of stationNodes.get(s) ?? []) add(w, w < nQ ? genericSec(v, w, stationOfQuay) : busSec(s));
-      for (const w of pairsFrom.get(v) ?? []) if (w < nQ) add(w, pairSec.get(pairKey(v, w))!);
-    } else for (const w of stationNodes.get(s) ?? []) add(w, busSec(s));
+      walks(v);
+    } else {
+      for (const w of stationNodes.get(s) ?? []) add(w, busSec(s));
+      for (const q of quaysOf(stops[s].id)) walks(q);
+    }
     lists[v] = [...out];
   }
   const adjStart = new Int32Array(nNodes + 1);
@@ -1212,7 +1222,18 @@ function stationPublishedSec(station: number) {
     }
     stationSecCache = { n: pairSec.size, map };
   }
-  return stationSecCache.map.get(station) ?? 0;
+  return stationSecCache.map.get(station);
+}
+/** The shortest published walk between two nodes of different stations (a twin bus node stands for its station's quays). */
+function walkBetween(s: Snapshot, na: number, nb: number) {
+  const from = na < s.nQ ? [na] : quaysOfIdx(s.nodeStation[na]);
+  const to = nb < s.nQ ? [nb] : quaysOfIdx(s.nodeStation[nb]);
+  let best = Infinity;
+  for (const a of from) for (const b of to) {
+    const p = pairSec.get(pairKey(a, b));
+    if (p !== undefined && p < best) best = p;
+  }
+  return best;
 }
 /** The minimum seconds from alighting trip A at node na to boarding trip B at node nb, by GTFS precedence: a rule for
  *  exactly these two trips at these quays, then the stop-pair row, then the Swiss default inside one stop; the twin's
@@ -1229,7 +1250,11 @@ function transferSec(s: Snapshot, A: number, na: number, B: number, nb: number) 
   }
   const sa = s.nodeStation[na];
   const sb = s.nodeStation[nb];
-  if (na >= s.nQ || nb >= s.nQ) return sa === sb && sa >= 0 ? Math.max(TWIN_BUS_TRANSFER_SEC, stationPublishedSec(sa)) : Infinity;
+  if (na >= s.nQ || nb >= s.nQ) {
+    // the twin's buses stop at the station: its published time (else the default inside one stop), or a published walk
+    if (sa === sb && sa >= 0) return stationPublishedSec(sa) ?? DEFAULT_TRANSFER_SEC;
+    return walkBetween(s, na, nb);
+  }
   const p = pairSec.get(pairKey(na, nb));
   if (p !== undefined) return p;
   return sa === sb && sa >= 0 ? DEFAULT_TRANSFER_SEC : Infinity;
@@ -1261,9 +1286,9 @@ function validate(q: Query, w: Witness, tau: number): string | null {
   const first = w.parts[0];
   const last = w.parts[w.parts.length - 1];
   const nodeSt = (n: number) => s.nodeStation[n];
-  const initial = nodeSt(first.boardNode) === q.origin ? 0 : first.boardNode < s.nQ ? walkFrom(q.origin, first.boardNode) : Infinity;
+  const initial = nodeSt(first.boardNode) === q.origin ? 0 : first.boardNode < s.nQ ? walkFrom(q.origin, first.boardNode) : walkBetween(s, s.nQ + q.origin, first.boardNode);
   if (initial !== w.initialWalk) return `initial walk ${w.initialWalk} s, published ${initial} s`;
-  const final = nodeSt(last.alightNode) === q.dest ? 0 : last.alightNode < s.nQ ? walkTo(last.alightNode, q.dest) : Infinity;
+  const final = nodeSt(last.alightNode) === q.dest ? 0 : last.alightNode < s.nQ ? walkTo(last.alightNode, q.dest) : walkBetween(s, last.alightNode, s.nQ + q.dest);
   if (final !== w.finalWalk) return `final walk ${w.finalWalk} s, published ${final} s`;
   let ready = tau + w.initialWalk * 1000;
   let changes = -1;
@@ -1493,9 +1518,21 @@ function endpoints(s: Snapshot, origin: number, dest: number) {
     if (old === undefined || sec < old) m.set(n, sec);
   };
   for (const n of s.stationNodes.get(origin) ?? []) put(originWalk, n, 0);
-  for (const qa of quaysOfIdx(origin)) for (const w of pairsFrom.get(qa) ?? []) if (w < s.nQ && s.used[w] && s.nodeStation[w] !== origin) put(originWalk, w, pairSec.get(pairKey(qa, w))!);
+  for (const qa of quaysOfIdx(origin))
+    for (const w of pairsFrom.get(qa) ?? []) {
+      if (w >= s.nQ || s.nodeStation[w] < 0 || s.nodeStation[w] === origin) continue;
+      const sec = pairSec.get(pairKey(qa, w))!;
+      if (s.used[w]) put(originWalk, w, sec);
+      put(originWalk, s.nQ + s.nodeStation[w], sec); // a twin bus at the linked station
+    }
   for (const n of s.stationNodes.get(dest) ?? []) put(destWalk, n, 0);
-  for (const qd of quaysOfIdx(dest)) for (const w of pairsTo.get(qd) ?? []) if (w < s.nQ && s.used[w] && s.nodeStation[w] !== dest) put(destWalk, w, pairSec.get(pairKey(w, qd))!);
+  for (const qd of quaysOfIdx(dest))
+    for (const w of pairsTo.get(qd) ?? []) {
+      if (w >= s.nQ || s.nodeStation[w] < 0 || s.nodeStation[w] === dest) continue;
+      const sec = pairSec.get(pairKey(w, qd))!;
+      if (s.used[w]) put(destWalk, w, sec);
+      put(destWalk, s.nQ + s.nodeStation[w], sec);
+    }
   return { originWalk, destWalk };
 }
 const beats = (k: Journey, j: Journey) => k !== j && k.departure >= j.departure && k.arrival <= j.arrival && k.transfers <= j.transfers && (k.arrival < j.arrival || k.transfers < j.transfers || k.departure > j.departure);
