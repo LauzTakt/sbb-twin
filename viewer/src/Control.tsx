@@ -1,7 +1,7 @@
 // Control-centre mode: register a disruption, decide what is done about it, see the bulletin it produces.
-import { ArrowLeft, ArrowRight, Check, Plus, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, BusFront, Check, Plus, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { api, send, type Disruption } from "./feed";
+import { api, send, type BusInfo, type Disruption } from "./feed";
 
 type Cat = { code: string; label: string; effect: "interrupted" | "limited"; defaultMinutes: number | null; durationType: string; busShare?: number };
 type Station = { id: string; name: string };
@@ -20,7 +20,7 @@ function zurichEpoch(date: string, time: string) {
 const hm = (ms?: number | null) => (ms ? new Date(ms).toLocaleTimeString("de-CH", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Zurich" }) : "");
 type Plan = "short_buses" | "short" | "hold" | "limited" | "station";
 const PLANS: { id: Plan; title: string; text: string }[] = [
-  { id: "short_buses", title: "Short-turn the trains and run replacement buses", text: "Trains end at the last open station on each side. Buses run both ways every 15 minutes, first one in 15 minutes." },
+  { id: "short_buses", title: "Short-turn the trains and order replacement buses", text: "Trains end at the last open station on each side. Buses are ordered, not timed: no bus runs until you confirm its times with the bus operator." },
   { id: "short", title: "Short-turn the trains", text: "Trains end at the last open station on each side. No buses." },
   { id: "hold", title: "Hold the trains until it reopens", text: "Trains wait at the station before the section. For short interruptions." },
   { id: "limited", title: "One track open", text: "Trains run through slowly and part of them is cancelled." },
@@ -87,6 +87,8 @@ export function Control({ disruptions, onClose }: { disruptions: Disruption[]; o
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<{ disruption: Disruption; bulletin?: { title: string; description: string } }>();
+  const [busWait, setBusWait] = useState<{ fromMin: number | null; toMin: number | null; n: number }>();
+  useEffect(() => void api<{ expectedFirstBus: { fromMin: number | null; toMin: number | null; n: number } }>("/buses/evidence").then((e) => setBusWait(e.expectedFirstBus)).catch(() => undefined), []);
   useEffect(() => {
     void api<Cat[]>("/disruption-types")
       .then((c) => {
@@ -144,7 +146,7 @@ export function Control({ disruptions, onClose }: { disruptions: Disruption[]; o
     setStep(2);
   };
   const measures = () =>
-    plan === "short_buses" ? [{ type: "short_turn", at: "both" }, { type: "replacement_bus", firstInMin: 15, everyMin: 15 }] : plan === "short" ? [{ type: "short_turn", at: "both" }] : plan === "hold" ? [{ type: "hold", maxWaitMin: 20 }] : plan === "limited" ? [{ type: "one_track_open", kmh: 40, cancelShare: 0.5 }] : [];
+    plan === "short_buses" ? [{ type: "short_turn", at: "both" }, { type: "replacement_bus", sought: true }] : plan === "short" ? [{ type: "short_turn", at: "both" }] : plan === "hold" ? [{ type: "hold", maxWaitMin: 20 }] : plan === "limited" ? [{ type: "one_track_open", kmh: 40, cancelShare: 0.5 }] : [];
   const register = async () => {
     setBusy(true);
     setMsg("");
@@ -253,7 +255,7 @@ export function Control({ disruptions, onClose }: { disruptions: Disruption[]; o
                   <span className="box round">{plan === p.id && <i />}</span>
                   <span className="txt">
                     <b>{p.title}{suggest() === p.id && <em>Suggested</em>}</b>
-                    <small>{p.text}</small>
+                    <small>{p.text}{p.id === "short_buses" && busWait?.fromMin != null ? ` In ${busWait.n} real incidents the first bus ran ${busWait.fromMin} to ${busWait.toMin} minutes after the start (the middle half).` : ""}</small>
                   </span>
                 </button>
               </li>
@@ -278,7 +280,7 @@ export function Control({ disruptions, onClose }: { disruptions: Disruption[]; o
           </div>
           <h2 className="gap">Bulletin</h2>
           <p className="bulletin big"><b>{done.bulletin?.title ?? done.disruption.summary}</b>{"\n"}{done.bulletin?.description ?? done.disruption.description}</p>
-          <p className="hint">You can change it later from the list on the right: add buses, reopen partly or end it.</p>
+          <p className="hint">You can change it later from the list on the right: confirm the buses once their times are known, reopen partly or end it.</p>
           <div className="footer">
             <button className="ghost" onClick={reset}>Register another</button>
             <button className="primary" onClick={onClose}>Done</button>
@@ -290,7 +292,7 @@ export function Control({ disruptions, onClose }: { disruptions: Disruption[]; o
 }
 
 /** The disruptions registered in the twin, with the decisions that can still be taken while they last. */
-function Active({ disruptions, act }: { disruptions: Disruption[]; act: (path: string, body?: unknown, method?: "POST" | "DELETE") => void }) {
+function Active({ disruptions, act }: { disruptions: Disruption[]; act: (path: string, body?: unknown, method?: "POST" | "DELETE") => Promise<unknown> | void }) {
   const list = disruptions.filter((d) => d.status === "active");
   if (!list.length) return <p className="hint">Nothing registered.</p>;
   return (
@@ -299,9 +301,9 @@ function Active({ disruptions, act }: { disruptions: Disruption[]; act: (path: s
         <li key={d.id}>
           <b>{d.summary ?? d.label}</b>
           <span>{[d.cause?.label, d.endsAt ?? d.until ? `${d.durationType === "UNTIL_AT_LEAST" ? "at least " : ""}until ${hm(d.endsAt ?? d.until)}` : "end unknown", d.effect].filter(Boolean).join(" · ")}</span>
-          {!!d.measures?.length && <small>Decisions: {d.measures.map((m) => m.label ?? m.type).join(" · ")}</small>}
+          {!!d.measures?.length && <small>Decisions: {d.measures.filter((m) => m.type !== "replacement_bus").map((m) => m.label ?? m.type).join(" · ") || "none besides buses"}</small>}
+          <Buses d={d} act={act} />
           <div className="chips">
-            <button onClick={() => void act(`/disruptions/${d.id}/measures`, { type: "replacement_bus", firstInMin: 15, everyMin: 15 })}>Add buses</button>
             <button onClick={() => void act(`/disruptions/${d.id}/measures`, { type: "short_turn", at: "both" })}>Short-turn trains</button>
             <button onClick={() => void act(`/disruptions/${d.id}/state`, { effect: d.effect === "limited" ? "interrupted" : "limited" })}>{d.effect === "limited" ? "Interrupted again" : "Partially reopened"}</button>
             <button className="strong" onClick={() => void act(`/disruptions/${d.id}/end`)}>Service resumed</button>
@@ -310,5 +312,87 @@ function Active({ disruptions, act }: { disruptions: Disruption[]; act: (path: s
         </li>
       ))}
     </ul>
+  );
+}
+
+const busWindow = (w: BusInfo["expectedFirstBus"]) => (w && w.fromMin !== null ? `usually ${w.fromMin}-${w.toMin} min after the start` : w?.late ? "later than in almost every real incident" : "");
+/** A disruption's replacement buses as the control centre handles them: order (no times), confirm with the operator's
+ *  times (first departure, every N minutes or N buses), withdraw. */
+export function Buses({ d, act }: { d: Disruption; act: (path: string, body?: unknown, method?: "POST" | "DELETE") => Promise<unknown> | void }) {
+  const b = d.buses;
+  const [form, setForm] = useState(false);
+  const [first, setFirst] = useState("");
+  const [by, setBy] = useState<"every" | "buses">("every");
+  const [n, setN] = useState("");
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  if (!b || !d.section?.b) return null; // a station disruption has no bus
+  const A = d.section.a.name;
+  const B = d.section.b.name;
+  const num = Number(n);
+  const cycle = b.cycleMin ?? 0;
+  // what the operator's numbers mean on this route (a round trip on the road with a turnaround at each end)
+  const preview = !n || !(num > 0) || !cycle ? "" : by === "every" ? `Every ${num} min needs ${Math.ceil(cycle / num)} bus${Math.ceil(cycle / num) === 1 ? "" : "es"} (a round trip takes ${cycle} min).` : `${num} bus${num === 1 ? "" : "es"} can run every ${Math.max(5, Math.ceil(cycle / num))} min (a round trip takes ${cycle} min).`;
+  const confirm = async () => {
+    if (!/^\d{1,2}:\d{2}$/.test(first)) return setErr("Give the first departure (HH:MM)");
+    if (!(num > 0)) return setErr(by === "every" ? "Give the minutes between departures" : "Give the number of buses");
+    setBusy(true);
+    setErr("");
+    try {
+      await send("POST", `/disruptions/${d.id}/buses/confirm`, { firstAt: first, ...(by === "every" ? { everyMin: num } : { buses: num }) });
+      setForm(false);
+      setFirst("");
+      setN("");
+    } catch (e) {
+      setErr((e as Error).message);
+    }
+    setBusy(false);
+  };
+  const via = (id: string) => b.stops.find((s) => s.id === id)?.busStop;
+  const sa = via(d.section.a.id);
+  const line =
+    b.state === "requested"
+      ? <><b>Buses: being organised</b>{busWindow(b.expectedFirstBus) && <> · {busWindow(b.expectedFirstBus)}{b.expectedFirstBus?.from ? ` (${hm(b.expectedFirstBus.from)}–${hm(b.expectedFirstBus.to)})` : ""}</>}</>
+      : b.state === "confirmed"
+        ? <><b>Buses: confirmed</b> · first {hm(b.firstDeparture?.A)} from {A}{b.firstDeparture && b.firstDeparture.B !== b.firstDeparture.A ? `, ${hm(b.firstDeparture.B)} from ${B}` : ` and ${B}`} · every {b.everyMin} min{b.buses ? ` · ${b.buses} bus${b.buses === 1 ? "" : "es"}` : ""}</>
+        : b.state === "running"
+          ? <><b>Buses: running</b> · every {b.everyMin} min · {b.vehicles} on the road{b.next?.A[0] ? ` · next from ${A} ${hm(b.next.A[0].departure)}` : ""}{b.next?.B[0] ? `, from ${B} ${hm(b.next.B[0].departure)}` : ""}</>
+          : b.state === "withdrawn"
+            ? <><b>Buses: withdrawn</b>{b.withdrawAt ? ` · no departures from ${hm(b.withdrawAt)}` : ""}</>
+            : <><b>No replacement buses</b>{b.expectedFirstBus === null && b.evidence?.firstBusMin ? ` · if ordered, usually ${Math.round(b.evidence.firstBusMin.p25 / 5) * 5}-${Math.round(b.evidence.firstBusMin.p75 / 5) * 5} min after the start` : ""}</>;
+  return (
+    <div className={`buses ${b.state ?? "none"}`}>
+      <p className="bus-state">
+        <BusFront size={15} aria-hidden /> <span>{line}</span>
+      </p>
+      {(b.state === "confirmed" || b.state === "running") && sa && <small className="bus-stops">From the bus stops {sa.name} ({sa.walkMin} min walk){via(d.section.b.id) ? ` and ${via(d.section.b.id)!.name} (${via(d.section.b.id)!.walkMin} min)` : ""} · {b.runMin?.A} min on the road{b.road?.source === "osrm" ? "" : " (straight-line estimate)"}</small>}
+      {form ? (
+        <div className="bus-form">
+          <label className="field">
+            <span>First departure</span>
+            <input type="time" value={first} onChange={(e) => setFirst(e.target.value)} aria-label="First departure" />
+          </label>
+          <div className="field">
+            <span className="seg mini">
+              <button type="button" aria-pressed={by === "every"} onClick={() => setBy("every")}>Every</button>
+              <button type="button" aria-pressed={by === "buses"} onClick={() => setBy("buses")}>Buses</button>
+            </span>
+            <input type="number" min={by === "every" ? 5 : 1} max={by === "every" ? 240 : 60} value={n} placeholder={by === "every" ? "minutes" : "how many"} onChange={(e) => setN(e.target.value)} aria-label={by === "every" ? "Minutes between departures" : "Number of buses"} />
+          </div>
+          <div className="bus-actions">
+            <button className="primary" disabled={busy} onClick={() => void confirm()}><Check size={14} /> Confirm</button>
+            <button className="ghost" onClick={() => (setForm(false), setErr(""))}>Cancel</button>
+          </div>
+          {(preview || err) && <small className={err ? "hint warn" : "bus-preview"}>{err || preview}</small>}
+        </div>
+      ) : (
+        <div className="chips">
+          {(b.state === null || b.state === "withdrawn") && <button onClick={() => void act(`/disruptions/${d.id}/buses/request`)}>Order replacement buses</button>}
+          {b.state !== null && b.state !== "withdrawn" && <button className={b.state === "requested" ? "strong" : undefined} onClick={() => setForm(true)}>{b.state === "requested" ? "Confirm buses" : "Change times"}</button>}
+          {b.state === "requested" && <button onClick={() => void act(`/disruptions/${d.id}/buses/withdraw`)}>No buses available</button>}
+          {(b.state === "confirmed" || b.state === "running") && <button onClick={() => void act(`/disruptions/${d.id}/buses/withdraw`)}>Withdraw buses</button>}
+        </div>
+      )}
+    </div>
   );
 }

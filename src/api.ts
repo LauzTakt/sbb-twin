@@ -6,7 +6,8 @@ import { searchStations, stationIndex } from "./timetable.ts";
 import { abroadGeoJson, networkGeoJson } from "./geometry.ts";
 import { bulletins, controlState, disruptionPayload, event, incidentPayload, infoPayload, positionPayload, pushState, removeDisruption, statusPayload } from "./feed.ts";
 import { CAUSES, MEASURES } from "./catalogue.ts";
-import { acceptProposal, addMeasure, bulletinIn, createScenario, forgetAll, isScenario, latestBulletin, resume, scenarioTick, setState, withdrawMeasure, type ScenarioInput } from "./scenario.ts";
+import { acceptProposal, addMeasure, bulletinIn, busInfo, busStopsFor, confirmBuses, createScenario, forgetAll, isScenario, latestBulletin, requestBuses, resume, scenarioTick, setState, withdrawBuses, withdrawMeasure, type ScenarioInput } from "./scenario.ts";
+import { busEvidence, ensureRoads, expectedFirstBus } from "./buses.ts";
 import { stops } from "./timetable.ts";
 import { replayOutcome, replayStatus, startReplay } from "./replay.ts";
 import { clear, publish } from "./mqtt.ts";
@@ -68,6 +69,9 @@ function breakdownSection(trainId: string) {
     return undefined; // no section to close (e.g. a train abroad): the breakdown still stops the train
   }
 }
+
+/** A replacement bus with times among posted measures (it is confirmed at once: its roads are asked for first). */
+const hasTimedBus = (list: unknown) => Array.isArray(list) && list.some((m) => (m as Record<string, unknown>)?.type === "replacement_bus" && ["firstInMin", "everyMin", "minutesA", "minutesB", "firstAt", "buses"].some((k) => (m as Record<string, unknown>)[k] !== undefined || ((m as { params?: Record<string, unknown> }).params ?? {})[k] !== undefined));
 
 export function api() {
   const app = new Hono().basePath("/api");
@@ -200,6 +204,8 @@ export function api() {
   app.post("/disruptions", async (c) => {
     const b = await body(c);
     if (b.cause !== undefined) {
+      // buses with times (the one-shot API): their roads first, so the first trips already drive on them
+      if (hasTimedBus(b.measures)) await ensureRoads(busStopsFor(b.scope)).catch(() => undefined);
       const d = createScenario(b as ScenarioInput);
       publish(`truth/disruptions/${d.id}`, disruptionPayload(d), { retain: true, qos: 1 });
       event("disruption", { type: "disruption.started", id: d.id, label: d.label, where: d.where });
@@ -220,6 +226,7 @@ export function api() {
     if (!d) return c.json({ error: "Unknown disruption" }, 404);
     const b = await body(c);
     const list = Array.isArray(b.measures) ? (b.measures as Record<string, unknown>[]) : [b];
+    if (hasTimedBus(list)) await ensureRoads(d.scenario.busStops).catch(() => undefined);
     const added = list.map((m) => addMeasure(d, m));
     event("disruption", { type: "disruption.measure", id: d.id, measures: added.map((m) => m.type) });
     return c.json({ ...answer(d), added }, 201);
@@ -230,6 +237,39 @@ export function api() {
     const b = await body(c);
     withdrawMeasure(d, c.req.param("mid"), b.at, Date.now(), b.replaced === true);
     return c.json(answer(d));
+  });
+  // Replacement buses, as in the control centre: ordered (requested: no trip, the usual wait from real incidents),
+  // confirmed with the operator's times (exact trips on the road), withdrawn (buses on the road finish their trip)
+  app.get("/buses/evidence", (c) => {
+    const w = expectedFirstBus(0, 0); // when buses are ordered at the start (minutes only: no clock time)
+    return c.json({ ...busEvidence(), expectedFirstBus: { fromMin: w.fromMin, toMin: w.toMin, medianMin: w.medianMin, n: w.n } });
+  });
+  app.get("/disruptions/:id/buses", (c) => {
+    const d = scenarioOf(c.req.param("id"));
+    return d ? c.json(busInfo(d)) : c.json({ error: "Unknown disruption" }, 404);
+  });
+  app.post("/disruptions/:id/buses/request", (c) => {
+    const d = scenarioOf(c.req.param("id"));
+    if (!d) return c.json({ error: "Unknown disruption" }, 404);
+    const m = requestBuses(d);
+    event("disruption", { type: "disruption.buses.requested", id: d.id });
+    return c.json({ ...answer(d), measure: m, buses: busInfo(d) }, 201);
+  });
+  app.post("/disruptions/:id/buses/confirm", async (c) => {
+    const d = scenarioOf(c.req.param("id"));
+    if (!d) return c.json({ error: "Unknown disruption" }, 404);
+    const b = await body(c);
+    const r = await confirmBuses(d, b);
+    event("disruption", { type: "disruption.buses.confirmed", id: d.id, firstAt: r.measure.params.firstAt, everyMin: r.measure.params.everyMin, buses: r.measure.params.buses });
+    return c.json({ ...answer(d), measure: r.measure, buses: busInfo(d), warnings: [...r.warnings, ...(d.scenario.warnings ?? [])] }, 201);
+  });
+  app.post("/disruptions/:id/buses/withdraw", async (c) => {
+    const d = scenarioOf(c.req.param("id"));
+    if (!d) return c.json({ error: "Unknown disruption" }, 404);
+    const b = await body(c);
+    withdrawBuses(d, b.at);
+    event("disruption", { type: "disruption.buses.withdrawn", id: d.id });
+    return c.json({ ...answer(d), buses: busInfo(d) });
   });
   app.post("/disruptions/:id/proposal/accept", (c) => {
     const d = scenarioOf(c.req.param("id"));

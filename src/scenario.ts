@@ -15,6 +15,7 @@ import { stationIndex, stops, type Trip } from "./timetable.ts";
 import { edgeSpans, edgesGeometry, edgesWithin, metres, pathBetween, sectionEdges } from "./geometry.ts";
 import { clear, publish } from "./mqtt.ts";
 import { aiEnabled, writeBulletin, type BulletinFacts, type Lang } from "./bulletinAI.ts";
+import { busEvidence, busStopOf, circulation, dwellMs, ensureRoads, expectedFirstBus, hopMs, LAYOVER_MIN, roadSummary, runMs } from "./buses.ts";
 import { config } from "./config.ts";
 import { serviceOrigin, zurich } from "./time.ts";
 
@@ -256,9 +257,20 @@ export function recompute(t = Date.now()) {
 }
 
 // ---------------------------------------------------------------- replacement buses
+// A replacement_bus decision has a lifecycle, as in the real control centre (research/buses: a human decision, then a
+// search constrained by availability; the first bus runs about one to two and a half hours after the start):
+//   requested (params.sought: ordered, being searched): NO trip, so nothing pretends to know times;
+//   confirmed (the operator gave the first departure and the headway or the number of buses): exact EV trips from then
+//     on, on the road (src/buses.ts), at the scheduled speed of the real EV buses;
+//   withdrawn: buses that left finish their trip, the others never leave.
+// A one-shot decision with times (firstInMin/everyMin, minutesA/minutesB) is confirmed at once (the older API).
+const BUS_TIMES = ["firstInMin", "everyMin", "minutesA", "minutesB", "firstAt", "buses"];
+const hasBusTimes = (p: Record<string, unknown>) => BUS_TIMES.some((k) => p[k] !== undefined && p[k] !== null && p[k] !== "");
+const isRequest = (m: Measure) => m.type === "replacement_bus" && Boolean(m.params.sought);
+const liveAt = (m: Measure, t: number) => m.withdrawAt === undefined || m.withdrawAt > t;
 function busTimes(seq: number[]) {
-  // road distance = straight line x 1.3, at 50 km/h on average (at least 1 minute per hop); 1 minute at each stop
-  return seq.slice(1).map((s, k) => Math.max(60, Math.round((metres(stops[seq[k]].lon, stops[seq[k]].lat, stops[s].lon, stops[s].lat) * 1.3) / (50 / 3.6) / 30) * 30) * 1000);
+  // road metres (OSRM, else straight x 1.3) at the scheduled speed of the real EV buses for a hop that long
+  return seq.slice(1).map((s, k) => hopMs(stops[seq[k]].id, stops[s].id, true));
 }
 /** Straight distance between the section ends, km. */
 export const sectionKm = (sc: Scenario) => {
@@ -268,6 +280,11 @@ export const sectionKm = (sc: Scenario) => {
 };
 const BUS_MAX_KM = 40; // real replacement buses bridge short gaps between neighbouring stations
 const busWarning = (km: number) => `Section of ${Math.round(km)} km: a replacement bus would not cover this in real operations`;
+/** First departure of a confirmed decision from each end (epoch ms), from its own times. */
+function firstFrom(m: Measure, side: "A" | "B") {
+  const a = typeof m.params.firstAt === "number" ? m.params.firstAt : Math.ceil((m.at + Math.max(0, Number(m.params.firstInMin ?? 15)) * 60_000) / 60_000) * 60_000;
+  return side === "B" && typeof m.params.firstAtB === "number" ? m.params.firstAtB : a;
+}
 function departures(m: Measure, side: "A" | "B", from: number, until: number) {
   const out: number[] = [];
   const pattern = (side === "A" ? m.params.minutesA : m.params.minutesB) as number[] | undefined;
@@ -280,13 +297,15 @@ function departures(m: Measure, side: "A" | "B", from: number, until: number) {
     // whole hours in UTC equal whole hours in Swiss time (offsets are whole hours)
   } else {
     const every = Math.max(5, Number(m.params.everyMin ?? 15)) * 60_000;
-    const first = Math.ceil((m.at + Math.max(0, Number(m.params.firstInMin ?? 15)) * 60_000) / 60_000) * 60_000;
-    for (let x = first; x < until; x += every) if (x >= from) out.push(x);
+    for (let x = firstFrom(m, side); x < until; x += every) if (x >= from) out.push(x);
   }
   return out;
 }
+const busTag = (d: Disruption, m: Measure, side: "A" | "B", dep0: number) => `${d.id.slice(2)}-${m.id.slice(2)}-${side}${hhmm(dep0).replace(":", "")}`;
+const busKey = (d: Disruption, m: Measure, side: "A" | "B", dep0: number) => `${(timetableDate() || zurich(dep0).date).replaceAll("-", "")}/EV-${busTag(d, m, side, dep0)}`;
 function makeBus(d: Disruption, m: Measure, seq: number[], side: "A" | "B", dep0: number): Trip {
   const hops = busTimes(seq);
+  const dwell = dwellMs();
   const n = seq.length;
   const arr = new Float64Array(n);
   const dep = new Float64Array(n);
@@ -295,49 +314,79 @@ function makeBus(d: Disruption, m: Measure, seq: number[], side: "A" | "B", dep0
   for (let k = 1; k < n; k++) {
     x += hops[k - 1];
     arr[k] = x;
-    dep[k] = k < n - 1 ? (x += 60_000) : x;
+    dep[k] = k < n - 1 ? (x += dwell) : x;
   }
   const serviceDate = (timetableDate() || zurich(dep0).date).replaceAll("-", "");
-  const tag = `${d.id.slice(2)}-${m.id.slice(2)}-${side}${hhmm(dep0).replace(":", "")}`;
+  const tag = busTag(d, m, side, dep0);
   return { key: `${serviceDate}/EV-${tag}`, trainId: `${serviceDate}_EV-${tag}`, tripId: `EV-${tag}`, serviceDate, cat: "EV", line: "EV", head: stops[seq[n - 1]].name, stops: Int32Array.from(seq), arr, dep };
 }
 const busTrips = new Map<string, Trip[]>(); // disruption id -> its buses
-/** The disruption's replacement buses: departures from each decision until withdrawal or reopening (rolling when the
- *  end is unknown). Buses that already left stay; future ones follow the latest decisions. */
+/** The disruption's replacement buses: departures of each confirmed decision until withdrawal or reopening (rolling
+ *  when the end is unknown). Buses that already left stay (they finish their trip); future ones follow the latest
+ *  decisions, and a vehicle waiting for a departure that was dropped never leaves (src/engine.ts setExtraTrips). */
 function refreshBuses(d: Disruption & { scenario: Scenario }, t: number) {
   const sc = d.scenario;
   const seq = sc.busStops.map((id) => stationIndex(id)).filter((x): x is number => x !== undefined);
   const prev = busTrips.get(d.id) ?? [];
-  const keep = prev.filter((trip) => trip.dep[0] <= t || trains.has(trip.key));
-  const keys = new Set(keep.map((trip) => trip.key));
-  const next = [...keep];
+  const byKey = new Map(prev.map((trip) => [trip.key, trip]));
+  const next = new Map<string, Trip>();
+  for (const trip of prev) if (trip.dep[0] <= t) next.set(trip.key, trip);
+  const left = new Set([...next.values()].map((trip) => `${trip.stops[0]}@${trip.dep[0]}`)); // a bus that left stays the only one
   if (!d.endedAt && seq.length >= 2) {
     const end = expectedEnd(d, t);
+    let run: number | undefined;
     for (const m of announced(d, "replacement_bus", t)) {
       if (m.params.sought || m.params.blocked) continue; // still being organised, or a section too long for a bus
-      const until = Math.min(m.withdrawAt ?? Infinity, end ?? t + BUS_HORIZON_MS, t + 6 * 3600_000);
+      const until = Math.min(m.withdrawAt ?? Infinity, end ?? Math.max(t, firstFrom(m, "A")) + BUS_HORIZON_MS, t + 6 * 3600_000);
       for (const side of ["A", "B"] as const) {
         const route = side === "A" ? seq : [...seq].reverse();
-        for (const x of departures(m, side, Math.max(t, m.at), until)) {
-          const trip = makeBus(d, m, route, side, x);
-          if (keys.has(trip.key)) continue;
-          keys.add(trip.key);
-          next.push(trip);
+        // from a run ago: after a restart, the buses on the road come back where they are
+        run ??= runMs(sc.busStops);
+        for (const x of departures(m, side, Math.max(Math.min(m.at, firstFrom(m, side)), t - run), until)) {
+          const key = busKey(d, m, side, x);
+          if (next.has(key) || left.has(`${route[0]}@${x}`)) continue;
+          next.set(key, byKey.get(key) ?? makeBus(d, m, route, side, x));
+          if (x <= t) left.add(`${route[0]}@${x}`);
         }
       }
     }
   }
-  next.sort((x, y) => x.dep[0] - y.dep[0]);
-  busTrips.set(d.id, next);
-  setExtraTrips(d.id, next);
+  const list = [...next.values()].sort((x, y) => x.dep[0] - y.dep[0]);
+  busTrips.set(d.id, list);
+  setExtraTrips(d.id, list);
 }
-/** First departures of a bus decision from each end (for the bulletin). */
-/** First departures of a bus decision from each end, as they are in the effective timetable (for the bulletin). */
-function firstBuses(d: Disruption & { scenario: Scenario }, m: Measure) {
-  const tag = `-${m.id.slice(2)}-`;
-  const mine = (busTrips.get(d.id) ?? []).filter((trip) => trip.key.includes(tag));
-  const from = (id: string) => mine.filter((trip) => stops[trip.stops[0]].id === id).map((trip) => trip.dep[0]).sort((x, y) => x - y);
-  return { A: from(d.scenario.a), B: from(d.scenario.b ?? "") };
+/** First departure of a confirmed decision from each end, from its own times (as announced, even once replaced). */
+function firstBuses(_d: Disruption & { scenario: Scenario }, m: Measure) {
+  // from the decision, or from its first departure when the operator gave one a little in the past
+  const first = (side: "A" | "B") => departures(m, side, Math.min(m.at, firstFrom(m, side)), m.at + 24 * 3600_000).slice(0, 1);
+  return { A: first("A"), B: first("B") };
+}
+export type BusPhase = "requested" | "confirmed" | "running" | "withdrawn" | null;
+/** The latest confirmed decision still in force at t (not withdrawn), if any. */
+const liveConfirmed = (d: Disruption & { scenario: Scenario }, t: number) => announced(d, "replacement_bus", t).filter((m) => !m.params.sought && !m.params.blocked && liveAt(m, t)).at(-1);
+/** Replacement buses at t: requested (being organised), confirmed (times known, first departure ahead), running,
+ *  withdrawn, or none. */
+export function busPhase(d: Disruption & { scenario: Scenario }, t: number): BusPhase {
+  const all = announced(d, "replacement_bus", t).filter((m) => !m.params.blocked);
+  if (!all.length) return null;
+  const m = liveConfirmed(d, t);
+  if (m) {
+    const f = firstBuses(d, m);
+    return Math.min(f.A[0] ?? Infinity, f.B[0] ?? Infinity) <= t ? "running" : "confirmed";
+  }
+  return all.some((x) => isRequest(x) && liveAt(x, t)) ? "requested" : "withdrawn";
+}
+/** The times line of a confirmed decision, as the bulletin states it (exact, from the operator's times). */
+function busTimesText(d: Disruption & { scenario: Scenario }, m: Measure) {
+  const A = name(d.scenario.a);
+  const B = d.scenario.b ? name(d.scenario.b) : "";
+  const f = firstBuses(d, m);
+  const mins = (xs: unknown) => joinAnd(((xs as number[]) ?? []).map((x) => `:${String(x).padStart(2, "0")}`));
+  if (Array.isArray(m.params.minutesA) || Array.isArray(m.params.minutesB)) return { text: `Departures from ${A} at ${mins(m.params.minutesA)} and from ${B} at ${mins(m.params.minutesB)} past each hour.`, times: [] as string[], everyMin: null };
+  if (!f.A.length || !f.B.length) return { text: "", times: [] as string[], everyMin: null };
+  const times = [hhmm(f.A[0]), hhmm(f.B[0])];
+  const everyMin = Number(m.params.everyMin ?? 15);
+  return { text: `First departures from ${A} at ${times[0]} and from ${B} at ${times[1]}, then every ${everyMin} minutes.`, times, everyMin };
 }
 
 // ---------------------------------------------------------------- bulletins
@@ -371,19 +420,20 @@ function messages(d: Disruption & { scenario: Scenario }, t: number): BulletinMe
     const from = m.at > m.announcedAt + 60_000 ? ` from ${hhmm(m.at)}` : "";
     if (m.type === "replacement_bus" && m.params.sought) {
       out.push({ ts: m.announcedAt, title: "Replacement bus", text: `Replacement buses (EV) are being organized ${where}. Long waiting times are to be expected.` });
+      // given up without buses (a confirmation replaces the request without a message of its own)
+      if (m.withdrawAt !== undefined && m.withdrawAt <= t && !m.params.replaced) out.push({ ts: m.withdrawAt, title: "Replacement bus", text: `No replacement buses (EV) can be provided ${where}.` });
     } else if (m.type === "replacement_bus") {
       if (m.params.blocked) continue; // never announced: no bus runs
-      const f = firstBuses(d, m);
-      const pattern = (Array.isArray(m.params.minutesA) || Array.isArray(m.params.minutesB)) && f.A.length > 0;
-      const mins = (xs: unknown) => joinAnd(((xs as number[]) ?? []).map((x) => `:${String(x).padStart(2, "0")}`));
       const via = sc.busStops.slice(1, -1).map(name);
       const route = `Replacement buses (EV) run ${where}${via.length ? `, calling at ${joinAnd(via)}` : ""}.`;
-      const times = pattern
-        ? `Departures from ${A} at ${mins(m.params.minutesA)} and from ${B} at ${mins(m.params.minutesB)} past each hour.`
-        : f.A.length && f.B.length
-          ? `First departures from ${A} at ${hhmm(f.A[0])} and from ${B} at ${hhmm(f.B[0])}, then every ${Number(m.params.everyMin ?? 15)} minutes.`
-          : "";
-      out.push({ ts: m.announcedAt, title: "Replacement bus", text: [route, times, "Please allow for longer travel times."].filter(Boolean).join(" ") });
+      const fleet = Number(m.params.buses) > 0 && m.params.busesGiven ? `${Number(m.params.buses) === 1 ? "One bus is" : `${Number(m.params.buses)} buses are`} in service.` : "";
+      const ends = [sc.a, sc.b ?? ""].map((id) => busStopOf(id)).filter((x): x is NonNullable<typeof x> => Boolean(x));
+      const stopsText = ends.length === 2 ? `The buses leave from the stops ${ends[0].name} (${ends[0].walkMin} min walk from the station) and ${ends[1].name} (${ends[1].walkMin} min walk).` : "";
+      out.push({ ts: m.announcedAt, title: "Replacement bus", text: [route, busTimesText(d, m).text, fleet, stopsText, "Please allow for longer travel times."].filter(Boolean).join(" ") });
+      // the first bus in operation (the liveticker's "First rail replacement bus in operation")
+      const f = firstBuses(d, m);
+      const first = Math.min(f.A[0] ?? Infinity, f.B[0] ?? Infinity);
+      if (first <= t && (m.withdrawAt === undefined || first < m.withdrawAt)) out.push({ ts: first, title: "Replacement bus", text: `The first replacement bus (EV) left ${first === f.A[0] ? A : B} at ${hhmm(first)}.` });
       if (m.withdrawAt !== undefined && (m.withdrawnAnnouncedAt ?? m.announcedAt) <= t && !m.params.replaced)
         out.push({ ts: m.withdrawnAnnouncedAt ?? m.announcedAt, title: "Replacement bus", text: `The replacement buses ${where} stop running at ${hhmm(m.withdrawAt)}.` });
     } else if (m.type === "prognosis") {
@@ -433,16 +483,17 @@ export function render(d: Disruption & { scenario: Scenario }, t: number): Omit<
     L.allow,
     st.state === "interrupted" ? L.none : announced(d, "one_track_open", t).some((m) => m.at <= t) ? L.oneTrack(st.kmh) : null,
     bus === "running" && B ? L.bus(where) : bus === "sought" && B ? L.sought(where) : null,
+    bus === "running" && B ? busTimesText(d, liveConfirmed(d, t)!).text || null : null,
   ]
     .filter(Boolean)
     .join("\n");
   return { ...base, lifecycle: "INFO", title: L.title(st.state, place), description };
 }
 
-/** Replacement buses now: running (or decided, first departure within 30 min), still being organised, or none. */
+/** Replacement buses for the bulletin: running (confirmed: times known), still being organised, or none. */
 function busState(d: Disruption & { scenario: Scenario }, t: number): "running" | "sought" | null {
-  const live = announced(d, "replacement_bus", t).filter((m) => !m.params.blocked && m.at <= t + 30 * 60_000 && (m.withdrawAt === undefined || m.withdrawAt > t));
-  return live.some((m) => !m.params.sought) ? "running" : live.length ? "sought" : null;
+  const p = busPhase(d, t);
+  return p === "running" || p === "confirmed" ? "running" : p === "requested" ? "sought" : null;
 }
 export const latestBulletin = (d: Disruption & { scenario: Scenario }) => d.scenario.bulletins.at(-1) ?? null;
 const severityOf = (s: StateAt["state"]): Incident["severity"] => (s === "interrupted" ? "critical" : s === "limited" ? "major" : "info");
@@ -506,6 +557,8 @@ export function facts(d: Disruption & { scenario: Scenario }, t: number, b: Bull
     oneTrackKmh: st.state === "limited" && announced(d, "one_track_open", t).some((m) => m.at <= t) ? st.kmh : null,
     replacementBus: bus,
     busStops: sc.busStops.map(name),
+    busTimes: bus === "running" ? busTimesText(d, liveConfirmed(d, t)!).times : [],
+    busEveryMin: bus === "running" ? busTimesText(d, liveConfirmed(d, t)!).everyMin : null,
   };
 }
 /** Haiku's wording of the same facts, published as the next version once it passed validation (never blocks). */
@@ -633,6 +686,14 @@ function measureFrom(d: Disruption & { scenario: Scenario }, input: MeasureInput
   const at = input.inMin !== undefined ? now + Number(input.inMin) * 60_000 : parseTime(when, now);
   const announcedAt = parseTime(ann, now);
   if (type === "replacement_bus" && !d.scenario.b) throw new InputError("A replacement bus needs a section (from, to)");
+  if (type === "replacement_bus") {
+    // without times it is an order (requested), never a guess; with times (the older one-shot API) it is confirmed
+    if (params.status === "requested" || params.state === "requested" || !hasBusTimes(params)) params.sought = true;
+    if (params.sought) for (const k of BUS_TIMES) delete params[k];
+    delete params.status;
+    delete params.state;
+    if (params.firstAt !== undefined && typeof params.firstAt !== "number") params.firstAt = parseTime(params.firstAt, now);
+  }
   if (type === "replacement_bus" && !params.sought && params.force !== true && sectionKm(d.scenario) > BUS_MAX_KM) {
     params.blocked = true; // registered, but no bus is generated (POST it again with force: true to run one anyway)
     d.scenario.warnings = [...new Set([...(d.scenario.warnings ?? []), busWarning(sectionKm(d.scenario))])];
@@ -736,16 +797,101 @@ export function createScenario(input: ScenarioInput, now = Date.now()) {
   if (Array.isArray(input.measures)) for (const m of input.measures) sc.measures.push(measureFrom(d, m as MeasureInput, now));
   if (input.applyProposal === true) for (const p of sc.proposal.measures) sc.measures.push(measureFrom(d, p, now));
   disruptions.set(d.id, d);
+  prefetchRoads(d);
   scenarioTick(now, true);
   return d;
+}
+/** Buses ordered or decided: the roads between their stops are asked for now (once per stop pair), so a confirmation
+ *  finds them ready. */
+function prefetchRoads(d: Disruption & { scenario: Scenario }) {
+  if (d.scenario.b && d.scenario.measures.some((m) => m.type === "replacement_bus")) void ensureRoads(d.scenario.busStops).catch(() => undefined);
+}
+/** The stations a replacement bus would call at on a section (to ask for its roads before the disruption exists). */
+export function busStopsFor(scope: unknown): string[] {
+  const s = scope as { kind?: string; from?: string; to?: string } | undefined;
+  if (s?.kind !== "section") return [];
+  const a = stationIndex(String(s.from));
+  const b = stationIndex(String(s.to));
+  if (a === undefined || b === undefined || a === b) return [];
+  try {
+    return resolveSection(a, b).busStops.map((k) => stops[k].id);
+  } catch {
+    return [];
+  }
 }
 
 export function addMeasure(d: Disruption & { scenario: Scenario }, input: MeasureInput, now = Date.now()) {
   if (d.endedAt) throw new InputError("This disruption has ended");
   const m = measureFrom(d, input, now);
+  // buses ordered again while they are ordered or confirmed: nothing new to say
+  if (isRequest(m) && m.at <= now) {
+    const live = liveBusMeasures(d, now);
+    if (live.length) return live.at(-1)!;
+  }
   d.scenario.measures.push(m);
+  prefetchRoads(d);
   scenarioTick(now, true);
   return m;
+}
+
+// ---------------------------------------------------------------- the replacement-bus lifecycle (actions)
+const liveBusMeasures = (d: Disruption & { scenario: Scenario }, t: number) => d.scenario.measures.filter((m) => m.type === "replacement_bus" && !m.params.blocked && m.announcedAt <= t && liveAt(m, t));
+/** Order replacement buses: requested, no trip until they are confirmed. Nothing changes when buses are already
+ *  ordered or confirmed. */
+export function requestBuses(d: Disruption & { scenario: Scenario }, now = Date.now()) {
+  if (d.endedAt) throw new InputError("This disruption has ended");
+  return addMeasure(d, { type: "replacement_bus", sought: true }, now); // the live one when buses are already ordered
+}
+type ConfirmInput = { firstAt?: unknown; firstAtB?: unknown; everyMin?: unknown; buses?: unknown; layoverMin?: unknown; force?: unknown };
+/** The operator has buses: the first departure and the headway, or the number of buses (the headway is then what
+ *  they can run: a round trip on the road with a turnaround at each end, shared by the buses). The request it answers
+ *  (and an earlier confirmation) is replaced; exact trips run from then on. */
+export async function confirmBuses(d: Disruption & { scenario: Scenario }, input: ConfirmInput, now = Date.now()) {
+  if (d.endedAt) throw new InputError("This disruption has ended");
+  if (!d.scenario.b) throw new InputError("A replacement bus needs a section (from, to)");
+  if (input.firstAt === undefined || input.firstAt === null || input.firstAt === "") throw new InputError('firstAt is required: the first departure, "HH:MM" or epoch ms');
+  let firstAt = parseTime(input.firstAt, now);
+  if (typeof input.firstAt === "string" && firstAt < now - 12 * 3600_000) firstAt += 24 * 3600_000; // after midnight
+  if (firstAt < now - 60_000) throw new InputError(`The first departure (${hhmm(firstAt)}) is in the past`);
+  const everyIn = input.everyMin === undefined || input.everyMin === null || input.everyMin === "" ? undefined : Number(input.everyMin);
+  const busesIn = input.buses === undefined || input.buses === null || input.buses === "" ? undefined : Math.round(Number(input.buses));
+  if (everyIn === undefined && busesIn === undefined) throw new InputError("everyMin (minutes between departures) or buses (how many) is required");
+  if (everyIn !== undefined && !(everyIn >= 5 && everyIn <= 240)) throw new InputError("everyMin is between 5 and 240");
+  if (busesIn !== undefined && !(busesIn >= 1 && busesIn <= 60)) throw new InputError("buses is between 1 and 60");
+  const layoverMin = Math.max(0, Math.min(60, Number(input.layoverMin ?? LAYOVER_MIN) || 0));
+  await ensureRoads(d.scenario.busStops); // usually ready since the order (one OSRM request per stop pair)
+  const c = circulation(d.scenario.busStops, layoverMin);
+  const warnings: string[] = [];
+  let every = everyIn ?? Math.max(5, Math.ceil(c.cycleMin / busesIn!));
+  if (everyIn !== undefined && busesIn !== undefined && Math.ceil(c.cycleMin / everyIn) > busesIn) {
+    every = Math.max(5, Math.ceil(c.cycleMin / busesIn));
+    warnings.push(`${busesIn} bus${busesIn === 1 ? "" : "es"} cannot run every ${everyIn} minutes: a round trip takes ${c.cycleMin} minutes, so every ${every} minutes.`);
+  }
+  const buses = busesIn ?? Math.ceil(c.cycleMin / every);
+  // one bus shuttles: it leaves B once it got there; otherwise both ends start at the first departure
+  const firstAtB = input.firstAtB !== undefined && input.firstAtB !== null && input.firstAtB !== "" ? parseTime(input.firstAtB, firstAt) : buses === 1 ? firstAt + (c.runMinA + layoverMin) * 60_000 : firstAt;
+  const live = liveBusMeasures(d, now);
+  const m = measureFrom(d, { type: "replacement_bus", firstAt, firstAtB, everyMin: every, buses, busesGiven: busesIn !== undefined, layoverMin, runMinA: c.runMinA, runMinB: c.runMinB, cycleMin: c.cycleMin, confirmedAt: now, ...(input.force === true ? { force: true } : {}), ...(live.length ? { replaces: live.map((x) => x.id) } : {}) }, now);
+  for (const x of live) {
+    x.params.replaced = true; // superseded: no message of its own
+    x.withdrawAt = now;
+    x.withdrawnAnnouncedAt = now;
+  }
+  d.scenario.measures.push(m);
+  if (m.params.blocked) warnings.push(...(d.scenario.warnings ?? []).filter((w) => w.startsWith("Section of")));
+  scenarioTick(now, true);
+  return { measure: m, warnings };
+}
+/** Withdraw the buses (ordered or running) at `at` (default now): buses that left finish their trip, no other leaves. */
+export function withdrawBuses(d: Disruption & { scenario: Scenario }, at: unknown, now = Date.now()) {
+  const live = liveBusMeasures(d, now);
+  if (!live.length) throw new InputError("No replacement buses are ordered or running");
+  for (const m of live) {
+    m.withdrawAt = parseTime(at, now);
+    m.withdrawnAnnouncedAt = now;
+  }
+  scenarioTick(now, true);
+  return live;
 }
 export function acceptProposal(d: Disruption & { scenario: Scenario }, now = Date.now()) {
   if (d.endedAt) throw new InputError("This disruption has ended");
@@ -802,6 +948,7 @@ export function scenarioFields(d: Disruption & { scenario: Scenario }, t = Date.
     start: sc.start,
     section: { a: { id: sc.a, name: name(sc.a) }, b: sc.b ? { id: sc.b, name: name(sc.b) } : null, inside: sc.inside.map((id) => ({ id, name: name(id) })) },
     busRoute: sc.busStops.map((id) => ({ id, name: name(id) })),
+    buses: busInfo(d, t),
     measures: sc.measures.map((m) => ({ ...m, label: MEASURES.find((x) => x.type === m.type)?.label ?? m.type, status: measureStatus(m, t), state: measureStatus(m, t) })),
     proposal: sc.proposal,
     lines: sc.lines,
@@ -813,5 +960,45 @@ export function scenarioFields(d: Disruption & { scenario: Scenario }, t = Date.
     impact: { tripsCut: cut, tripsStartingAfter: late, tripsHeld: held, buses: busTrips.get(d.id)?.length ?? 0 },
     linkedTrain: sc.linkedTrain ?? null,
     warnings: sc.warnings ?? [],
+  };
+}
+
+/** The replacement buses of a disruption as the console, the brief and other teams read them. */
+export function busInfo(d: Disruption & { scenario: Scenario }, t = Date.now()) {
+  const sc = d.scenario;
+  const state = busPhase(d, t);
+  const all = announced(d, "replacement_bus", t);
+  const request = all.filter(isRequest).at(-1);
+  const confirmed = all.filter((m) => !m.params.sought && !m.params.blocked);
+  const m = liveConfirmed(d, t) ?? confirmed.at(-1);
+  const f = m ? firstBuses(d, m) : null;
+  const trips = busTrips.get(d.id) ?? [];
+  const next = (id: string) => trips.filter((trip) => stops[trip.stops[0]].id === id && trip.dep[0] >= t).slice(0, 3).map((trip) => ({ trainId: trip.trainId, departure: trip.dep[0], arrival: trip.arr[trip.arr.length - 1], to: stops[trip.stops[trip.stops.length - 1]].name }));
+  let vehicles = 0;
+  for (const trip of trips) if (trains.has(trip.key)) vehicles++;
+  const c = sc.b ? circulation(sc.busStops, Number(m?.params.layoverMin ?? LAYOVER_MIN)) : null;
+  const withdrawn = state === "withdrawn" ? all.filter((x) => x.withdrawAt !== undefined).at(-1) : undefined;
+  return {
+    state,
+    measureId: state === "requested" ? request?.id ?? null : state === "confirmed" || state === "running" ? m?.id ?? null : null,
+    requestedAt: request?.announcedAt ?? null,
+    confirmedAt: m?.announcedAt ?? null,
+    withdrawAt: (state === "withdrawn" ? withdrawn?.withdrawAt : m?.withdrawAt) ?? null,
+    // while requested: when the first bus usually runs (real incidents), never a timetable
+    expectedFirstBus: state === "requested" ? expectedFirstBus(sc.start, t) : null,
+    firstDeparture: f && f.A.length && f.B.length ? { A: f.A[0], B: f.B[0] } : null,
+    everyMin: m && !Array.isArray(m.params.minutesA) ? Number(m.params.everyMin ?? 15) : null,
+    minutesPastHour: m && Array.isArray(m.params.minutesA) ? { A: m.params.minutesA, B: m.params.minutesB ?? [] } : null,
+    buses: m ? (Number(m.params.buses) || (c && m.params.everyMin ? Math.ceil(c.cycleMin / Number(m.params.everyMin)) : null)) : null,
+    busesGiven: Boolean(m?.params.busesGiven),
+    runMin: c ? { A: c.runMinA, B: c.runMinB } : null,
+    cycleMin: c?.cycleMin ?? null,
+    layoverMin: c?.layoverMin ?? null,
+    stops: sc.busStops.map((id) => ({ id, name: name(id), busStop: busStopOf(id) })),
+    road: sc.b ? roadSummary(sc.busStops) : null,
+    trips: trips.length,
+    vehicles,
+    next: sc.b ? { A: next(sc.a), B: next(sc.b) } : null,
+    evidence: busEvidence(),
   };
 }
