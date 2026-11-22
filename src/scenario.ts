@@ -435,7 +435,7 @@ export function render(d: Disruption & { scenario: Scenario }, t: number): Omit<
     L.head(st.state, where),
     L.cause(cause?.clause.en ?? sc.cause.label.toLowerCase()),
     L.duration(st.durationType, st.until),
-    L.lines(base.lines),
+    st.state === "interrupted" ? L.lines(base.lines) : null, // limited service: no line is named (which ones are hit is not deducible)
     L.allow,
     st.state === "interrupted" ? L.none : announced(d, "one_track_open", t).some((m) => m.at <= t) ? L.oneTrack(st.kmh) : null,
     bus === "running" && B ? L.bus(where) : bus === "sought" && B ? L.sought(where) : null,
@@ -506,7 +506,7 @@ export function facts(d: Disruption & { scenario: Scenario }, t: number, b: Bull
     cause: causeOf(sc.cause.code)?.clause.en ?? sc.cause.label.toLowerCase(),
     durationType: st.durationType,
     until: st.until === null ? null : hhmm(st.until),
-    lines: st.state === "resumed" ? [] : b.lines,
+    lines: st.state === "interrupted" ? b.lines : [],
     noTrains: st.state === "interrupted",
     oneTrackKmh: st.state === "limited" && announced(d, "one_track_open", t).some((m) => m.at <= t) ? st.kmh : null,
     replacementBus: bus,
