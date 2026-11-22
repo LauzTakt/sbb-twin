@@ -273,6 +273,7 @@ function toJourney(trips: Trip[], lives: (Live | undefined)[], parts: { trip: nu
 function annotate(j: Journey, parts: Parts, trips: Trip[], t: number) {
   parts.forEach((p, n) => {
     const trip = trips[p.trip];
+    if (trip.cat === "EV") return; // a replacement bus runs because of the closure: it does not wait for the reopening
     const calls = Array.from(trip.stops.slice(p.i, p.j + 1)).map((k) => stops[k].id);
     for (const d of disruptions.values()) {
       if (!isScenario(d) || d.endedAt || d.effect !== "section_closure" || !d.scenario.b) continue;
