@@ -292,7 +292,7 @@ npm run dev                      # page + API on :8787 (Vite dev); MQTT on the t
 | `RAIL_STATE_FILE` | `data/state.json` | where provoked changes are saved across restarts |
 | `RAIL_DATA_DIR`, `RAIL_DAYS_DIR` | `data/`, `data/days/` | prepared geometry and one timetable file per service day |
 
-Docker: `docker compose up --build` (see `compose.yaml`; set `OTD_GTFS_RT_KEY` in `.env`).
+Docker: `docker compose up --build` (see `compose.yaml`; set `OTD_GTFS_RT_KEY` in `.env`). It publishes no port on the host: put a reverse proxy (or a tunnel) in front, which reaches the container on `:8787`.
 
 Data preparation (only to regenerate `data/`): `tools/prepare_network.py` (BAV track graph and the track path of every
 station pair), `tools/extract_abroad_rails.mjs` (railways outside Switzerland for the map) and the day timetables

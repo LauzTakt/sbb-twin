@@ -1,8 +1,7 @@
 services:
   sbb-twin:
     build: .
-    ports:
-      - "8787:8787" # viewer, API, MQTT over WebSocket at /mqtt
+    # no ports published on the host: put a reverse proxy in front (it reaches the container's :8787 on the compose network)
     environment:
       OTD_GTFS_RT_KEY: ${OTD_GTFS_RT_KEY:-} # opentransportdata.swiss key for GTFS-RT (optional)
     restart: unless-stopped
