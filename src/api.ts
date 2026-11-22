@@ -15,7 +15,7 @@ import { alertsState } from "./alerts.ts";
 import { brief } from "./brief.ts";
 import { dropAllResumptions, dropResumption, resumptionOf, resumptions } from "./resumption.ts";
 import { forecastTick, forecastsPayload, scorecards, segmentsGeoJson, shadowReport } from "./forecast.ts";
-import { journeyGeometry, plan, sectionGeometry, situation, trainGeometry, journeyDetail } from "./planner.ts";
+import { journeyGeometry, plan, sectionGeometry, situation, trainGeometry, journeyDetail, warmPlanner } from "./planner.ts";
 
 const trainLookup = (id: string) => {
   const tr = byTrainId.get(id);
@@ -76,6 +76,7 @@ export function api() {
     await next();
     if (c.req.method !== "GET") {
       scenarioTick(Date.now(), true); // bulletins and the effective timetable follow at once
+      warmPlanner(); // the next journey request already runs on the new effective timetable (its snapshot)
       forecastTick(Date.now()); // forecasts follow at once (a resumption is scored at once)
       pushState();
     }
