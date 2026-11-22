@@ -1,7 +1,7 @@
 // HTTP control API for staff (provoke/end disruptions, mark/unmark incidents, sync) and read helpers.
 import { Hono } from "hono";
 import { InputError, TYPES, createDisruption, createIncident, disruptions, incidents } from "./disruptions.ts";
-import { byTrainId, neighbours, obstacleAhead, servedStations, stationBoard, sync, trains } from "./engine.ts";
+import { byTrainId, neighbours, obstacleAhead, servedStations, stationBoard, sync, trains, expectedArrival, nextCall, delayOf } from "./engine.ts";
 import { searchStations, stationIndex } from "./timetable.ts";
 import { abroadGeoJson, networkGeoJson } from "./geometry.ts";
 import { bulletins, controlState, disruptionPayload, event, incidentPayload, infoPayload, positionPayload, pushState, removeDisruption, statusPayload } from "./feed.ts";
@@ -105,6 +105,32 @@ export function api() {
     const i = stationIndex(c.req.param("id"));
     if (i === undefined) return c.json({ error: "Unknown station" }, 404);
     return c.json(stationBoard(i, Date.now()));
+  });
+  // the trains on their way to a station, nearest first: for a live "your train is arriving" view
+  app.get("/stations/:id/arrivals", (c) => {
+    const i = stationIndex(c.req.param("id"));
+    if (i === undefined) return c.json({ error: "Unknown station" }, 404);
+    const t = Date.now();
+    const rows: Record<string, unknown>[] = [];
+    for (const tr of trains.values()) {
+      if (tr.cancelled) continue;
+      const n = nextCall(tr);
+      for (let k = tr.leg < 0 ? tr.call : n; k < tr.trip.stops.length; k++) {
+        if (tr.trip.stops[k] !== i || tr.skipped[k]) continue;
+        const atStation = tr.leg < 0 && tr.call === k;
+        const eta = atStation ? t : expectedArrival(tr, k, t);
+        if (eta - t < -90_000 || eta - t > 90 * 60_000) break;
+        rows.push({
+          trainId: tr.trip.trainId, line: tr.trip.line, category: tr.trip.cat, headsign: tr.trip.head,
+          plannedArr: tr.trip.arr[k], expectedArr: Math.round(eta), etaSec: Math.max(0, Math.round((eta - t) / 1000)), delaySec: delayOf(tr, t),
+          stopsAway: Math.max(0, k - n + (tr.leg >= 0 ? 0 : 1)), status: atStation ? "at_station" : "approaching",
+          lat: Math.round(tr.lat * 1e6) / 1e6, lon: Math.round(tr.lon * 1e6) / 1e6, speedKmh: Math.round(tr.speed * 3.6),
+        });
+        break;
+      }
+    }
+    rows.sort((a, b) => (a.etaSec as number) - (b.etaSec as number));
+    return c.json(rows.slice(0, 12));
   });
   app.get("/stations/:id/neighbours", (c) => {
     const i = stationIndex(c.req.param("id"));
