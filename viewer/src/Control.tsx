@@ -388,7 +388,7 @@ export function Buses({ d, act }: { d: Disruption; act: (path: string, body?: un
       ) : (
         <div className="chips">
           {(b.state === null || b.state === "withdrawn") && <button onClick={() => void act(`/disruptions/${d.id}/buses/request`)}>Order replacement buses</button>}
-          {(b.state === "requested" || b.state === "confirmed") && <button className={b.state === "requested" ? "strong" : undefined} onClick={() => setForm(true)}>{b.state === "requested" ? "Confirm buses" : "Change times"}</button>}
+          {b.state !== null && b.state !== "withdrawn" && <button className={b.state === "requested" ? "strong" : undefined} onClick={() => setForm(true)}>{b.state === "requested" ? "Confirm buses" : "Change times"}</button>}
           {b.state === "requested" && <button onClick={() => void act(`/disruptions/${d.id}/buses/withdraw`)}>No buses available</button>}
           {(b.state === "confirmed" || b.state === "running") && <button onClick={() => void act(`/disruptions/${d.id}/buses/withdraw`)}>Withdraw buses</button>}
         </div>

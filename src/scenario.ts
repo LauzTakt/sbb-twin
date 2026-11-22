@@ -331,6 +331,7 @@ function refreshBuses(d: Disruption & { scenario: Scenario }, t: number) {
   const byKey = new Map(prev.map((trip) => [trip.key, trip]));
   const next = new Map<string, Trip>();
   for (const trip of prev) if (trip.dep[0] <= t) next.set(trip.key, trip);
+  const left = new Set([...next.values()].map((trip) => `${trip.stops[0]}@${trip.dep[0]}`)); // a bus that left stays the only one
   if (!d.endedAt && seq.length >= 2) {
     const end = expectedEnd(d, t);
     let run: number | undefined;
@@ -341,9 +342,11 @@ function refreshBuses(d: Disruption & { scenario: Scenario }, t: number) {
         const route = side === "A" ? seq : [...seq].reverse();
         // from a run ago: after a restart, the buses on the road come back where they are
         run ??= runMs(sc.busStops);
-        for (const x of departures(m, side, Math.max(m.at, t - run), until)) {
+        for (const x of departures(m, side, Math.max(Math.min(m.at, firstFrom(m, side)), t - run), until)) {
           const key = busKey(d, m, side, x);
-          if (!next.has(key)) next.set(key, byKey.get(key) ?? makeBus(d, m, route, side, x));
+          if (next.has(key) || left.has(`${route[0]}@${x}`)) continue;
+          next.set(key, byKey.get(key) ?? makeBus(d, m, route, side, x));
+          if (x <= t) left.add(`${route[0]}@${x}`);
         }
       }
     }
@@ -354,7 +357,8 @@ function refreshBuses(d: Disruption & { scenario: Scenario }, t: number) {
 }
 /** First departure of a confirmed decision from each end, from its own times (as announced, even once replaced). */
 function firstBuses(_d: Disruption & { scenario: Scenario }, m: Measure) {
-  const first = (side: "A" | "B") => departures(m, side, m.at, m.at + 24 * 3600_000).slice(0, 1);
+  // from the decision, or from its first departure when the operator gave one a little in the past
+  const first = (side: "A" | "B") => departures(m, side, Math.min(m.at, firstFrom(m, side)), m.at + 24 * 3600_000).slice(0, 1);
   return { A: first("A"), B: first("B") };
 }
 export type BusPhase = "requested" | "confirmed" | "running" | "withdrawn" | null;

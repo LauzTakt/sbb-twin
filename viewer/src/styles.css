@@ -326,3 +326,5 @@ main { flex: 1; min-height: 0; position: relative; display: flex; }
 .items li .buses .seg.mini button { border: 0; border-radius: 0; padding: 2px 8px; background: var(--white); color: var(--metal); }
 .items li .buses .seg.mini button[aria-pressed="true"] { background: var(--charcoal); color: var(--white); }
 .bus-from { color: var(--metal); font-size: 12px; }
+.items .buses b { font-size: inherit; }
+.items .buses b::before { content: none; }
