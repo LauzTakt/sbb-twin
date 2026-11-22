@@ -13,7 +13,8 @@ import { clear, publish } from "./mqtt.ts";
 import { releaseAll, releaseTrain } from "./god.ts";
 import { alertsState } from "./alerts.ts";
 import { brief } from "./brief.ts";
-import { dropAllForecasts, dropForecast, forecastList, forecastOf, forecastTick } from "./forecast.ts";
+import { dropAllResumptions, dropResumption, resumptionOf, resumptions } from "./resumption.ts";
+import { forecastTick, forecastsPayload, scorecards, segmentsGeoJson, shadowReport } from "./forecast.ts";
 import { journeyGeometry, plan, sectionGeometry, situation, trainGeometry, journeyDetail } from "./planner.ts";
 
 const trainLookup = (id: string) => {
@@ -75,7 +76,7 @@ export function api() {
     await next();
     if (c.req.method !== "GET") {
       scenarioTick(Date.now(), true); // bulletins and the effective timetable follow at once
-      forecastTick(Date.now()); // a resumption is scored at once
+      forecastTick(Date.now()); // forecasts follow at once (a resumption is scored at once)
       pushState();
     }
   });
@@ -259,16 +260,28 @@ export function api() {
     const d = endDisruption(c.req.param("id"));
     if (!d) return c.json({ error: "Unknown disruption" }, 404);
     removeDisruption(d.id);
-    dropForecast(d.id); // withdrawn, not resumed
+    dropResumption(d.id); // withdrawn, not resumed
     return c.json({ removed: d.id });
   });
   app.get("/bulletins", (c) => c.json(bulletins()));
+  // Forecasts (src/forecast.ts, models in research/): advice only, the effective timetable and the planner ignore them.
+  // every active disruption: P(still disrupted) at +1/+2/+4 h, the predicted end with its 80 % band, the announced end
+  app.get("/forecasts", (c) => c.json(forecastsPayload()));
+  // the models' out-of-time evidence (research/<model>/scorecard.json)
+  app.get("/forecasts/scorecards", (c) => c.json(scorecards()));
+  // the live shadow test: each disruption's first prediction, scored when it ended
+  app.get("/forecasts/shadow", (c) => c.json(shadowReport()));
+  app.get("/forecasts/section-risk.geojson", (c) => {
+    c.header("content-type", "application/geo+json");
+    c.header("cache-control", "public, max-age=300");
+    return c.body(segmentsGeoJson());
+  });
   // after "Service resumed": the regular trains due at the section's stations in the next hour and their historical
-  // risk of still losing a stop (src/forecast.ts). Advice only: the effective timetable and the planner ignore it.
+  // risk of still losing a stop (src/resumption.ts)
   app.get("/forecasts/post-resumption", (c) => {
     const id = c.req.query("disruptionId");
-    if (!id) return c.json(forecastList());
-    const f = forecastOf(id);
+    if (!id) return c.json(resumptions());
+    const f = resumptionOf(id);
     return f ? c.json(f) : c.json({ error: "No forecast for this disruption (it has not resumed, or its hour is over)" }, 404);
   });
   app.get("/replays", (c) => c.json(replayStatus()));
@@ -355,7 +368,7 @@ export function api() {
       removed++;
     }
     forgetAll(); // replacement buses and every timetable change
-    dropAllForecasts();
+    dropAllResumptions();
     const synced = sync();
     event("sync", { type: "reset", removed, trainIds: synced });
     return c.json({ removed, synced: synced.length });

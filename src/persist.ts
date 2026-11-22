@@ -5,7 +5,8 @@ import { join } from "node:path";
 import { config } from "./config.ts";
 import { disruptions, incidents, type Disruption, type Incident } from "./disruptions.ts";
 
-const FILE = process.env.RAIL_STATE_FILE ?? join(config.dataDir, "state.json"); // a private test instance uses its own
+export const STATE_FILE = process.env.RAIL_STATE_FILE ?? join(config.dataDir, "state.json"); // a private test instance uses its own
+const FILE = STATE_FILE;
 type Saved = { disruptions: (Omit<Disruption, "edges" | "affected"> & { edges: number[]; affected: string[] })[]; incidents: Incident[] };
 
 function snapshot(): Saved {

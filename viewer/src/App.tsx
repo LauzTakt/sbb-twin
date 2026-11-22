@@ -1,9 +1,11 @@
 import * as maplibregl from "maplibre-gl";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import type { GeoJSONSource, Map as LibreMap } from "maplibre-gl";
-import { CircleDot, Crosshair, Monitor, Moon, Plus, RefreshCcw, Sun, TrainFront, X } from "lucide-react";
+import { CircleDot, Crosshair, Layers, Monitor, Moon, Plus, RefreshCcw, Sun, TrainFront, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api, connectLive, send, type Disruption, type Forecast, type Item, type Live, type SnapshotRow, type Status } from "./feed";
+import { ForecastsPanel, ResumedCard, useForecasts } from "./Forecasts";
+import { RISK, riskPaint, type RiskSegment } from "./risk";
 import { Control } from "./Control";
 import { baseStyle, OWN, setMapTheme } from "./map";
 import { applyPageTheme, onSystemThemeChange, readPref, resolveTheme, savePref, shownTheme, switchMs, systemTheme, type Pref, type Theme } from "./theme";
@@ -52,7 +54,11 @@ export function App() {
   const [alertItems, setItems] = useState<Item[]>([]);
   const [disruptions, setDisruptions] = useState<Disruption[]>([]);
   const [forecasts, setForecasts] = useState<Forecast[]>([]);
-  const [tab, setTab] = useState<"disruptions" | "bulletins">("disruptions");
+  const [tab, setTab] = useState<"disruptions" | "bulletins" | "forecasts">(() => (new URLSearchParams(location.search).get("tab") === "forecasts" ? "forecasts" : "disruptions"));
+  const [risk, setRisk] = useState(() => new URLSearchParams(location.search).get("risk") === "1"); // the section risk layer
+  const [riskInfo, setRiskInfo] = useState<{ placeholder: boolean; n: number; recall: Record<string, number> }>();
+  const [segment, setSegment] = useState<RiskSegment>();
+  const forecastData = useForecasts();
   const [registering, setRegistering] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [picked, setPicked] = useState<string>();
@@ -99,10 +105,12 @@ export function App() {
           .queryRenderedFeatures(box, { layers: ["section-line", "section-point"].filter((l) => m.getLayer(l)) })
           .filter((f) => f.properties?.id)
           .sort((a, b) => Number(a.properties.size) - Number(b.properties.size))[0];
-        if (hit) return setPicked(String(hit.properties.id)), setSelected(undefined), setStation(undefined);
+        if (hit) return setPicked(String(hit.properties.id)), setSelected(undefined), setStation(undefined), setSegment(undefined);
+        const seg = m.getLayer("risk-line") ? m.queryRenderedFeatures(box, { layers: ["risk-line"] })[0] : undefined;
+        if (seg) return setSegment(seg.properties as unknown as RiskSegment), setSelected(undefined), setStation(undefined);
         const st = m.queryRenderedFeatures(box, { layers: ["stations-major", "stations-medium", "stations-minor"].filter((l) => m.getLayer(l)) })[0];
         if (st) return setStation({ id: String(st.properties.id), name: String(st.properties.name), trains: Number(st.properties.trains) }), setSelected(undefined), setPicked(undefined);
-        setPicked(undefined), setSelected(undefined), setStation(undefined), setFollowing(false);
+        setPicked(undefined), setSelected(undefined), setStation(undefined), setFollowing(false), setSegment(undefined);
       });
       m.on("dragstart", () => setFollowing(false));
       live.current = connectLive({
@@ -235,8 +243,39 @@ export function App() {
     const ms = switchMs();
     applyPageTheme(theme, ms);
     if (mapRef.current && mapLoaded.current) setMapTheme(mapRef.current, theme, ms);
+    if (mapRef.current?.getLayer("risk-line")) for (const [k, v] of Object.entries(riskPaint(theme))) mapRef.current.setPaintProperty("risk-line", k as never, v as never);
     layer.current?.setTheme(theme, ms);
   }, [theme]);
+  // the section risk map: loaded on first use, drawn under the disruptions, coloured by rank (top 5 / 10 / 20 %)
+  useEffect(() => {
+    const m = mapRef.current;
+    if (!m || !ready) return;
+    const apply = () => {
+      if (!m.getSource("risk")) {
+        if (!risk) return;
+        m.addSource("risk", { type: "geojson", data: "/api/forecasts/section-risk.geojson" });
+        m.addLayer({ id: "risk-line", type: "line", source: "risk", layout: { "line-cap": "round", "line-join": "round" }, paint: riskPaint(themeRef.current) as never }, m.getLayer("section-picked") ? "section-picked" : undefined);
+        void api<{ placeholder?: boolean; features: unknown[] }>("/forecasts/section-risk.geojson").then((fc) =>
+          api<{ section_risk: { scorecard: { metrics?: { name: string; values: Record<string, number> }[] } | null } }>("/forecasts/scorecards").then((sc) => {
+            const recall: Record<string, number> = {};
+            for (const x of sc.section_risk.scorecard?.metrics ?? []) {
+              const k = x.name.match(/(\d+)\s*%/)?.[1];
+              if (k && /recall/i.test(x.name) && x.values.model !== undefined) recall[k] = x.values.model;
+            }
+            setRiskInfo({ placeholder: fc.placeholder !== false, n: fc.features.length, recall });
+          }),
+        ).catch(() => undefined);
+      }
+      m.setLayoutProperty("risk-line", "visibility", risk ? "visible" : "none");
+    };
+    if (mapLoaded.current) apply();
+    else m.once("load", apply);
+    if (!risk) setSegment(undefined);
+    const u = new URL(location.href);
+    if (risk) u.searchParams.set("risk", "1");
+    else u.searchParams.delete("risk");
+    history.replaceState(null, "", u);
+  }, [risk, ready]);
   useEffect(() => {
     if (!layer.current) return;
     layer.current.selected = selected;
@@ -314,13 +353,34 @@ export function App() {
             </button>
           </div>
         )}
+        <button className={`risk-toggle${risk ? " on" : ""}`} aria-pressed={risk} onClick={() => setRisk((r) => !r)} title="Which sections concentrate disruptions (ranked on 2024-25, checked on 2026)">
+          <Layers size={15} /> Risk map
+        </button>
+        {risk && (
+          <div className="risk-legend" aria-label="Section risk legend">
+            <b>Section risk</b>
+            {riskInfo?.placeholder && <em className="ph-tag">placeholder data</em>}
+            <ul>
+              {RISK.steps.map((st) => (
+                <li key={st.label}>
+                  <i style={{ background: `var(--risk-${st.key})`, height: st.key === "rest" ? 2 : 4 }} />
+                  {st.label}
+                  {st.k && riskInfo?.recall[st.k] !== undefined && <small>{Math.round(riskInfo.recall[st.k] * 100)} % of 2026 incidents{riskInfo.placeholder ? " (placeholder)" : ""}</small>}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {segment && <SegmentCard s={segment} placeholder={riskInfo?.placeholder ?? true} onClose={() => setSegment(undefined)} />}
         {selected && live.current && <TrainCard key={selected} id={selected} live={live.current} following={following} onFollow={() => setFollowing((f) => !f)} onClose={() => (setSelected(undefined), setFollowing(false))} />}
         {station && <StationCard key={station.id} station={station} onTrain={(id) => (setSelected(id), setStation(undefined))} onClose={() => setStation(undefined)} />}
         <aside className="side">
           <div className="tabs" role="tablist">
             <button aria-pressed={tab === "disruptions"} onClick={() => setTab("disruptions")}>Disruptions</button>
             <button aria-pressed={tab === "bulletins"} onClick={() => setTab("bulletins")}>Bulletins</button>
+            <button aria-pressed={tab === "forecasts"} onClick={() => setTab("forecasts")}>Forecasts</button>
           </div>
+          {tab === "forecasts" && <ForecastsPanel data={forecastData} picked={picked} onPick={(id) => (setPicked(id), setSelected(undefined), setStation(undefined))} />}
           {tab === "bulletins" && (
             <ul className="items bulletins">
               {!sorted.some((i) => i.description) && <p className="hint">No bulletin for the current disruptions.</p>}
@@ -345,19 +405,19 @@ export function App() {
                   {i.where && <span>{i.where}</span>}
                   <small>{[i.note, i.trains ? `${i.trains} train${i.trains > 1 ? "s" : ""}` : ""].filter(Boolean).join(" · ")}</small>
                 </button>
-                {picked === i.id && resumed.has(i.id) && <ResumeCard forecast={resumed.get(i.id)!} />}
+                {picked === i.id && resumed.has(i.id) && <ResumedCard r={resumed.get(i.id)!} />}
               </li>
             ))}
           </ul>
           </>}
-          <div className="legend">
+          {tab !== "forecasts" && <div className="legend">
             <span><i style={{ background: "#00973b" }} />Moving</span>
             <span><i style={{ background: "#f27e00" }} />Late 3 min or more</span>
             <span><i style={{ background: "var(--train-station)" }} />At a station</span>
             <span><i style={{ background: "#eb0000" }} />Stopped on the line</span>
             <span><i className="line" style={{ background: "#eb0000" }} />Interrupted</span>
             <span><i className="line" style={{ background: "#f27e00" }} />Limited</span>
-          </div>
+          </div>}
         </aside>
       </main>
     </div>
@@ -365,37 +425,24 @@ export function App() {
 }
 const rank = (i: Item) => (i.severity === "critical" || i.severity === "major" ? 0 : i.severity === "minor" ? 1 : 2);
 
-/** After "Service resumed": the trains due at the section's stations in the next hour, as historical risk bands. An
- *  official cancellation or skipped stop is shown as such (it wins over the forecast). */
-function ResumeCard({ forecast: f }: { forecast: Forecast }) {
-  const ends = f.endpoints.map((e) => e.name).join(" or ");
+/** A section of the risk map: its rank and the disruptions it had. */
+function SegmentCard({ s, placeholder, onClose }: { s: RiskSegment; placeholder: boolean; onClose: () => void }) {
+  const causes = Array.isArray(s.topCauses) ? s.topCauses : typeof s.topCauses === "string" ? (JSON.parse(s.topCauses) as string[]) : [];
   return (
-    <section className="resume" aria-label="Trains to check after the resumption">
-      <h4>Service resumed at {hm(f.resumedAt)} · Trains to check</h4>
-      {f.trains.length ? (
-        <ol>
-          {f.trains.map((t) => (
-            <li key={t.trainId} className={t.officialStatus !== "scheduled" ? "official" : undefined}>
-              <time>{hm(t.plannedTime)}</time>
-              <span className="who">
-                <span className="name"><strong>{t.line}</strong> {t.headsign}</span>
-                <small>at {t.station.name}</small>
-              </span>
-              {t.officialStatus !== "scheduled" ? (
-                <em className="band off">{t.officialStatus === "cancelled" ? "cancelled" : "no stop"}</em>
-              ) : (
-                <em className={`band ${t.band === "check first" ? "first" : t.band}`} title={`${t.riskPercent}% of such trains lost a stop historically`}>
-                  {t.band}
-                  <i>{t.riskPercent}%</i>
-                </em>
-              )}
-            </li>
-          ))}
-        </ol>
-      ) : (
-        <p className="none">No regular train is due at {ends} in the next hour.</p>
-      )}
-      <p className="basis">Based on 1,800+ train runs after past SBB resumptions; an official cancellation always wins.</p>
+    <section className="card" aria-label="Section risk">
+      <header>
+        <h3>{s.name}</h3>
+        <button className="icon" onClick={onClose} aria-label="Close">
+          <X size={18} />
+        </button>
+      </header>
+      <p className="sub">Rank {s.rank} on the risk map{s.km ? ` · ${s.km} km` : ""}{placeholder ? " · placeholder data" : ""}</p>
+      <div className="facts">
+        <div><b>{Math.round(Number(s.risk) * 100)}</b><small>risk (0–100)</small></div>
+        <div><b>{s.incidentsTrain ?? "–"}</b><small>incidents 2024-25</small></div>
+        <div><b>{s.incidentsTest ?? "–"}</b><small>incidents 2026</small></div>
+      </div>
+      {causes.length > 0 && <p className="sub">Most often: {causes.map((c) => c.replace("_", " ")).join(", ")}</p>}
     </section>
   );
 }

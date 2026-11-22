@@ -1,4 +1,5 @@
 // The page reads the twin directly over WebSocket /live (trains every second, incidents and alerts when they change).
+import type { Resumption } from "./forecastTypes";
 
 export type SnapshotRow = [trainId: string, lat: number, lon: number, bearing: number, speedKmh: number, motion: string, delaySec: number, line: string, category: string, atStopId: string | null, continuity: number];
 export type Geometry = { type: string; coordinates: unknown } | null;
@@ -9,11 +10,8 @@ export type Disruption = {
   cause?: { code: string; label: string }; durationType?: string; until?: number | null; endsAt?: number | null; lines?: string[]; lifecycle?: string;
   measures?: { id?: string; type: string; label?: string; at?: string; state?: string }[]; bulletinVersion?: number;
 };
-/** After a twin disruption resumed: the regular trains due at its stations in the next hour (GET /api/forecasts/post-resumption). */
-export type Forecast = {
-  disruptionId: string; where: string; resumedAt: number; expiresAt: number; endpoints: { id: string; name: string }[];
-  trains: { trainId: string; line: string; category: string; headsign: string; station: { id: string; name: string }; plannedTime: number; leadMinutes: number; risk: number; riskPercent: number; band: "check first" | "check" | "low"; officialStatus: "scheduled" | "cancelled" | "skipped" }[];
-};
+/** After a disruption resumed: the regular trains due at its stations in the next hour (src/resumption.ts). */
+export type Forecast = Resumption;
 /** A disruption on the railway: a real SBB alert, or an incident the twin detected itself. */
 export type Item = { id: string; title: string; where: string; severity: "info" | "minor" | "major" | "critical"; note: string; trains: number; geometry: Geometry; source: "sbb" | "auto"; trainIds?: string[]; description?: string };
 
