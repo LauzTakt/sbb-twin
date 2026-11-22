@@ -1121,7 +1121,7 @@ function scan(q: Query, tau: number): Result {
           let kind: number;
           let need: number;
           let to: number;
-          if (r.type === 4) { kind = K_SEATED; need = arr - 60_000; to = lv; }
+          if (r.type === 4) { kind = K_SEATED; need = arr; to = lv; } // the same vehicle continues
           else if (af & ALIGHT && lv < L) { kind = K_RULE; need = arr + (r.type === 1 ? 0 : r.sec * 1000); to = lv + 1; }
           else continue;
           if (depB < need) continue;
@@ -1291,7 +1291,7 @@ function validate(q: Query, w: Witness, tau: number): string | null {
       if (seated) {
         const ok = (rulesFrom.get(s.trips[prev.trip].tripId) ?? []).some((r) => r.type === 4 && r.toTrip === trip.tripId && r.fromQuay === prev.alightNode && r.toQuay === p.boardNode && (!r.dates || r.dates.includes(s.trips[prev.trip].serviceDate)));
         if (!ok) return `no published stay-seated continuation ${s.trips[prev.trip].trainId} -> ${trip.trainId}`;
-        if (dep < arrPrev - 60_000) return `stay-seated continuation leaves before arrival`;
+        if (dep < arrPrev) return `stay-seated continuation leaves before arrival`;
       } else {
         const need = transferSec(s, prev.trip, prev.alightNode, p.trip, p.boardNode);
         if (!Number.isFinite(need)) return `no transfer ${stops[nodeSt(prev.alightNode)]?.name} -> ${stops[nodeSt(p.boardNode)]?.name}`;
