@@ -143,7 +143,7 @@ export function brief(q: { station?: string; from?: string; to?: string; lat?: s
       for (const l of j.legs) {
         ids.add(l.from.id);
         ids.add(l.to.id);
-        const key = byId.get(l.trainId);
+        const key = l.trainId ? byId.get(l.trainId) : undefined; // walk legs have no train
         if (key) trips.add(key);
       }
     const from = stationPart(a, t);

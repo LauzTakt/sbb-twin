@@ -1,6 +1,6 @@
 // The planned timetable of a service day, from the prepared day index (GTFS rail + rail-replacement trips).
 import { readFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { gunzipSync } from "node:zlib";
 import { join } from "node:path";
 import { config } from "./config.ts";
@@ -67,7 +67,15 @@ export function searchStations(q: string, limit = 8) {
 export async function loadDayMapped(date: string): Promise<Trip[]> {
   const file = join(config.daysDir, `day-${date}.json.gz`);
   if (!existsSync(file)) return [];
-  const day = JSON.parse(gunzipSync(await readFile(file)).toString()) as DayFile;
+  return mapDay(JSON.parse(gunzipSync(await readFile(file)).toString()) as DayFile, date);
+}
+/** The same, synchronously: the planner loads the next morning before it answers (never an incomplete first answer). */
+export function loadDayMappedSync(date: string): Trip[] {
+  const file = join(config.daysDir, `day-${date}.json.gz`);
+  if (!existsSync(file)) return [];
+  return mapDay(JSON.parse(gunzipSync(readFileSync(file)).toString()) as DayFile, date);
+}
+function mapDay(day: DayFile, date: string): Trip[] {
   const map = day.stops.map(([id]) => byId.get(id) ?? -1);
   const origin = serviceOrigin(date);
   const out: Trip[] = [];

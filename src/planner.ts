@@ -1,216 +1,1126 @@
-// Journey planner on the twin's live state: today's timetable with the live predictions, held, slowed and cancelled
-// trains, skipped stops, closed stations and closed sections. Connection Scan (earliest arrival), repeated with later
-// departures to offer the real alternatives (wait for the next train, another route). Plus what a passenger at a
-// place should know (situation) and the track geometry to draw a journey.
+// Journey planner on the twin's effective timetable: the planned timetable with the live predictions, the twin's
+// measures (holds, short turns, cancelled lines, closed sections, replacement buses) and the passenger rules of the
+// official timetable (quays, pickup/drop-off types, published transfer times, walking links, trip-to-trip rules,
+// stay-seated continuations; src/routing.ts).
+//
+// Every request runs on one immutable snapshot (snapshotId): the effective connections, sorted by departure. The search
+// is a Connection Scan with quay-level labels by number of vehicles used, so "earliest arrival with at most k vehicles"
+// is exact for every k; repeating it from just after each found departure enumerates the departure/arrival/changes
+// profile. Journeys rank by (arrival, changes, -departure), lexicographically, to the second. Before a journey is
+// published its witness is replayed against the snapshot with an independent check (validate()); an invalid one is
+// never returned.
 import { createHash } from "node:crypto";
-import { dayTrips, liveTimes, nextDate, servedStations, stationBoard, byTrainId, timetableDate } from "./engine.ts";
-import { loadDayMapped, searchStations, stationIndex, stops, type Trip } from "./timetable.ts";
-import { metres } from "./geometry.ts";
+import { byTrainId, dayTrips, liveTimes, nextDate, servedStations, stationBoard, timetableDate, trains } from "./engine.ts";
+import { loadDayMappedSync, searchStations, stationIndex, stops, type Trip } from "./timetable.ts";
+import { edgesGeometry, edgeSpans, metres, pathBetween, sectionEdges, travelPath } from "./geometry.ts";
 import { serviceOrigin, zurich } from "./time.ts";
-import { expectedEnd, isScenario } from "./scenario.ts";
-import { disruptions, effective, incidents, type Incident } from "./disruptions.ts";
-import { edgesGeometry, sectionEdges, travelPath } from "./geometry.ts";
+import { isScenario, stateAt } from "./scenario.ts";
+import { disruptions, effective, incidents, tripChanges, type Disruption, type Incident, type Scenario, type TripChange } from "./disruptions.ts";
 import { alertsState } from "./alerts.ts";
+import { live, type TripLive } from "./realtime.ts";
+import { DEFAULT_TRANSFER_SEC, loadRouting, pairKey, pairSec, pairsFrom, pairsTo, quayCount, quayPlatform, quayStation, quaysOf, routingLoaded, rulesFrom, tripRoute, type TripRoute } from "./routing.ts";
 
-const TRANSFER_MS = 4 * 60_000;
 const HORIZON_MS = 6 * 3600_000;
+const PARETO_WINDOW_MS = 90 * 60_000; // an option with fewer changes is offered when it arrives within 90 min of the best
+const TWIN_BUS_TRANSFER_SEC = 240; // the twin's own replacement buses have no quay: rail <-> bus at a station takes this (or the station's published time if longer)
+const SNAPSHOT_MAX_AGE_MS = 30_000; // trains the twin simulates move their predictions: rebuild at least this often then
 
 type Place = { id: string; name: string; lon: number; lat: number };
 export type Leg = {
+  type: "ride";
   trainId: string;
   line: string;
   category: string;
   headsign: string;
-  from: Place & { plannedDep: number; expectedDep: number };
-  to: Place & { plannedArr: number; expectedArr: number };
+  from: Place & { plannedDep: number; expectedDep: number; platform?: string };
+  to: Place & { plannedArr: number; expectedArr: number; platform?: string };
   stopsBetween: number;
   delaySec: number;
   status: "on time" | "late" | "held";
   incidents: { id: string; title: string; severity: string; source: string }[];
-  note?: string; // e.g. the reopening a "wait" journey relies on
+  note?: string; // e.g. the reopening a journey relies on
+  staySeated?: boolean; // a published stay-seated continuation of the previous ride (no change)
 };
+/** Walking between two stops (a rail station and its bus stop, two stations): published walking time. */
+export type WalkLeg = {
+  type: "walk";
+  from: Place & { plannedDep: number; expectedDep: number };
+  to: Place & { plannedArr: number; expectedArr: number };
+  durationSec: number;
+  // the fields a ride has, so that code reading every leg as a ride keeps working
+  trainId: null;
+  line: "Walk";
+  category: "WALK";
+  headsign: string;
+  stopsBetween: 0;
+  delaySec: 0;
+  status: "on time";
+  incidents: [];
+};
+export type AnyLeg = Leg | WalkLeg;
 export type Journey = {
   id: string;
-  departure: number;
-  arrival: number;
+  departure: number; // leaving the requested origin (an initial walk included)
+  arrival: number; // at the requested destination (a final walk included)
   plannedDeparture: number;
   plannedArrival: number;
   durationMin: number;
-  transfers: number;
+  transfers: number; // changes of vehicle (walks and stay-seated continuations are not changes)
   arrivalDelayMin: number;
   warnings: string[];
-  legs: Leg[];
-  kind?: "best" | "via" | "wait"; // via: through the requested hub; wait: through the interrupted section after it reopens
-  uncertain?: boolean; // relies on a reopening that is not confirmed (UNTIL_AT_LEAST or UNKNOWN)
-  fastest?: boolean; // the pick to recommend: the earliest arrival that does not rely on an unconfirmed reopening
+  legs: AnyLeg[];
+  kind?: "best" | "via" | "wait"; // via: through the requested hub; wait: through an interrupted section after it reopens
+  uncertain?: boolean; // relies on a reopening that is not confirmed (crosses after an UNTIL_AT_LEAST bound)
+  fastest?: boolean; // the pick to recommend: the best journey that relies on no unconfirmed reopening
   nextServiceDay?: boolean; // the first services of the next morning
   corridor?: string[]; // the stations where it changes
   dominated?: boolean; // another option is better on every count, kept because it uses another corridor
   waitsForReopening?: boolean; // it goes through an interrupted section after the expected reopening
+  snapshotId?: string;
 };
-type Conn = { trip: number; i: number; dep: number; arr: number; from: number; to: number };
-type Live = ReturnType<typeof liveTimes>;
 
-const journeys = new Map<string, { at: number; journey: Journey; parts: { trip: Trip; i: number; j: number }[] }>();
-const place = (k: number): Place => ({ id: stops[k].id, name: stops[k].name, lon: stops[k].lon, lat: stops[k].lat });
-const r5 = (x: number) => Math.round(x * 1e5) / 1e5;
-
+// ---------------------------------------------------------------------------------------------- station resolution
+const norm = (s: string) => s.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase().trim();
 let served: Set<string> | undefined;
-let servedDay = "";
+let servedFor: Trip[] | undefined;
+let normNames: string[] = [];
+let normFor: unknown;
+const isServed = (k: number) => {
+  const day = dayTrips();
+  if (!served || servedFor !== day) {
+    served = new Set(servedStations().map((s) => s.id));
+    servedFor = day;
+  }
+  return served.has(stops[k].id);
+};
+/** A station from an id or a name: the exact id, then the exact name (case and accents aside), then the best fuzzy
+ *  match (a station trains call at today first). "Locarno" is Locarno (8505400), not Locarno FART. */
 export function resolveStation(q: string | undefined) {
   if (!q) return undefined;
-  const direct = stationIndex(q.trim());
+  const s = q.trim();
+  const direct = stationIndex(s);
   if (direct !== undefined) return direct;
-  // a station trains call at today, best match first (exact name, then prefix, then anywhere in the name)
-  const day = String(dayTrips()[0]?.serviceDate ?? "");
-  if (!served || servedDay !== day) {
-    served = new Set(servedStations().map((s) => s.id));
-    servedDay = day;
+  const n = norm(s);
+  if (!n) return undefined;
+  if (normFor !== stops) {
+    normNames = stops.map((x) => norm(x.name));
+    normFor = stops;
   }
-  const hits = searchStations(q, 40);
-  const hit = hits.find((s) => served!.has(s.id)) ?? hits[0];
+  const exact: number[] = [];
+  for (let k = 0; k < normNames.length; k++) if (normNames[k] === n) exact.push(k);
+  if (exact.length) return exact.find(isServed) ?? exact[0];
+  const hits = searchStations(s, 40);
+  const hit = hits.find((x) => isServed(stationIndex(x.id)!)) ?? hits[0];
   return hit ? stationIndex(hit.id) : undefined;
 }
 
-/** Sections closed now (with when they reopen) and closed stations. */
-function closures() {
-  const sections = [...disruptions.values()].filter((d) => !d.endedAt && d.effect === "section_closure" && d.edges.size);
-  const stations = new Set([...disruptions.values()].filter((d) => !d.endedAt && d.effect === "station_closure" && d.station !== undefined).map((d) => d.station!));
-  const memo = new Map<string, Set<number>>();
-  const blocked = (a: number, b: number, at: number) => {
-    if (!sections.length) return false;
-    const key = a < b ? `${a}-${b}` : `${b}-${a}`;
-    let edges = memo.get(key);
-    if (!edges) memo.set(key, (edges = sectionEdges(stops[a], stops[b])));
-    return sections.some((d) => (d.endsAt === null || at < d.endsAt) && [...edges!].some((e) => d.edges.has(e)));
+// ---------------------------------------------------------------------------------------------- closures in time
+type Closure = {
+  id: string;
+  where: string;
+  edges: Set<number>;
+  inside: Set<number>; // stations closed with the section (and the station of a station closure)
+  closed: [number, number][]; // certainly interrupted: [from, to)
+  conditional: [number, number][]; // after an UNTIL_AT_LEAST bound with no reopening announced: crossing is conditional
+  reopen: number | null; // the expected reopening (for notes)
+  sure: boolean; // the reopening is announced (UNTIL or a resume decision)
+  ahead: boolean; // the reopening is still to come (a crossing after it relies on it)
+  a?: number;
+  b?: number;
+  bbox?: [number, number, number, number];
+  hit: Map<number, boolean>; // station pair -> does a leg between them run on the section
+};
+/** When a scenario disruption interrupts its section, as decided at `now`: the measures at their effective times;
+ *  UNTIL_AT_LEAST is a lower bound only (crossing after it is conditional), UNKNOWN gives no timed crossing. */
+function scheduleOf(d: Disruption & { scenario: Scenario }, now: number) {
+  const sc = d.scenario;
+  const resumeAt = (x: number) => sc.measures.some((m) => m.type === "resume" && m.announcedAt <= now && m.at <= x) || (sc.resumedAt !== undefined && x >= sc.resumedAt);
+  const resumeLater = (x: number) => sc.measures.some((m) => m.type === "resume" && m.announcedAt <= now && m.at > x);
+  const points = new Set<number>([sc.start]);
+  for (const m of sc.measures) if (m.announcedAt <= now) {
+    if (m.at > sc.start) points.add(m.at);
+    const u = m.params.until;
+    if (typeof u === "number") points.add(u);
+  }
+  if (sc.until !== null) points.add(sc.until);
+  if (sc.resumedAt !== undefined) points.add(sc.resumedAt);
+  const xs = [...points].filter((x) => x >= sc.start).sort((x, y) => x - y);
+  const closed: [number, number][] = [];
+  const conditional: [number, number][] = [];
+  const push = (list: [number, number][], x: number, next: number) => {
+    const last = list.at(-1);
+    if (last && last[1] === x) last[1] = next;
+    else list.push([x, next]);
   };
-  return { blocked, stations };
-}
-
-// the connections of the effective timetable, shared by requests for a few seconds (until it is rebuilt)
-let connCache: { gen: number; at: number; after: number; day: Trip[]; value: ReturnType<typeof buildConnections> } | undefined;
-function connections(t: number, after: number) {
-  const a = Math.floor(after / 30_000) * 30_000;
-  const day = dayTrips(); // changes when buses are added or removed
-  if (connCache && connCache.gen === effective.generation && connCache.day === day && t - connCache.at < 5000 && connCache.after === a) return connCache.value;
-  const value = buildConnections(t, a);
-  connCache = { gen: effective.generation, at: t, after: a, day, value };
-  return value;
-}
-/** Keep the shared connections fresh so a journey request (and /api/brief) never waits for the build. */
-export function warmPlanner() {
-  const t = Date.now();
-  connections(t, t);
-}
-// the next service day (the first morning services when somebody asks at night), loaded in the background
-let nextDay: { date: string; trips: Trip[] } | undefined;
-let nextLoading = "";
-function ensureNextDay() {
-  const date = nextDate();
-  if (!timetableDate() || nextDay?.date === date || nextLoading === date) return;
-  nextLoading = date;
-  loadDayMapped(date)
-    .then((trips) => (nextDay = { date, trips }))
-    .catch(() => (nextDay = { date, trips: [] }))
-    .finally(() => (nextLoading = ""));
-}
-/** How far ahead to search: 6 hours, and at night until 08:00 the next morning. */
-function horizonFor(after: number) {
-  const z = zurich(after);
-  const hour = Number(z.time.slice(0, 2));
-  if (hour >= 20) return Math.max(after + HORIZON_MS, serviceOrigin(addDay(z.date)) + 8 * 3600_000);
-  if (hour < 5) return Math.max(after + HORIZON_MS, serviceOrigin(z.date) + 8 * 3600_000);
-  return after + HORIZON_MS;
-}
-const addDay = (date: string) => new Date(Date.parse(`${date}T12:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
-function buildConnections(t: number, after: number) {
-  ensureNextDay();
-  const until = horizonFor(after);
-  const trips = nextDay?.trips.length && until > serviceOrigin(nextDay.date) ? [...dayTrips(), ...nextDay.trips] : dayTrips();
-  const lives: (Live | undefined)[] = new Array(trips.length);
-  const conns: Conn[] = [];
-  const { blocked } = closures();
-  trips.forEach((trip, ti) => {
-    const n = trip.stops.length;
-    if (trip.dep[0] > until || trip.arr[n - 1] < after - 3 * 3600_000) return;
-    const lt = liveTimes(trip, t);
-    if (lt.cancelled) return;
-    lives[ti] = lt;
-    const road = trip.cat === "EV"; // replacement buses: rail closures do not stop them
-    for (let i = lt.from; i < lt.lastServed; i++) {
-      const dep = lt.dep[i];
-      const arr = lt.arr[i + 1];
-      if (dep > until) break;
-      if (!road && blocked(trip.stops[i], trip.stops[i + 1], dep)) break; // it cannot get through: nothing further on this trip
-      if (dep < after) continue;
-      conns.push({ trip: ti, i, dep, arr, from: trip.stops[i], to: trip.stops[i + 1] });
-    }
-  });
-  conns.sort((a, b) => a.dep - b.dep || a.arr - b.arr);
-  return { trips, lives, conns };
-}
-
-type Parts = { trip: number; i: number; j: number }[];
-/** Connection scan with a bound on the trains used: for each number of trains (1..maxTrips) the earliest arrival,
- *  so a journey with fewer changes that arrives later is found too. Returns the options, fewest trains first. */
-function search(trips: Trip[], lives: (Live | undefined)[], conns: Conn[], from: number, to: number, after: number, closed: Set<number>, maxTrips: number) {
-  const K = maxTrips;
-  const best: Map<number, number>[] = Array.from({ length: K + 1 }, () => new Map());
-  const how: Map<number, { trip: number; board: number; alight: number; prev: number }>[] = Array.from({ length: K + 1 }, () => new Map());
-  best[0].set(from, after);
-  const boarded = new Map<number, { k: number; board: number }>(); // trip -> fewest trains it can be the last of
-  // first connection at or after `after` (they are sorted by departure)
-  let lo = 0;
-  let hi = conns.length;
-  while (lo < hi) {
-    const mid = (lo + hi) >> 1;
-    if (conns[mid].dep < after) lo = mid + 1;
-    else hi = mid;
+  for (let k = 0; k < xs.length; k++) {
+    const x = xs[k];
+    const next = k + 1 < xs.length ? xs[k + 1] : Infinity;
+    const st = stateAt(d, x, now);
+    let state: string = st.state;
+    // UNTIL_AT_LEAST is a lower bound: past it the section stays closed until a resumption is announced (closed up to
+    // that time), or crossing it is conditional
+    if (state === "resumed" && !resumeAt(x) && st.durationType === "UNTIL_AT_LEAST" && st.until !== null && x >= st.until) state = resumeLater(x) ? "interrupted" : "conditional";
+    if (state === "interrupted") push(closed, x, next);
+    else if (state === "conditional") push(conditional, x, next);
   }
-  for (let x = lo; x < conns.length; x++) {
-    const c = conns[x];
-    // stop once no option can improve: past the arrival with one train, or far past the earliest arrival (options
-    // arriving more than 90 minutes after the earliest are not offered)
-    if (c.dep > Math.min(best[1].get(to) ?? Infinity, (best[K].get(to) ?? Infinity) + 90 * 60_000)) break;
-    const lt = lives[c.trip]!;
-    let tk = boarded.get(c.trip);
-    if (!lt.skipped[c.i] && !closed.has(c.from))
-      for (let q = 0; q < K && (!tk || q + 1 < tk.k); q++) {
-        const at = best[q].get(c.from);
-        if (at === undefined) continue;
-        if ((q === 0 ? at : at + TRANSFER_MS) > c.dep) continue;
-        tk = { k: q + 1, board: x };
-        boarded.set(c.trip, tk);
-        break;
-      }
-    if (!tk) continue;
-    if (lt.skipped[c.i + 1] || closed.has(c.to)) continue; // passes without stopping
-    for (let q = tk.k; q <= K; q++) {
-      if (c.arr >= (best[q].get(c.to) ?? Infinity)) break;
-      best[q].set(c.to, c.arr);
-      how[q].set(c.to, { trip: c.trip, board: tk.board, alight: x, prev: tk.k - 1 });
-    }
+  const lastClosed = closed.at(-1);
+  let reopen: number | null = null;
+  let sure = false;
+  if (conditional.length) reopen = conditional[0][0];
+  else if (lastClosed && Number.isFinite(lastClosed[1])) {
+    reopen = lastClosed[1];
+    sure = true;
   }
-  const out: Parts[] = [];
-  let last = Infinity;
-  for (let q = 1; q <= K; q++) {
-    const arr = best[q].get(to);
-    if (arr === undefined || arr >= last) continue;
-    last = arr;
-    const parts: Parts = [];
-    let s = to;
-    let k = q;
-    for (let guard = 0; s !== from && guard < K + 1 && k > 0; guard++) {
-      const h = how[k].get(s);
-      if (!h) break;
-      parts.unshift({ trip: h.trip, i: conns[h.board].i, j: conns[h.alight].i + 1 });
-      s = conns[h.board].from;
-      k = h.prev;
+  return { closed, conditional, reopen, sure, ahead: reopen === null || reopen > now };
+}
+function bboxOf(d: Disruption): [number, number, number, number] | undefined {
+  const g = d.geometry;
+  if (!g || g.type !== "MultiLineString") return undefined;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const line of g.coordinates) for (const [x, y] of line) {
+    x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y);
+  }
+  return Number.isFinite(x0) ? [x0 - 0.01, y0 - 0.01, x1 + 0.01, y1 + 0.01] : undefined;
+}
+const closureMemo = new Map<string, Map<number, boolean>>();
+/** Every closure that can matter to a passenger now: interrupted scenario sections (scheduled), plain section
+ *  closures, station closures. */
+function closuresAt(now: number): Closure[] {
+  const out: Closure[] = [];
+  for (const d of disruptions.values()) {
+    if (d.endedAt && d.endedAt <= now) continue;
+    let memo = closureMemo.get(d.id);
+    if (!memo) closureMemo.set(d.id, (memo = new Map()));
+    if (isScenario(d)) {
+      const sc = d.scenario;
+      const s = scheduleOf(d, now);
+      if (!s.closed.length && !s.conditional.length) continue;
+      const inside = new Set(sc.inside.map((id) => stationIndex(id)).filter((x): x is number => x !== undefined));
+      const a = stationIndex(sc.a);
+      const b = sc.b ? stationIndex(sc.b) : undefined;
+      if (b === undefined && a !== undefined) inside.add(a); // a station closure: legs to and from it are hit
+      out.push({ id: d.id, where: d.where, edges: d.edges, inside, ...s, a, b, bbox: bboxOf(d), hit: memo });
+    } else if (d.effect === "section_closure" && d.edges.size) {
+      const end = d.endsAt ?? Infinity;
+      out.push({ id: d.id, where: d.where, edges: d.edges, inside: new Set(), closed: [[d.startedAt, end]], conditional: [], reopen: Number.isFinite(end) ? end : null, sure: d.endsAt !== null, ahead: end > now, bbox: bboxOf(d), hit: memo });
+    } else if (d.effect === "station_closure" && d.station !== undefined) {
+      const end = d.endsAt ?? Infinity;
+      out.push({ id: d.id, where: d.where, edges: new Set(), inside: new Set([d.station]), closed: [[d.startedAt, end]], conditional: [], reopen: Number.isFinite(end) ? end : null, sure: d.endsAt !== null, ahead: end > now, hit: memo });
     }
-    if (s === from && parts.length) out.push(parts);
   }
   return out;
 }
+/** Does a rail leg between two consecutive calls run on the closure (its tracks, or a station closed with it)? A leg
+ *  without matched track geometry near the closure counts as running on it (unresolved geometry earns no route). */
+function legHits(c: Closure, s1: number, s2: number) {
+  const key = s1 * 65536 + s2;
+  let h = c.hit.get(key);
+  if (h === undefined) {
+    h = c.inside.has(s1) || c.inside.has(s2);
+    if (!h && c.edges.size) {
+      const p = pathBetween(stops[s1], stops[s2]);
+      if (p.bav) h = edgeSpans(p).some((sp) => sp.ref !== 0 && c.edges.has(Math.abs(sp.ref)));
+      else if (c.bbox) {
+        const [x0, y0, x1, y1] = c.bbox;
+        const a = stops[s1];
+        const b = stops[s2];
+        h = Math.max(a.lon, b.lon) >= x0 && Math.min(a.lon, b.lon) <= x1 && Math.max(a.lat, b.lat) >= y0 && Math.min(a.lat, b.lat) <= y1;
+      }
+    }
+    c.hit.set(key, h);
+  }
+  return h;
+}
+const BLOCKED = 1;
+const CONDITIONAL = 2;
+const AFTER_REOPENING = 4;
+/** How a leg occupying [t1, t2] relates to the closures: blocked (it cannot get through), conditional (only if the
+ *  section reopens at its lower bound), after a reopening, or free. */
+function legState(closures: Closure[], s1: number, s2: number, t1: number, t2: number, hitBy?: string[]) {
+  let st = 0;
+  for (const c of closures) {
+    if (!legHits(c, s1, s2)) continue;
+    if (c.closed.some(([f, to]) => t1 < to && t2 > f)) {
+      hitBy?.push(c.id);
+      return BLOCKED;
+    }
+    if (c.conditional.some(([f, to]) => t1 < to && t2 > f)) {
+      st |= CONDITIONAL;
+      hitBy?.push(c.id);
+    } else if (c.ahead && c.reopen !== null && t1 >= c.reopen - 1) {
+      st |= AFTER_REOPENING;
+      hitBy?.push(c.id);
+    }
+  }
+  return st;
+}
+
+// ---------------------------------------------------------------------------------------------- effective passenger times
+/** Planned times shifted by GTFS-RT the way passengers see them: an absolute time before a delay, a delay carried
+ *  forward only (never to earlier calls), updates matched by stop_sequence (else by station, in order), no departure
+ *  before the timetable. The engine's animation adjustments (dwell borrowed from the approach) stay out of it. */
+function passengerTimes(trip: Trip, rt: TripLive, route?: TripRoute) {
+  const n = trip.stops.length;
+  const arr = Float64Array.from(trip.arr);
+  const dep = Float64Array.from(trip.dep);
+  const skipped = new Uint8Array(n);
+  const at: (TripLive["updates"][number] | undefined)[] = new Array(n);
+  let from = 0;
+  for (const u of rt.updates) {
+    let k = -1;
+    if (route && u.seq !== undefined) k = route.seq.indexOf(u.seq);
+    if (k < 0 && u.stopId) for (let i = from; i < n; i++) if (stops[trip.stops[i]]?.id === u.stopId) { k = i; break; }
+    if (k < 0) continue;
+    from = k;
+    at[k] = u;
+  }
+  let cur: number | undefined;
+  for (let i = 0; i < n; i++) {
+    const u = at[i];
+    if (u?.skipped) skipped[i] = 1;
+    const a = u ? (u.arrTime ? u.arrTime * 1000 : u.arrDelay !== undefined ? trip.arr[i] + u.arrDelay * 1000 : undefined) : undefined;
+    const d = u ? (u.depTime ? u.depTime * 1000 : u.depDelay !== undefined ? trip.dep[i] + u.depDelay * 1000 : undefined) : undefined;
+    if (a !== undefined) cur = a - trip.arr[i];
+    arr[i] = a ?? trip.arr[i] + (cur ?? 0);
+    if (d !== undefined) cur = d - trip.dep[i];
+    dep[i] = d ?? trip.dep[i] + (cur ?? 0);
+    if (i > 0 && arr[i] < dep[i - 1]) arr[i] = dep[i - 1];
+    if (dep[i] < arr[i]) dep[i] = arr[i];
+    if (dep[i] < trip.dep[i]) dep[i] = trip.dep[i];
+  }
+  return { arr, dep, skipped };
+}
+type Eff = { arr: Float64Array; dep: Float64Array; skipped?: Uint8Array; cancelled: boolean; from: number; firstServed: number; lastServed: number; change?: TripChange; sim: boolean; held: boolean };
+/** A trip in the effective timetable: a train the twin simulates (a disruption took control of it) at the twin's own
+ *  prediction; any other at its passenger times; then the twin's measures (first served call after a closed section,
+ *  short turn, hold until the reopening, moving every later call). */
+function effectiveTrip(trip: Trip, t: number, route?: TripRoute): Eff {
+  const tr = trains.get(trip.key);
+  if (tr && (tr.mode === "sim" || tr.warp > 30_000)) {
+    const lt = liveTimes(trip, t);
+    const held = (tr.mode === "sim" && tr.speed < 0.5 && tr.leg >= 0) || tr.motion === "held";
+    return { arr: lt.arr, dep: lt.dep, skipped: lt.skipped, cancelled: lt.cancelled, from: lt.from, firstServed: lt.firstServed, lastServed: lt.lastServed, change: lt.change, sim: true, held };
+  }
+  const n = trip.stops.length;
+  const rt = live.trips.get(trip.key);
+  let arr = trip.arr;
+  let dep = trip.dep;
+  let skipped: Uint8Array | undefined;
+  let cancelled = Boolean(rt?.cancelled);
+  if (rt && rt.updates.length) ({ arr, dep, skipped } = passengerTimes(trip, rt, route));
+  let from = 0;
+  if (tr) {
+    cancelled ||= tr.cancelled;
+    from = tr.leg >= 0 ? tr.leg + 1 : tr.call;
+    if (tr.skipped.some((x) => x)) {
+      skipped = skipped ? Uint8Array.from(skipped) : new Uint8Array(n);
+      for (let i = 0; i < n; i++) if (tr.skipped[i]) skipped[i] = 1;
+    }
+  }
+  const change = tripChanges.get(trip.key);
+  let firstServed = 0;
+  let lastServed = n - 1;
+  if (change) {
+    if (change.startAt !== undefined) {
+      firstServed = change.startAt;
+      from = Math.max(from, change.startAt);
+    }
+    if (change.cut !== undefined && change.cut >= from) {
+      lastServed = change.cut;
+      if (change.cut === 0) cancelled = true;
+    }
+    const k = change.holdAt;
+    if (k !== undefined && change.holdUntil !== undefined && k >= from) {
+      const delta = change.holdUntil - dep[k];
+      if (delta > 0) {
+        arr = Float64Array.from(arr);
+        dep = Float64Array.from(dep);
+        dep[k] += delta;
+        for (let i = k + 1; i < n; i++) {
+          arr[i] += delta;
+          dep[i] += delta;
+        }
+      }
+    }
+  }
+  return { arr, dep, skipped, cancelled, from, firstServed, lastServed, change, sim: false, held: Boolean(tr && tr.motion === "held") };
+}
+
+// ---------------------------------------------------------------------------------------------- the snapshot
+const BOARD = 1;
+const ALIGHT = 2;
+const STOPS = 4; // the vehicle calls there (not skipped): a served visit for `via`
+const C_COND = CONDITIONAL; // 2
+const C_REOPEN = AFTER_REOPENING; // 4
+const C_EXC = 8; // the arrival call has trip-to-trip rules
+type Exc = { toTrip: number; toCall: number; type: number; sec: number };
+type Snapshot = {
+  id: string;
+  builtAt: number;
+  sig: string;
+  from: number;
+  until: number;
+  dates: string[];
+  incomplete: string[];
+  trips: Trip[];
+  eff: Eff[];
+  base: Int32Array; // first call of each trip in the call arrays
+  callNode: Int32Array;
+  callFlag: Uint8Array;
+  callArr: Float64Array;
+  callDep: Float64Array;
+  legFlag: Uint8Array;
+  firstUsable: Int32Array;
+  stopAt: Int32Array;
+  route: (TripRoute | undefined)[];
+  nConn: number;
+  cTrip: Int32Array;
+  cCall: Int32Array;
+  cDep: Float64Array;
+  cArr: Float64Array;
+  cFlag: Uint8Array;
+  cFrom: Int32Array; // node of the departure call
+  cTo: Int32Array; // node of the arrival call
+  cFromF: Uint8Array; // call flags (BOARD, ALIGHT, STOPS) of the departure call
+  cToF: Uint8Array; // and of the arrival call
+  nQ: number; // nodes: quays [0, nQ), then one per station without quay information (the twin's buses)
+  nNodes: number;
+  used: Uint8Array; // nodes some call uses
+  nodeStation: Int32Array;
+  adjStart: Int32Array;
+  adjNode: Int32Array;
+  adjSec: Int32Array;
+  stationNodes: Map<number, number[]>; // station -> its nodes used by calls
+  exc: Map<number, Exc[]>; // trip * 1024 + call -> rules from that arrival
+  veto: Map<number, { fromNode: number; toNode: number; sec: number; type: number }[]>; // fromTrip * 131072 + toTrip -> rules longer than the generic time (or forbidding)
+  hasVeto: Uint8Array; // per to trip
+  byTripId: Map<string, number[]>;
+  closures: Closure[];
+  meta: { feed: string[]; serviceDates: string[]; rtFeedTime: number | null; measureRevision: number; simTime: number; trips: number; connections: number; buildMs: number };
+};
+
+let snap: Snapshot | undefined;
+const snapshots = new Map<string, Snapshot>(); // the last few, for journeys pinned to them
+let nextDay: { date: string; trips: Trip[] } | undefined;
+const dayIds = new WeakMap<Trip[], number>();
+let dayIdSeq = 0;
+const dayId = (x: Trip[]) => {
+  let id = dayIds.get(x);
+  if (id === undefined) dayIds.set(x, (id = ++dayIdSeq));
+  return id;
+};
+function disruptionSig(now: number) {
+  let s = "";
+  for (const d of disruptions.values()) {
+    if (d.endedAt && now - d.endedAt > 6 * 3600_000) continue;
+    s += `${d.id}:${d.effect}:${d.endedAt ?? ""}:${d.endsAt ?? ""}:${d.edges.size}`;
+    if (d.scenario) for (const m of d.scenario.measures) s += `,${m.id}${m.announcedAt <= now ? "+" : "-"}${m.withdrawAt ?? ""}`;
+    s += ";";
+  }
+  return s;
+}
+function ensureNextDay() {
+  const date = timetableDate() ? nextDate() : "";
+  if (!date || nextDay?.date === date) return;
+  loadRouting(date);
+  nextDay = { date, trips: loadDayMappedSync(date) }; // synchronous: the first answer already covers the next morning
+}
+/** The snapshot for a request: the current one unless the effective timetable changed. */
+function snapshot(t: number): Snapshot {
+  const today = timetableDate();
+  if (today) loadRouting(today);
+  ensureNextDay();
+  const anySim = [...trains.values()].some((tr) => tr.mode === "sim");
+  const sig = `${today}|${dayId(dayTrips())}|${nextDay?.date ?? ""}:${nextDay?.trips.length ?? 0}|${live.fetchedAt}|${effective.generation}|${tripChanges.size}|${disruptionSig(t)}`;
+  if (snap && snap.sig === sig && (!anySim || t - snap.builtAt < SNAPSHOT_MAX_AGE_MS) && t - snap.builtAt < 15 * 60_000) return snap;
+  snap = build(t, sig);
+  snapshots.set(snap.id, snap);
+  while (snapshots.size > 4) snapshots.delete(snapshots.keys().next().value!);
+  return snap;
+}
+/** Keep the snapshot fresh so a journey request (and /api/brief) never waits for the build. */
+export const __snap = () => snap; // diagnostics
+export function warmPlanner() {
+  snapshot(Date.now());
+}
+
+function build(t: number, sig: string): Snapshot {
+  const t0 = performance.now();
+  const today = dayTrips();
+  const keys = new Set(today.map((x) => x.key));
+  const extra = (nextDay?.trips ?? []).filter((x) => !keys.has(x.key)); // a trip occurrence is in both files when it runs past midnight
+  const all = extra.length ? [...today, ...extra] : today;
+  const from = t - 3 * 3600_000;
+  let until = t;
+  for (const x of all) until = Math.max(until, x.dep[x.dep.length - 1]);
+  const closures = closuresAt(t);
+  const trips: Trip[] = [];
+  const effs: Eff[] = [];
+  const routes: (TripRoute | undefined)[] = [];
+  for (const trip of all) {
+    const n = trip.stops.length;
+    if (trip.arr[n - 1] < from - 2 * 3600_000) continue;
+    const route = trip.cat === "EV" && trip.tripId.startsWith("EV-") ? undefined : tripRoute(trip);
+    const e = effectiveTrip(trip, t, route);
+    if (e.cancelled || e.arr[n - 1] < from) continue;
+    trips.push(trip);
+    effs.push(e);
+    routes.push(route);
+  }
+  const nQ = quayCount();
+  const nNodes = nQ + stops.length;
+  let nCalls = 0;
+  const base = new Int32Array(trips.length + 1);
+  trips.forEach((trip, k) => {
+    base[k] = nCalls;
+    nCalls += trip.stops.length;
+  });
+  base[trips.length] = nCalls;
+  const callNode = new Int32Array(nCalls);
+  const callFlag = new Uint8Array(nCalls);
+  const callArr = new Float64Array(nCalls);
+  const callDep = new Float64Array(nCalls);
+  const used = new Uint8Array(nNodes);
+  const stationOfQuay = new Int32Array(nQ).fill(-1);
+  for (let q = 0; q < nQ; q++) stationOfQuay[q] = stationIndex(quayStation[q]) ?? -1;
+  // connections: count first
+  let nConn = 0;
+  const legFlag = new Uint8Array(nCalls); // per call i: the leg i -> i+1 (conditional, after a reopening)
+  const firstUsable = new Int32Array(trips.length);
+  const stopAt = new Int32Array(trips.length); // the last call the vehicle reaches (a blocked leg stops it)
+  const stationClosed = closures.filter((c) => !c.edges.size && c.inside.size); // plain station closures: no boarding or alighting
+  trips.forEach((trip, k) => {
+    const e = effs[k];
+    const route = routes[k];
+    const n = trip.stops.length;
+    const b = base[k];
+    const road = trip.cat === "EV";
+    let stop = e.lastServed; // the vehicle does not get past a blocked leg
+    let cond = 0;
+    for (let i = Math.max(e.from, e.firstServed); i < e.lastServed; i++) {
+      if (road || !closures.length) continue;
+      const st = legState(closures, trip.stops[i], trip.stops[i + 1], e.dep[i], e.arr[i + 1]);
+      if (st & BLOCKED) {
+        stop = i;
+        break;
+      }
+      if (st & CONDITIONAL) cond = C_COND;
+      legFlag[b + i] = cond | (st & AFTER_REOPENING);
+    }
+    const first = Math.max(e.from, e.firstServed);
+    firstUsable[k] = first;
+    for (let i = 0; i < n; i++) {
+      const s = trip.stops[i];
+      const node = route ? route.quay[i] : nQ + s;
+      callNode[b + i] = node;
+      callArr[b + i] = e.arr[i];
+      callDep[b + i] = e.dep[i];
+      used[node] = 1;
+      if (i < first || i > stop) continue;
+      if (e.skipped?.[i]) continue;
+      let f = STOPS;
+      const closedHere = stationClosed.some((c) => c.inside.has(s) && c.closed.some(([x, y]) => e.dep[i] < y && e.arr[i] >= x));
+      if (!closedHere) {
+        if (i < stop && (!route || route.pickup[i] === 0)) f |= BOARD;
+        if (i > first && (!route || route.dropOff[i] === 0)) f |= ALIGHT;
+      }
+      callFlag[b + i] = f;
+    }
+    if (stop > first) nConn += stop - first;
+    stopAt[k] = stop;
+  });
+  // trip-to-trip rules on this snapshot's trip occurrences
+  const byTripId = new Map<string, number[]>();
+  trips.forEach((trip, k) => {
+    const l = byTripId.get(trip.tripId);
+    if (l) l.push(k);
+    else byTripId.set(trip.tripId, [k]);
+  });
+  const exc = new Map<number, Exc[]>();
+  const veto = new Map<number, { fromNode: number; toNode: number; sec: number; type: number }[]>();
+  const hasVeto = new Uint8Array(trips.length);
+  const excCalls = new Set<number>();
+  for (const [tripId, ks] of byTripId) {
+    const rules = rulesFrom.get(tripId);
+    if (!rules) continue;
+    for (const ka of ks) {
+      const ra = routes[ka];
+      if (!ra) continue;
+      const A = trips[ka];
+      for (const r of rules) {
+        if (r.dates && !r.dates.includes(A.serviceDate)) continue;
+        const ja = ra.quay.indexOf(r.fromQuay);
+        if (ja < 0) continue;
+        const arrA = callArr[base[ka] + ja];
+        for (const kb of byTripId.get(r.toTrip) ?? []) {
+          const rb = routes[kb];
+          if (!rb) continue;
+          const jb = rb.quay.indexOf(r.toQuay);
+          if (jb < 0) continue;
+          const depB = callDep[base[kb] + jb];
+          if (depB < arrA - 3600_000 || depB > arrA + 6 * 3600_000) continue; // the occurrence of the same service day
+          if (r.type === 3 || (r.type === 2 && r.sec > genericSec(r.fromQuay, r.toQuay, stationOfQuay))) {
+            const vk = ka * 131072 + kb;
+            const list = veto.get(vk) ?? [];
+            list.push({ fromNode: r.fromQuay, toNode: r.toQuay, sec: r.sec, type: r.type });
+            veto.set(vk, list);
+            hasVeto[kb] = 1;
+            if (r.type === 3) continue;
+          }
+          const ek = ka * 1024 + ja;
+          const list = exc.get(ek) ?? [];
+          list.push({ toTrip: kb, toCall: jb, type: r.type, sec: r.sec });
+          exc.set(ek, list);
+          excCalls.add(ek);
+        }
+      }
+    }
+  }
+  // connections, sorted by departure (then arrival, then trip order and call)
+  const cTrip = new Int32Array(nConn);
+  const cCall = new Int32Array(nConn);
+  const cDep = new Float64Array(nConn);
+  const cArr = new Float64Array(nConn);
+  const cFlag = new Uint8Array(nConn);
+  let x = 0;
+  trips.forEach((trip, k) => {
+    const first = firstUsable[k];
+    const b = base[k];
+    for (let i = first; i < stopAt[k]; i++) {
+      cTrip[x] = k;
+      cCall[x] = i;
+      cDep[x] = callDep[b + i];
+      cArr[x] = callArr[b + i + 1];
+      cFlag[x] = legFlag[b + i] | (excCalls.has(k * 1024 + i + 1) ? C_EXC : 0);
+      x++;
+    }
+  });
+  const order = sortConnections(cDep, cArr, nConn, from);
+  const sTrip = new Int32Array(nConn), sCall = new Int32Array(nConn), sDep = new Float64Array(nConn), sArr = new Float64Array(nConn), sFlag = new Uint8Array(nConn);
+  const sFrom = new Int32Array(nConn), sTo = new Int32Array(nConn), sFromF = new Uint8Array(nConn), sToF = new Uint8Array(nConn);
+  for (let y = 0; y < nConn; y++) {
+    const o = order[y];
+    sTrip[y] = cTrip[o];
+    sCall[y] = cCall[o];
+    sDep[y] = cDep[o];
+    sArr[y] = cArr[o];
+    sFlag[y] = cFlag[o];
+    const ci = base[cTrip[o]] + cCall[o];
+    sFrom[y] = callNode[ci];
+    sTo[y] = callNode[ci + 1];
+    sFromF[y] = callFlag[ci];
+    sToF[y] = callFlag[ci + 1];
+  }
+  const nodes = adjacency(nQ, nNodes, used, stationOfQuay);
+  const dates = [...new Set(trips.map((trip) => trip.serviceDate))].sort();
+  const incomplete: string[] = [];
+  if (!nextDay?.trips.length) incomplete.push(`no timetable for ${nextDate()}: the search ends with today's last trains`);
+  for (const d of [timetableDate(), nextDay?.date].filter(Boolean) as string[]) if (!routingLoaded().some((r) => r.date === d)) incomplete.push(`no routing data for ${d}: station-level transfer times`);
+  const id = `s-${createHash("sha1").update(`${sig}|${t}`).digest("hex").slice(0, 12)}`;
+  const s: Snapshot = {
+    id, builtAt: t, sig, from, until, dates, incomplete, trips, eff: effs, base, callNode, callFlag, callArr, callDep, legFlag, firstUsable, stopAt, route: routes,
+    nConn, cTrip: sTrip, cCall: sCall, cDep: sDep, cArr: sArr, cFlag: sFlag, cFrom: sFrom, cTo: sTo, cFromF: sFromF, cToF: sToF,
+    nQ, nNodes, used, nodeStation: nodes.nodeStation, adjStart: nodes.adjStart, adjNode: nodes.adjNode, adjSec: nodes.adjSec, stationNodes: nodes.stationNodes,
+    exc, veto, hasVeto, byTripId, closures,
+    meta: {
+      feed: [...new Set(routingLoaded().map((r) => r.feed))],
+      serviceDates: dates,
+      rtFeedTime: live.feedTime || null,
+      measureRevision: effective.generation,
+      simTime: t,
+      trips: trips.length,
+      connections: nConn,
+      buildMs: 0,
+    },
+  };
+  s.meta.buildMs = Math.round(performance.now() - t0);
+  if (s.meta.buildMs > 400) console.warn(`[planner] snapshot ${s.id} took ${s.meta.buildMs} ms (${nConn} connections)`);
+  return s;
+}
+/** The published minimum time between two quays: their stop-pair row, else the Swiss default inside one stop. */
+function genericSec(qa: number, qb: number, stationOfQuay: Int32Array) {
+  const s = pairSec.get(pairKey(qa, qb));
+  if (s !== undefined) return s;
+  return stationOfQuay[qa] >= 0 && stationOfQuay[qa] === stationOfQuay[qb] ? DEFAULT_TRANSFER_SEC : Infinity;
+}
+function sortConnections(dep: Float64Array, arr: Float64Array, n: number, from: number) {
+  // one float key per connection: departure second, then arrival delta, then creation order (trip, call)
+  const keys = new Float64Array(n);
+  const base0 = Math.floor(from / 1000) - 86_400;
+  for (let i = 0; i < n; i++) {
+    const d = Math.max(0, Math.round(dep[i] / 1000) - base0);
+    const a = Math.min(16_383, Math.max(0, Math.round((arr[i] - dep[i]) / 1000)));
+    keys[i] = (d * 16_384 + a) * 1_048_576 + i;
+  }
+  keys.sort();
+  const order = new Int32Array(n);
+  for (let i = 0; i < n; i++) order[i] = keys[i] % 1_048_576;
+  return order;
+}
+/** Where a passenger standing at a node can board next, and in how many seconds: every quay of the same station
+ *  (published time, else 120 s), published walking links to other stations, and the twin's buses at the station. */
+let adjCache: { key: string; value: ReturnType<typeof buildAdjacency> } | undefined;
+function adjacency(nQ: number, nNodes: number, used: Uint8Array, stationOfQuay: Int32Array) {
+  let h = 0;
+  for (let i = 0; i < nNodes; i++) if (used[i]) h = (h * 31 + i) | 0;
+  const key = `${nQ}|${nNodes}|${h}`;
+  if (adjCache?.key === key) return adjCache.value;
+  const value = buildAdjacency(nQ, nNodes, used, stationOfQuay);
+  adjCache = { key, value };
+  return value;
+}
+function buildAdjacency(nQ: number, nNodes: number, used: Uint8Array, stationOfQuay: Int32Array) {
+  const nodeStation = new Int32Array(nNodes);
+  for (let q = 0; q < nQ; q++) nodeStation[q] = stationOfQuay[q];
+  for (let s = 0; s < nNodes - nQ; s++) nodeStation[nQ + s] = s;
+  const stationNodes = new Map<number, number[]>();
+  for (let v = 0; v < nNodes; v++) {
+    if (!used[v] || nodeStation[v] < 0) continue;
+    const l = stationNodes.get(nodeStation[v]);
+    if (l) l.push(v);
+    else stationNodes.set(nodeStation[v], [v]);
+  }
+  // the station's published time (all its quay pairs share one), for the twin's buses
+  const stationSec = new Map<number, number>();
+  for (const [k, sec] of pairSec) {
+    const a = Math.floor(k / 2_097_152);
+    const b = k % 2_097_152;
+    if (a < nQ && b < nQ && stationOfQuay[a] >= 0 && stationOfQuay[a] === stationOfQuay[b]) stationSec.set(stationOfQuay[a], Math.max(stationSec.get(stationOfQuay[a]) ?? 0, sec));
+  }
+  const busSec = (s: number) => Math.max(TWIN_BUS_TRANSFER_SEC, stationSec.get(s) ?? 0);
+  const lists: [number, number][][] = new Array(nNodes);
+  for (let v = 0; v < nNodes; v++) {
+    if (!used[v] || nodeStation[v] < 0) continue;
+    const s = nodeStation[v];
+    const out = new Map<number, number>();
+    const add = (w: number, sec: number) => {
+      if (!used[w]) return;
+      const old = out.get(w);
+      if (old === undefined || sec < old) out.set(w, sec);
+    };
+    if (v < nQ) {
+      for (const w of stationNodes.get(s) ?? []) add(w, w < nQ ? genericSec(v, w, stationOfQuay) : busSec(s));
+      for (const w of pairsFrom.get(v) ?? []) if (w < nQ) add(w, pairSec.get(pairKey(v, w))!);
+    } else for (const w of stationNodes.get(s) ?? []) add(w, busSec(s));
+    lists[v] = [...out];
+  }
+  const adjStart = new Int32Array(nNodes + 1);
+  let m = 0;
+  for (let v = 0; v < nNodes; v++) {
+    adjStart[v] = m;
+    m += lists[v]?.length ?? 0;
+  }
+  adjStart[nNodes] = m;
+  const adjNode = new Int32Array(m);
+  const adjSec = new Int32Array(m);
+  for (let v = 0; v < nNodes; v++) {
+    let o = adjStart[v];
+    for (const [w, sec] of lists[v] ?? []) {
+      adjNode[o] = w;
+      adjSec[o] = sec;
+      o++;
+    }
+  }
+  return { nodeStation, adjStart, adjNode, adjSec, stationNodes };
+}
+
+// ---------------------------------------------------------------------------------------------- the search
+const K_ORIGIN = 0;
+const K_TRANSFER = 1; // published (or default) minimum time between the quays, or a walking link
+const K_RULE = 2; // a trip-to-trip rule (published minimum for exactly these two trips, or a timed connection)
+const K_SEATED = 4; // stay seated: the vehicle continues as another trip
+type Mode = 0 | 1 | 2; // 0 plain; 1 via: a served visit to the hub; 2 wait: rides through a section after its reopening
+type Query = {
+  s: Snapshot;
+  origin: number;
+  dest: number;
+  L: number; // vehicles at most (changes + 1)
+  mode: Mode;
+  via: number;
+  certain: boolean; // conditional crossings (after an UNTIL_AT_LEAST bound) excluded
+  horizon: number;
+  originWalk: Map<number, number>; // node -> seconds from the origin station
+  destWalk: Map<number, number>; // node -> seconds to the destination station
+};
+// scratch state, reused by every scan (stamped instead of cleared)
+let cap = { labels: 0, trips: 0 };
+let qid = 0;
+let R1t = new Float64Array(0), R2t = new Float64Array(0), A1t = new Float64Array(0), A2t = new Float64Array(0);
+let R1s = new Int32Array(0), R1e = new Int32Array(0), R2s = new Int32Array(0), R2e = new Int32Array(0), A1s = new Int32Array(0), A2s = new Int32Array(0);
+let Rst = new Int32Array(0), Ast = new Int32Array(0);
+let Tl = new Int8Array(0), Tb = new Int32Array(0), Tst = new Int32Array(0), Pst = new Int32Array(0);
+let dWalk = new Float64Array(0), dSt = new Int32Array(0);
+// events: boardings and alightings, for the witness
+let nB = 0, nA = 0;
+let bTrip = new Int32Array(1024), bCall = new Int32Array(1024), bLv = new Int8Array(1024), bKind = new Int8Array(1024), bPrev = new Int32Array(1024), bNode = new Int32Array(1024);
+let aBev = new Int32Array(1024), aCall = new Int32Array(1024), aNode = new Int32Array(1024), aTime = new Float64Array(1024);
+function growB() {
+  const n = bTrip.length * 2;
+  const g = <T extends Int32Array | Int8Array>(x: T, C: new (n: number) => T) => { const y = new C(n); y.set(x); return y; };
+  bTrip = g(bTrip, Int32Array); bCall = g(bCall, Int32Array); bLv = g(bLv, Int8Array); bKind = g(bKind, Int8Array); bPrev = g(bPrev, Int32Array); bNode = g(bNode, Int32Array);
+}
+function growA() {
+  const n = aBev.length * 2;
+  const g = <T extends Int32Array>(x: T) => { const y = new Int32Array(n); y.set(x); return y as T; };
+  aBev = g(aBev); aCall = g(aCall); aNode = g(aNode);
+  const t = new Float64Array(n); t.set(aTime); aTime = t;
+}
+function ensure(labels: number, tripsN: number, nodes: number) {
+  if (labels > cap.labels) {
+    R1t = new Float64Array(labels); R2t = new Float64Array(labels); A1t = new Float64Array(labels); A2t = new Float64Array(labels);
+    R1s = new Int32Array(labels); R1e = new Int32Array(labels); R2s = new Int32Array(labels); R2e = new Int32Array(labels); A1s = new Int32Array(labels); A2s = new Int32Array(labels);
+    Rst = new Int32Array(labels); Ast = new Int32Array(labels);
+    cap.labels = labels;
+  }
+  if (tripsN > cap.trips) {
+    Tl = new Int8Array(tripsN); Tb = new Int32Array(tripsN); Tst = new Int32Array(tripsN); Pst = new Int32Array(tripsN);
+    cap.trips = tripsN;
+  }
+  if (dWalk.length < nodes) {
+    dWalk = new Float64Array(nodes);
+    dSt = new Int32Array(nodes);
+  }
+}
+/** Keep the best two labels from different source trips (a trip-specific rule can forbid the best one). */
+function putR(ix: number, t: number, src: number, evt: number) {
+  if (Rst[ix] !== qid) {
+    Rst[ix] = qid; R1t[ix] = t; R1s[ix] = src; R1e[ix] = evt; R2t[ix] = Infinity; R2s[ix] = -9; R2e[ix] = -2;
+    return;
+  }
+  if (t < R1t[ix]) {
+    if (R1s[ix] !== src) { R2t[ix] = R1t[ix]; R2s[ix] = R1s[ix]; R2e[ix] = R1e[ix]; }
+    R1t[ix] = t; R1s[ix] = src; R1e[ix] = evt;
+  } else if (src !== R1s[ix] && t < R2t[ix]) { R2t[ix] = t; R2s[ix] = src; R2e[ix] = evt; }
+}
+function putA(ix: number, t: number, src: number) {
+  if (Ast[ix] !== qid) {
+    Ast[ix] = qid; A1t[ix] = t; A1s[ix] = src; A2t[ix] = Infinity; A2s[ix] = -9;
+    return true;
+  }
+  if (t < A1t[ix]) {
+    if (A1s[ix] !== src) { A2t[ix] = A1t[ix]; A2s[ix] = A1s[ix]; }
+    A1t[ix] = t; A1s[ix] = src;
+    return true;
+  }
+  if (src !== A1s[ix] && t < A2t[ix]) { A2t[ix] = t; A2s[ix] = src; return true; }
+  return false;
+}
+function board(ti: number, T: number, i: number, lv: number, kind: number, prev: number, node: number) {
+  if (Tst[ti] === qid && Tl[ti] <= lv) return;
+  if (nB >= bTrip.length) growB();
+  bTrip[nB] = T; bCall[nB] = i; bLv[nB] = lv; bKind[nB] = kind; bPrev[nB] = prev; bNode[nB] = node;
+  Tst[ti] = qid; Tl[ti] = lv; Tb[ti] = nB;
+  nB++;
+}
+function arrival(bev: number, call: number, node: number, t: number) {
+  if (nA >= aBev.length) growA();
+  aBev[nA] = bev; aCall[nA] = call; aNode[nA] = node; aTime[nA] = t;
+  return nA++;
+}
+type Result = { D: Float64Array; De: Int32Array; Dw: Float64Array; L: number; bits: number; scanned: number };
+/** One Connection Scan from ready time tau: for every number of vehicles 1..L (and the via/wait bit), the earliest
+ *  arrival at the destination, with its witness in the event arrays. */
+function scan(q: Query, tau: number): Result {
+  const s = q.s;
+  const L = q.L;
+  const NB = q.mode ? 2 : 1;
+  const nT = s.trips.length;
+  const NN = s.nNodes;
+  const LV = L + 1;
+  ensure(NB * LV * NN, NB * nT, NN);
+  qid++;
+  nB = 0;
+  nA = 0;
+  const D = new Float64Array(NB * (L + 1)).fill(Infinity);
+  const De = new Int32Array(NB * (L + 1)).fill(-1);
+  const Dw = new Float64Array(NB * (L + 1));
+  const pending = new Map<number, { call: number; lv: number; evt: number; kind: number }[]>();
+  const { cTrip, cCall, cDep, cArr, cFlag, cFrom, cTo, cFromF, cToF, base, adjStart, adjNode, adjSec, nodeStation, hasVeto } = s;
+  const via = q.mode === 1 ? q.via : -1;
+  for (const [node, sec] of q.destWalk) {
+    dSt[node] = qid;
+    dWalk[node] = sec;
+  }
+  for (const [node, sec] of q.originWalk) {
+    const bit = via >= 0 && (nodeStation[node] === via || q.origin === via) ? 1 : 0;
+    putR((bit * NN + node) * LV, tau + sec * 1000, -1, -1);
+  }
+  const vetoed = (src: number, evt: number, T: number, node: number, dep: number) => {
+    if (src < 0 || evt < 0) return false;
+    const rules = s.veto.get(src * 131072 + T);
+    if (!rules) return false;
+    for (const r of rules) if (r.fromNode === aNode[evt] && r.toNode === node) return r.type === 3 || aTime[evt] + r.sec * 1000 > dep;
+    return false;
+  };
+  // first connection departing at or after tau
+  let lo = 0;
+  let hi = s.nConn;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (cDep[mid] < tau) lo = mid + 1;
+    else hi = mid;
+  }
+  let best = Infinity;
+  let stop = q.horizon;
+  let x = lo;
+  for (; x < s.nConn; x++) {
+    const dep = cDep[x];
+    if (dep > stop) break;
+    const f = cFlag[x];
+    if (q.certain && f & C_COND) continue;
+    const T = cTrip[x];
+    const i = cCall[x];
+    const fromNode = cFrom[x];
+    const cf = cFromF[x];
+    for (let bit = 0; bit < NB; bit++) {
+      const ti = bit * nT + T;
+      const cur = Tst[ti] === qid ? Tl[ti] : L + 1;
+      if (cf & BOARD && cur > 1) {
+        for (let lv = 0; lv + 1 < cur; lv++) {
+          const ix = (bit * NN + fromNode) * LV + lv;
+          if (Rst[ix] !== qid) continue;
+          let e = -2;
+          if (R1t[ix] <= dep && !(hasVeto[T] && vetoed(R1s[ix], R1e[ix], T, fromNode, dep))) e = R1e[ix];
+          else if (R2t[ix] <= dep && !(hasVeto[T] && vetoed(R2s[ix], R2e[ix], T, fromNode, dep))) e = R2e[ix];
+          if (e === -2) continue;
+          board(ti, T, i, lv + 1, e < 0 ? K_ORIGIN : K_TRANSFER, e, fromNode);
+          break;
+        }
+      }
+      if (Pst[ti] === qid) {
+        const pl = pending.get(ti);
+        if (pl) for (const p of pl) if (p.call === i && (p.kind === K_SEATED || cf & BOARD)) board(ti, T, i, p.lv, p.kind, p.evt, fromNode);
+      }
+    }
+    if (NB === 2) {
+      // a served visit to the hub while aboard, or a ride through the reopened section: the bit is set from here on
+      const up = q.mode === 1 ? (cf & STOPS) !== 0 && nodeStation[fromNode] === via : (f & (C_REOPEN | C_COND)) !== 0;
+      if (up && Tst[T] === qid && (Tst[nT + T] !== qid || Tl[nT + T] > Tl[T])) {
+        Tst[nT + T] = qid;
+        Tl[nT + T] = Tl[T];
+        Tb[nT + T] = Tb[T];
+      }
+    }
+    const toNode = cTo[x];
+    const af = cToF[x];
+    const arr = cArr[x];
+    for (let bit = 0; bit < NB; bit++) {
+      const ti = bit * nT + T;
+      if (Tst[ti] !== qid) continue;
+      const lv = Tl[ti];
+      const bev = Tb[ti];
+      const nbit = via >= 0 && nodeStation[toNode] === via ? 1 : bit;
+      let evt = -1;
+      if (f & C_EXC) {
+        for (const r of s.exc.get(T * 1024 + i + 1) ?? []) {
+          const depB = s.callDep[base[r.toTrip] + r.toCall];
+          let kind: number;
+          let need: number;
+          let to: number;
+          if (r.type === 4) { kind = K_SEATED; need = arr - 60_000; to = lv; }
+          else if (af & ALIGHT && lv < L) { kind = K_RULE; need = arr + (r.type === 1 ? 0 : r.sec * 1000); to = lv + 1; }
+          else continue;
+          if (depB < need) continue;
+          if (evt < 0) evt = arrival(bev, i + 1, toNode, arr);
+          const key = (r.type === 4 ? bit : nbit) * nT + r.toTrip;
+          const p = { call: r.toCall, lv: to, evt, kind };
+          if (Pst[key] === qid) pending.get(key)!.push(p);
+          else {
+            Pst[key] = qid;
+            pending.set(key, [p]);
+          }
+        }
+      }
+      if (!(af & ALIGHT)) continue;
+      let dominated = false;
+      for (let l2 = 1; l2 < lv && !dominated; l2++) {
+        const ix2 = (nbit * NN + toNode) * LV + l2;
+        if (Ast[ix2] === qid && A1t[ix2] <= arr) dominated = true;
+      }
+      if (dominated) continue;
+      if (dSt[toNode] === qid && (q.mode !== 1 || nbit === 1)) {
+        const tt = arr + dWalk[toNode] * 1000;
+        const di = nbit * (L + 1) + lv;
+        if (tt < D[di]) {
+          if (evt < 0) evt = arrival(bev, i + 1, toNode, arr);
+          D[di] = tt;
+          De[di] = evt;
+          Dw[di] = dWalk[toNode];
+          if (q.mode === 0 || nbit === 1) {
+            if (tt < best) best = tt;
+            stop = Math.min(q.horizon, best + PARETO_WINDOW_MS, D[nbit * (L + 1) + 1]);
+          }
+        }
+      }
+      if (lv >= L) continue;
+      const ax = (nbit * NN + toNode) * LV + lv;
+      if (!putA(ax, arr, T)) continue;
+      if (evt < 0) evt = arrival(bev, i + 1, toNode, arr);
+      for (let k = adjStart[toNode]; k < adjStart[toNode + 1]; k++) {
+        const w = adjNode[k];
+        const wbit = via >= 0 && nodeStation[w] === via ? 1 : nbit;
+        putR((wbit * NN + w) * LV + lv, arr + adjSec[k] * 1000, T, evt);
+      }
+    }
+  }
+  return { D, De, Dw, L, bits: NB, scanned: x - lo };
+}
+type Part = { trip: number; i: number; j: number; kind: number; boardNode: number; alightNode: number };
+type Witness = { parts: Part[]; initialWalk: number; finalWalk: number; departure: number; arrival: number; changes: number };
+/** The witnesses of the Pareto levels of a scan (fewest vehicles first): the earliest arrival with 1, 2, ... vehicles
+ *  when it beats every level with fewer. */
+function witnesses(q: Query, r: Result): Witness[] {
+  const out: Witness[] = [];
+  const bit = q.mode ? 1 : 0;
+  let last = Infinity;
+  for (let lv = 1; lv <= r.L; lv++) {
+    const di = bit * (r.L + 1) + lv;
+    const t = r.D[di];
+    if (!(t < last)) continue;
+    last = t;
+    const parts: Part[] = [];
+    let e = r.De[di];
+    let guard = 0;
+    while (e >= 0 && guard++ < 32) {
+      const b = aBev[e];
+      parts.unshift({ trip: bTrip[b], i: bCall[b], j: aCall[e], kind: bKind[b], boardNode: bNode[b], alightNode: aNode[e] });
+      e = bPrev[b];
+    }
+    if (!parts.length || e !== -1) continue;
+    const initialWalk = q.originWalk.get(parts[0].boardNode) ?? 0;
+    const p0 = parts[0];
+    const departure = q.s.callDep[q.s.base[p0.trip] + p0.i] - initialWalk * 1000;
+    out.push({ parts, initialWalk, finalWalk: r.Dw[di], departure, arrival: t, changes: parts.filter((p) => p.kind !== K_SEATED).length - 1 });
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------------------------- validation (gate C)
+let stationSecCache: { n: number; map: Map<number, number> } | undefined;
+function stationPublishedSec(station: number) {
+  if (!stationSecCache || stationSecCache.n !== pairSec.size) {
+    const map = new Map<number, number>();
+    for (const [k, sec] of pairSec) {
+      const a = Math.floor(k / 2_097_152);
+      const b = k % 2_097_152;
+      const sa = stationIndex(quayStation[a]);
+      if (sa !== undefined && sa === stationIndex(quayStation[b])) map.set(sa, Math.max(map.get(sa) ?? 0, sec));
+    }
+    stationSecCache = { n: pairSec.size, map };
+  }
+  return stationSecCache.map.get(station) ?? 0;
+}
+/** The minimum seconds from alighting trip A at node na to boarding trip B at node nb, by GTFS precedence: a rule for
+ *  exactly these two trips at these quays, then the stop-pair row, then the Swiss default inside one stop; the twin's
+ *  buses (no quay) at a station take the bus transfer time. Infinity when no transfer exists. Written apart from the
+ *  search's indexes on purpose: validate() replays a witness with it. */
+function transferSec(s: Snapshot, A: number, na: number, B: number, nb: number) {
+  const tA = s.trips[A];
+  const tB = s.trips[B];
+  for (const r of rulesFrom.get(tA.tripId) ?? []) {
+    if (r.toTrip !== tB.tripId || r.fromQuay !== na || r.toQuay !== nb || r.type === 4) continue;
+    if (r.dates && !r.dates.includes(tA.serviceDate)) continue;
+    if (r.type === 3) return Infinity;
+    return r.type === 1 ? 0 : r.sec;
+  }
+  const sa = s.nodeStation[na];
+  const sb = s.nodeStation[nb];
+  if (na >= s.nQ || nb >= s.nQ) return sa === sb && sa >= 0 ? Math.max(TWIN_BUS_TRANSFER_SEC, stationPublishedSec(sa)) : Infinity;
+  const p = pairSec.get(pairKey(na, nb));
+  if (p !== undefined) return p;
+  return sa === sb && sa >= 0 ? DEFAULT_TRANSFER_SEC : Infinity;
+}
+function walkFrom(station: number, node: number) {
+  if (stationIndex(quayStation[node] ?? "") === station) return 0;
+  let best = Infinity;
+  for (const qa of quaysOfIdx(station)) {
+    const p = pairSec.get(pairKey(qa, node));
+    if (p !== undefined) best = Math.min(best, p);
+  }
+  return best;
+}
+function walkTo(node: number, station: number) {
+  if (stationIndex(quayStation[node] ?? "") === station) return 0;
+  let best = Infinity;
+  for (const qd of quaysOfIdx(station)) {
+    const p = pairSec.get(pairKey(node, qd));
+    if (p !== undefined) best = Math.min(best, p);
+  }
+  return best;
+}
+const quaysOfIdx = (station: number) => quaysOf(stops[station].id);
+/** Replay a witness on its snapshot: endpoints, every boarding and alighting permission, served calls, every leg
+ *  against the closures in time, transfer and walking times, monotonic times, changes, via. Returns what is wrong. */
+function validate(q: Query, w: Witness, tau: number): string | null {
+  const s = q.s;
+  const node = (T: number, i: number) => s.callNode[s.base[T] + i];
+  const first = w.parts[0];
+  const last = w.parts[w.parts.length - 1];
+  const nodeSt = (n: number) => s.nodeStation[n];
+  const initial = nodeSt(first.boardNode) === q.origin ? 0 : first.boardNode < s.nQ ? walkFrom(q.origin, first.boardNode) : Infinity;
+  if (initial !== w.initialWalk) return `initial walk ${w.initialWalk} s, published ${initial} s`;
+  const final = nodeSt(last.alightNode) === q.dest ? 0 : last.alightNode < s.nQ ? walkTo(last.alightNode, q.dest) : Infinity;
+  if (final !== w.finalWalk) return `final walk ${w.finalWalk} s, published ${final} s`;
+  let ready = tau + w.initialWalk * 1000;
+  let changes = -1;
+  let visited = q.mode !== 1 || q.origin === q.via;
+  let crossed = q.mode !== 2;
+  for (let k = 0; k < w.parts.length; k++) {
+    const p = w.parts[k];
+    const trip = s.trips[p.trip];
+    const e = s.eff[p.trip];
+    const route = s.route[p.trip];
+    const n = trip.stops.length;
+    if (e.cancelled) return `${trip.trainId} is cancelled`;
+    if (!(p.i >= 0 && p.i < p.j && p.j <= n - 1)) return `${trip.trainId}: calls ${p.i}..${p.j}`;
+    if (p.i < Math.max(e.from, e.firstServed) || p.j > e.lastServed) return `${trip.trainId} does not serve calls ${p.i}..${p.j}`;
+    if (node(p.trip, p.i) !== p.boardNode || node(p.trip, p.j) !== p.alightNode) return `${trip.trainId}: quays differ`;
+    const seated = p.kind === K_SEATED;
+    const nextSeated = w.parts[k + 1]?.kind === K_SEATED;
+    if (!seated && (e.skipped?.[p.i] || (route && route.pickup[p.i] !== 0))) return `${trip.trainId}: no boarding at ${stops[trip.stops[p.i]].name}`;
+    if (!nextSeated && (e.skipped?.[p.j] || (route && route.dropOff[p.j] !== 0))) return `${trip.trainId}: no alighting at ${stops[trip.stops[p.j]].name}`;
+    const dep = e.dep[p.i];
+    if (k === 0 && dep < ready) return `${trip.trainId} leaves before the passenger is there`;
+    if (k > 0) {
+      const prev = w.parts[k - 1];
+      const arrPrev = s.eff[prev.trip].arr[prev.j];
+      if (seated) {
+        const ok = (rulesFrom.get(s.trips[prev.trip].tripId) ?? []).some((r) => r.type === 4 && r.toTrip === trip.tripId && r.fromQuay === prev.alightNode && r.toQuay === p.boardNode && (!r.dates || r.dates.includes(s.trips[prev.trip].serviceDate)));
+        if (!ok) return `no published stay-seated continuation ${s.trips[prev.trip].trainId} -> ${trip.trainId}`;
+        if (dep < arrPrev - 60_000) return `stay-seated continuation leaves before arrival`;
+      } else {
+        const need = transferSec(s, prev.trip, prev.alightNode, p.trip, p.boardNode);
+        if (!Number.isFinite(need)) return `no transfer ${stops[nodeSt(prev.alightNode)]?.name} -> ${stops[nodeSt(p.boardNode)]?.name}`;
+        if (dep < arrPrev + need * 1000) return `transfer to ${trip.line} at ${stops[nodeSt(p.boardNode)]?.name}: ${(dep - arrPrev) / 1000} s for ${need} s`;
+      }
+    }
+    if (!seated) changes++;
+    for (let c = p.i; c < p.j; c++) {
+      if (e.arr[c + 1] < e.dep[c] || e.dep[c + 1] < e.arr[c + 1]) return `${trip.trainId}: times not monotonic at call ${c}`;
+      if (trip.cat !== "EV") {
+        const st = legState(s.closures, trip.stops[c], trip.stops[c + 1], e.dep[c], e.arr[c + 1]);
+        if (st & BLOCKED) return `${trip.trainId} runs on a closed section between ${stops[trip.stops[c]].name} and ${stops[trip.stops[c + 1]].name}`;
+        if (q.certain && st & CONDITIONAL) return `${trip.trainId} relies on an unconfirmed reopening`;
+        if (st & (CONDITIONAL | AFTER_REOPENING)) crossed = true;
+      }
+    }
+    if (q.mode === 1) for (let c = p.i; c <= p.j; c++) if (trip.stops[c] === q.via && !e.skipped?.[c]) visited = true;
+    if (q.mode === 1 && (nodeSt(p.boardNode) === q.via || nodeSt(p.alightNode) === q.via)) visited = true;
+  }
+  if (changes !== w.changes) return `changes ${w.changes}, counted ${changes}`;
+  if (changes > q.L - 1) return `${changes} changes, at most ${q.L - 1}`;
+  if (!visited) return `does not go through the via station`;
+  if (!crossed) return `does not use the reopened section`;
+  const arrival = s.eff[last.trip].arr[last.j] + w.finalWalk * 1000;
+  if (arrival !== w.arrival) return `arrival ${arrival} != ${w.arrival}`;
+  return null;
+}
+
+// ---------------------------------------------------------------------------------------------- journeys
+const journeys = new Map<string, { at: number; journey: Journey; snapshotId: string; rides: { trip: Trip; i: number; j: number; arr: number[]; dep: number[]; served: boolean[]; platforms: (string | undefined)[] }[] }>();
+const place = (k: number): Place => ({ id: stops[k].id, name: stops[k].name, lon: stops[k].lon, lat: stops[k].lat });
+const r5 = (x: number) => Math.round(x * 1e5) / 1e5;
+const platformOf = (s: Snapshot, node: number) => (node < s.nQ ? quayPlatform[node] || undefined : undefined);
 
 function legIncidents(trainId: string, stationIds: Set<string>) {
   const out: Leg["incidents"] = [];
@@ -222,207 +1132,284 @@ function legIncidents(trainId: string, stationIds: Set<string>) {
   for (const a of alertsState.alerts.values()) if (a.trainIds.includes(trainId) || a.stations.filter((s) => stationIds.has(s.id)).length >= 2) out.push({ id: a.id, title: a.title, severity: a.severity, source: "sbb" });
   return out;
 }
-
-function toJourney(trips: Trip[], lives: (Live | undefined)[], parts: { trip: number; i: number; j: number }[]): Journey {
-  const legs: Leg[] = parts.map(({ trip: ti, i, j }) => {
-    const trip = trips[ti];
-    const lt = lives[ti]!;
-    const delaySec = Math.round((lt.arr[j] - trip.arr[j]) / 1000);
-    const held = lt.train && ((lt.train.mode === "sim" && lt.train.speed < 0.5 && lt.train.leg >= 0) || lt.train.motion === "held");
+const walkLeg = (from: number, to: number, plannedDep: number, expectedDep: number, sec: number): WalkLeg => ({
+  type: "walk",
+  from: { ...place(from), plannedDep, expectedDep },
+  to: { ...place(to), plannedArr: plannedDep + sec * 1000, expectedArr: expectedDep + sec * 1000 },
+  durationSec: sec,
+  trainId: null,
+  line: "Walk",
+  category: "WALK",
+  headsign: stops[to].name,
+  stopsBetween: 0,
+  delaySec: 0,
+  status: "on time",
+  incidents: [],
+});
+const hhmm = (ms: number) => zurich(ms).time.slice(0, 5);
+function toJourney(q: Query, w: Witness, kind: Journey["kind"]): Journey {
+  const s = q.s;
+  const legs: AnyLeg[] = [];
+  const warnings: string[] = [];
+  let uncertain = false;
+  let waits = false;
+  const p0 = w.parts[0];
+  const t0 = s.trips[p0.trip];
+  const st0 = s.nodeStation[p0.boardNode];
+  if (w.initialWalk > 0 || st0 !== q.origin) legs.push(walkLeg(q.origin, st0, t0.dep[p0.i] - w.initialWalk * 1000, s.callDep[s.base[p0.trip] + p0.i] - w.initialWalk * 1000, w.initialWalk));
+  w.parts.forEach((p, k) => {
+    const trip = s.trips[p.trip];
+    const e = s.eff[p.trip];
+    if (k > 0) {
+      const prev = w.parts[k - 1];
+      const sa = s.nodeStation[prev.alightNode];
+      const sb = s.nodeStation[p.boardNode];
+      if (sa !== sb) {
+        const sec = transferSec(s, prev.trip, prev.alightNode, p.trip, p.boardNode);
+        legs.push(walkLeg(sa, sb, s.trips[prev.trip].arr[prev.j], s.eff[prev.trip].arr[prev.j], sec));
+      }
+    }
+    const delaySec = Math.round((e.arr[p.j] - trip.arr[p.j]) / 1000);
     const ids = new Set<string>();
-    for (let k = i; k <= j; k++) ids.add(stops[trip.stops[k]].id);
-    return {
+    for (let c = p.i; c <= p.j; c++) ids.add(stops[trip.stops[c]].id);
+    let note: string | undefined;
+    if (trip.cat !== "EV")
+      for (let c = p.i; c < p.j; c++) {
+        const hitBy: string[] = [];
+        const st = legState(s.closures, trip.stops[c], trip.stops[c + 1], e.dep[c], e.arr[c + 1], hitBy);
+        if (!(st & (CONDITIONAL | AFTER_REOPENING))) continue;
+        waits = true;
+        if (st & CONDITIONAL) uncertain = true;
+        for (const id of hitBy) {
+          const cl = s.closures.find((x) => x.id === id);
+          if (!cl) continue;
+          const text = cl.reopen === null ? `${cl.where}: no reopening time is known` : `${cl.where} reopens ${cl.sure ? "about" : "at the earliest"} ${hhmm(cl.reopen)}`;
+          note ??= text;
+          if (!warnings.includes(text)) warnings.unshift(text);
+        }
+      }
+    legs.push({
+      type: "ride",
       trainId: trip.trainId,
       line: trip.line,
       category: trip.cat,
-      headsign: trip.head,
-      from: { ...place(trip.stops[i]), plannedDep: trip.dep[i], expectedDep: lt.dep[i] },
-      to: { ...place(trip.stops[j]), plannedArr: trip.arr[j], expectedArr: lt.arr[j] },
-      stopsBetween: j - i - 1,
+      headsign: e.lastServed < trip.stops.length - 1 ? stops[trip.stops[e.lastServed]].name : trip.head,
+      from: { ...place(trip.stops[p.i]), plannedDep: trip.dep[p.i], expectedDep: e.dep[p.i], ...(platformOf(s, p.boardNode) ? { platform: platformOf(s, p.boardNode) } : {}) },
+      to: { ...place(trip.stops[p.j]), plannedArr: trip.arr[p.j], expectedArr: e.arr[p.j], ...(platformOf(s, p.alightNode) ? { platform: platformOf(s, p.alightNode) } : {}) },
+      stopsBetween: p.j - p.i - 1,
       delaySec,
-      status: held ? "held" : delaySec >= 180 ? "late" : "on time",
+      status: e.held ? "held" : delaySec >= 180 ? "late" : "on time",
       incidents: legIncidents(trip.trainId, ids),
-    };
+      ...(note ? { note } : {}),
+      ...(p.kind === K_SEATED ? { staySeated: true } : {}),
+    });
   });
-  const first = legs[0];
-  const last = legs[legs.length - 1];
-  const warnings: string[] = [];
+  const pl = w.parts[w.parts.length - 1];
+  const stL = s.nodeStation[pl.alightNode];
+  if (w.finalWalk > 0 || stL !== q.dest) legs.push(walkLeg(stL, q.dest, s.trips[pl.trip].arr[pl.j], s.eff[pl.trip].arr[pl.j], w.finalWalk));
   for (const l of legs) {
+    if (l.type !== "ride") continue;
     if (l.category === "EV") warnings.push(`Replacement bus (EV) from ${l.from.name} to ${l.to.name}`);
+    if (l.staySeated) warnings.push(`Stay on board at ${l.from.name}: the train continues as ${l.line} to ${l.headsign}`);
     if (l.status === "held") warnings.push(`${l.line} to ${l.headsign} is stopped at the moment`);
     else if (l.status === "late") warnings.push(`${l.line} to ${l.headsign} is about ${Math.round(l.delaySec / 60)} min late`);
     for (const inc of l.incidents) if (!warnings.includes(inc.title)) warnings.push(inc.title);
   }
-  const key = legs.map((l) => `${l.trainId}:${l.from.id}>${l.to.id}`).join("|");
-  return {
+  const first = legs[0];
+  const last = legs[legs.length - 1];
+  const key = legs.map((l) => (l.type === "ride" ? `${l.trainId}:${l.from.id}>${l.to.id}` : `walk:${l.from.id}>${l.to.id}`)).join("|");
+  const j: Journey = {
     id: `j-${createHash("sha1").update(key).digest("hex").slice(0, 10)}`,
     departure: first.from.expectedDep,
     arrival: last.to.expectedArr,
     plannedDeparture: first.from.plannedDep,
     plannedArrival: last.to.plannedArr,
     durationMin: Math.round((last.to.expectedArr - first.from.expectedDep) / 60_000),
-    transfers: legs.length - 1,
+    transfers: w.changes,
     arrivalDelayMin: Math.max(0, Math.round((last.to.expectedArr - last.to.plannedArr) / 60_000)),
     warnings,
     legs,
+    kind,
+    snapshotId: s.id,
   };
+  if (uncertain) j.uncertain = true;
+  if (waits) j.waitsForReopening = true;
+  j.corridor = legs.filter((l): l is Leg => l.type === "ride").slice(1).filter((l) => !l.staySeated).map((l) => l.from.name);
+  return j;
 }
-
-/** A journey through an interrupted section (a train held for it, or one after the reopening) depends on the
- *  reopening: say when, and flag it uncertain unless the end is confirmed (UNTIL). */
-function annotate(j: Journey, parts: Parts, trips: Trip[], t: number) {
-  parts.forEach((p, n) => {
-    const trip = trips[p.trip];
-    if (trip.cat === "EV") return; // a replacement bus runs because of the closure: it does not wait for the reopening
-    const calls = Array.from(trip.stops.slice(p.i, p.j + 1)).map((k) => stops[k].id);
-    for (const d of disruptions.values()) {
-      if (!isScenario(d) || d.endedAt || d.effect !== "section_closure" || !d.scenario.b) continue;
-      if (!(calls.includes(d.scenario.a) && calls.includes(d.scenario.b))) continue;
-      const end = expectedEnd(d, t);
-      const sure = d.scenario.durationType === "UNTIL" && end !== null;
-      const note = end === null ? `${d.where}: no reopening time is known` : `${d.where} reopens ${sure ? "about" : "at the earliest"} ${zurich(end).time.slice(0, 5)}`;
-      j.waitsForReopening = true;
-      if (!sure) j.uncertain = true;
-      j.legs[n].note ??= note;
-      if (!j.warnings.includes(note)) j.warnings.unshift(note);
-    }
+function remember(q: Query, w: Witness, j: Journey, t: number) {
+  const s = q.s;
+  journeys.set(j.id, {
+    at: t,
+    journey: j,
+    snapshotId: s.id,
+    rides: w.parts.map((p) => {
+      const e = s.eff[p.trip];
+      const trip = s.trips[p.trip];
+      const arr: number[] = [];
+      const dep: number[] = [];
+      const servedCalls: boolean[] = [];
+      const platforms: (string | undefined)[] = [];
+      for (let c = p.i; c <= p.j; c++) {
+        arr.push(Math.round(e.arr[c]));
+        dep.push(Math.round(e.dep[c]));
+        servedCalls.push(!e.skipped?.[c] && c >= e.firstServed && c <= e.lastServed);
+        platforms.push(platformOf(s, s.callNode[s.base[p.trip] + c]));
+      }
+      return { trip, i: p.i, j: p.j, arr, dep, served: servedCalls, platforms };
+    }),
   });
 }
+
+// ---------------------------------------------------------------------------------------------- planning
+/** How far ahead to search: 6 hours, and at night until 08:00 the next morning. */
+function horizonFor(after: number) {
+  const z = zurich(after);
+  const hour = Number(z.time.slice(0, 2));
+  if (hour >= 20) return Math.max(after + HORIZON_MS, serviceOrigin(addDay(z.date)) + 8 * 3600_000);
+  if (hour < 5) return Math.max(after + HORIZON_MS, serviceOrigin(z.date) + 8 * 3600_000);
+  return after + HORIZON_MS;
+}
+const addDay = (date: string) => new Date(Date.parse(`${date}T12:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+function endpoints(s: Snapshot, origin: number, dest: number) {
+  const originWalk = new Map<number, number>();
+  const destWalk = new Map<number, number>();
+  const put = (m: Map<number, number>, n: number, sec: number) => {
+    const old = m.get(n);
+    if (old === undefined || sec < old) m.set(n, sec);
+  };
+  for (const n of s.stationNodes.get(origin) ?? []) put(originWalk, n, 0);
+  for (const qa of quaysOfIdx(origin)) for (const w of pairsFrom.get(qa) ?? []) if (w < s.nQ && s.used[w] && s.nodeStation[w] !== origin) put(originWalk, w, pairSec.get(pairKey(qa, w))!);
+  for (const n of s.stationNodes.get(dest) ?? []) put(destWalk, n, 0);
+  for (const qd of quaysOfIdx(dest)) for (const w of pairsTo.get(qd) ?? []) if (w < s.nQ && s.used[w] && s.nodeStation[w] !== dest) put(destWalk, w, pairSec.get(pairKey(w, qd))!);
+  return { originWalk, destWalk };
+}
+const beats = (k: Journey, j: Journey) => k !== j && k.departure >= j.departure && k.arrival <= j.arrival && k.transfers <= j.transfers && (k.arrival < j.arrival || k.transfers < j.transfers || k.departure > j.departure);
+const lexi = (a: Journey, b: Journey) => a.arrival - b.arrival || a.transfers - b.transfers || b.departure - a.departure;
 export type PlanOptions = { maxTransfers?: number; via?: string; includeWait?: boolean; quick?: boolean };
-const corridorOf = (j: Journey) => j.legs.slice(1).map((l) => l.from.name);
-/** The best journeys from one station to another, earliest arrival first. Options: at most `maxTransfers` changes
- *  (default 3, up to 4), `via` a hub to go through, `includeWait` the journey that waits for an interrupted section
- *  to reopen. At night the search reaches the first services of the next morning. */
+/** Journeys from one station to another, ranked by arrival, then changes, then the latest departure (to the second).
+ *  Options: at most `maxTransfers` changes (0 = direct only; default 3, up to 4), `via` a hub to go through (staying
+ *  aboard counts), `includeWait` the journeys through an interrupted section after it reopens. At night the search
+ *  reaches the first services of the next morning. Every journey is validated on its snapshot before it is returned. */
 export function plan(fromQ: string, toQ: string, after = Date.now(), limit = 4, opts: PlanOptions = {}) {
+  const t0 = performance.now();
   const from = resolveStation(fromQ);
   const to = resolveStation(toQ);
   if (from === undefined) return { error: `Unknown station: ${fromQ}` };
   if (to === undefined) return { error: `Unknown station: ${toQ}` };
   const via = opts.via ? resolveStation(opts.via) : undefined;
   if (opts.via && via === undefined) return { error: `Unknown station: ${opts.via}` };
-  const maxTrips = Math.max(1, Math.min(4, Math.round(opts.maxTransfers ?? 3))) + 1;
+  const maxTransfers = Math.max(0, Math.min(4, Math.round(Number.isFinite(opts.maxTransfers) ? opts.maxTransfers! : 3)));
   const t = Date.now();
-  const { trips, lives, conns } = connections(t, Math.min(after, t + HORIZON_MS));
-  const { stations: closed } = closures();
+  const s = snapshot(t);
+  const tSearch = performance.now(); // the search budget starts once the snapshot is there
+  const { originWalk, destWalk } = endpoints(s, from, to);
+  const horizon = horizonFor(after);
+  const incomplete = [...s.incomplete];
+  if (after < s.from) incomplete.push(`trains before ${hhmm(s.from)} are not in the snapshot`);
+  if (horizon > s.until) incomplete.push(`the timetable ends at ${hhmm(s.until)}`);
+  const base: Query = { s, origin: from, dest: to, L: maxTransfers + 1, mode: via !== undefined ? 1 : 0, via: via ?? -1, certain: true, horizon, originWalk, destWalk };
   let searches = 0;
-  const run = (a: number, b: number, at: number, k: number) => (searches++, search(trips, lives, conns, a, b, at, closed, k));
-  /** Through a list of stations in order (via, or a section to wait for), each step with the trains left. */
-  const chain = (points: number[], at: number, budget: number, onlyDirect?: [number, number]): Parts | null => {
-    let parts: Parts = [];
-    let time = at;
-    for (let p = 0; p < points.length - 1; p++) {
-      const direct = onlyDirect && points[p] === onlyDirect[0] && points[p + 1] === onlyDirect[1];
-      const left = budget - parts.length - (points.length - 2 - p);
-      if (left < 1) return null;
-      const found = run(points[p], points[p + 1], p === 0 ? time : time + TRANSFER_MS, direct ? 1 : left);
-      if (!found.length) return null;
-      const seg = found[found.length - 1]; // earliest arrival within the budget
-      parts = [...parts, ...seg];
-      time = lives[seg[seg.length - 1].trip]!.arr[seg[seg.length - 1].j];
+  let scanned = 0;
+  const validation = { checked: 0, rejected: [] as string[] };
+  const found = new Map<string, Journey>();
+  /** The profile: scan, take the Pareto levels' witnesses, scan again just after the earliest departure found. */
+  const profile = (q: Query, kind: Journey["kind"], want: number, rounds: number, budgetMs: number) => {
+    const mine: Journey[] = [];
+    let tau = after;
+    for (let r = 0; r < rounds && (r === 0 || performance.now() - tSearch < budgetMs); r++) {
+      const res = scan(q, tau);
+      searches++;
+      scanned += res.scanned;
+      const ws = witnesses(q, res);
+      if (!ws.length) break;
+      let minDep = Infinity;
+      let roundBest = Infinity;
+      for (const w of ws) {
+        minDep = Math.min(minDep, w.departure);
+        roundBest = Math.min(roundBest, w.arrival);
+        validation.checked++;
+        const bad = validate(q, w, tau);
+        if (bad) {
+          validation.rejected.push(bad);
+          console.warn(`[planner] rejected a witness ${stops[from].name} -> ${stops[to].name}: ${bad}`);
+          continue;
+        }
+        const j = toJourney(q, w, kind);
+        if (!found.has(j.id)) {
+          found.set(j.id, j);
+          mine.push(j);
+          remember(q, w, j, t);
+        }
+      }
+      if (!Number.isFinite(minDep)) break;
+      tau = Math.floor(minDep / 1000) * 1000 + 1000; // the next option leaves at least a second later
+      const nd = mine.filter((j) => !mine.some((k) => beats(k, j))).sort(lexi);
+      if (nd.length >= want && roundBest > nd[want - 1].arrival) break;
     }
-    return parts.length ? parts : null;
+    return mine;
   };
-  const found: Journey[] = [];
-  const seen = new Set<string>();
-  const arrivalOf = (parts: Parts) => lives[parts[parts.length - 1].trip]!.arr[parts[parts.length - 1].j];
-  const departureOf = (parts: Parts) => lives[parts[0].trip]!.dep[parts[0].i];
-  /** The same arrival, leaving as late as possible (no point waiting hours at a change at night). */
-  const leaveLater = (parts: Parts): Parts => {
-    const arr = arrivalOf(parts);
-    let lo = departureOf(parts) + 60_000;
-    let hi = arr;
-    let bestParts = parts;
-    for (let it = 0; it < 9 && hi - lo > 120_000; it++) {
-      const mid = Math.floor((lo + hi) / 2);
-      const opt = run(from, to, mid, Math.max(parts.length, 1)).filter((p) => arrivalOf(p) <= arr);
-      if (opt.length) {
-        bestParts = opt[opt.length - 1];
-        lo = departureOf(bestParts) + 60_000;
-      } else hi = mid;
-    }
-    return bestParts;
-  };
-  const add = (parts: Parts, kind: Journey["kind"], extra: Partial<Journey> = {}) => {
-    const j = { ...toJourney(trips, lives, parts), kind, ...extra };
-    annotate(j, parts, trips, t);
-    j.corridor = corridorOf(j);
-    const h = zurich(j.departure).time.slice(0, 2);
-    const ha = Number(zurich(after).time.slice(0, 2));
-    if (j.departure - after > 2 * 3600_000 && Number(h) >= 4 && Number(h) < 10 && (ha >= 20 || ha < 4)) j.nextServiceDay = true;
-    if (seen.has(j.id)) return j;
-    seen.add(j.id);
-    found.push(j);
-    journeys.set(j.id, { at: t, journey: j, parts: parts.map((p) => ({ trip: trips[p.trip], i: p.i, j: p.j })) });
-    return j;
-  };
-  // the best options, then later departures
-  let from_t = after;
-  for (let round = 0; round < limit * 2 && found.length < limit * 2; round++) {
-    const options = via === undefined ? run(from, to, from_t, maxTrips) : [chain([from, via, to], from_t, maxTrips)].filter((x): x is Parts => x !== null);
-    if (!options.length) break;
-    let first = Infinity;
-    for (const parts of options) {
-      first = Math.min(first, departureOf(parts));
-      add(parts, via === undefined ? "best" : "via");
-      if (via === undefined && !opts.quick && arrivalOf(parts) - departureOf(parts) > 3 * 3600_000) add(leaveLater(parts), "best"); // a long night wait somewhere: leave later
-    }
-    from_t = first + 60_000; // the next option leaves later
-  }
-  // waiting for an interrupted section on the way to reopen
-  if (opts.includeWait) {
-    const direct = metres(stops[from].lon, stops[from].lat, stops[to].lon, stops[to].lat);
-    for (const d of disruptions.values()) {
-      if (!isScenario(d) || d.endedAt || d.effect !== "section_closure" || !d.scenario.b) continue;
-      const a = stationIndex(d.scenario.a)!;
-      const b = stationIndex(d.scenario.b)!;
-      const dist = (x: number, y: number) => metres(stops[x].lon, stops[x].lat, stops[y].lon, stops[y].lat);
-      const [x, y] = dist(from, a) <= dist(from, b) ? [a, b] : [b, a];
-      if (dist(from, x) + dist(x, y) + dist(y, to) > 1.35 * direct + 5000) continue; // not on the way
-      const points = [from, x, y, to].filter((k, i, all) => i === 0 || k !== all[i - 1]);
-      const parts = chain(points, after, maxTrips, [x, y]);
-      if (!parts) continue;
-      const end = expectedEnd(d, t);
-      const sure = d.scenario.durationType === "UNTIL" && end !== null;
-      const reopen = end === null ? "No reopening time is known" : `${stops[x].name} - ${stops[y].name} reopens ${sure ? "about" : "at the earliest"} ${zurich(end).time.slice(0, 5)}`;
-      const fresh = add(parts, "wait", { uncertain: !sure });
-      const j = found.find((k) => k.id === fresh.id)!; // the best option may already be this one
-      j.waitsForReopening = true;
-      j.uncertain = j.uncertain || !sure;
-      for (const l of j.legs) if (l.from.id === stops[x].id && !l.note) l.note = reopen;
-      if (!j.warnings.includes(reopen)) j.warnings.unshift(reopen);
-    }
+  const main = profile(base, via !== undefined ? "via" : "best", limit, opts.quick ? limit + 2 : limit * 3, 110);
+  let conditionalOnly = false;
+  let wait: Journey[] = [];
+  const reopening = s.closures.length > 0;
+  if (!main.length && reopening) {
+    // nothing confirmed: the journeys that rely on a reopening at its lower bound, said so
+    wait = profile({ ...base, certain: false }, "wait", 2, 3, 130);
+    conditionalOnly = wait.length > 0;
+  } else if (opts.includeWait && reopening && via === undefined) wait = profile({ ...base, mode: 2, certain: false }, "wait", 2, 3, 130);
+  for (const j of wait) {
+    j.kind = "wait";
+    j.waitsForReopening = true;
   }
   for (const [id, v] of journeys) if (t - v.at > 30 * 60_000) journeys.delete(id);
-  // keep real choices: an option another one beats on all counts (leaves no earlier, arrives no later, fewer or equal
-  // changes) stays only if it goes another way (a corridor no better option uses); drop options arriving much later
-  const bestArrival = Math.min(...found.map((j) => j.arrival));
-  const beats = (k: Journey, j: Journey) => k !== j && k.departure >= j.departure && k.arrival <= j.arrival && k.transfers <= j.transfers && (k.arrival < j.arrival || k.transfers < j.transfers || k.departure > j.departure);
-  const night = found.some((j) => j.nextServiceDay);
-  const kept: Journey[] = [];
-  for (const j of [...found].sort((a, b) => a.arrival - b.arrival || a.transfers - b.transfers)) {
-    if (j.kind === "best" && !night && j.arrival - bestArrival > 90 * 60_000) continue;
-    const better = found.filter((k) => beats(k, j));
-    if (better.length && j.kind !== "wait") {
-      const way = j.corridor!.join(">");
-      if (kept.some((k) => k.corridor!.join(">") === way) || better.some((k) => k.corridor!.join(">") === way)) continue;
-      j.dominated = true;
-    }
-    kept.push(j);
+  // keep the real choices: an option another one beats on every count goes, unless it uses a corridor no better
+  // option uses (then it is kept, flagged dominated, after the others)
+  const night = (() => {
+    const ha = Number(zurich(after).time.slice(0, 2));
+    return ha >= 20 || ha < 4;
+  })();
+  for (const j of [...main, ...wait]) {
+    const h = Number(zurich(j.departure).time.slice(0, 2));
+    if (night && j.departure - after > 2 * 3600_000 && h >= 4 && h < 10) j.nextServiceDay = true;
   }
-  const main = kept.filter((j) => j.kind !== "wait").slice(0, limit);
-  // earliest arrival first, waiting for the reopening included: the fastest way there is the first certain one
-  const out = [...main, ...kept.filter((j) => j.kind === "wait")].sort((a, b) => a.arrival - b.arrival || a.transfers - b.transfers);
-  const pick = out.find((j) => !j.uncertain) ?? out[0];
+  const certainMain = main.filter((j) => !j.uncertain);
+  const nd = certainMain.filter((j) => !certainMain.some((k) => beats(k, j))).sort(lexi);
+  const picked = nd.slice(0, limit);
+  if (picked.length < limit) {
+    const ways = new Set(picked.map((j) => j.corridor!.join(">")));
+    for (const j of certainMain.filter((x) => !picked.includes(x)).sort(lexi)) {
+      if (picked.length >= limit) break;
+      const way = j.corridor!.join(">");
+      if (ways.has(way)) continue;
+      ways.add(way);
+      j.dominated = true;
+      picked.push(j);
+    }
+  }
+  const waitKept = wait.filter((j) => !picked.some((k) => k.id === j.id)).sort(lexi).slice(0, 2);
+  const out = [...picked.sort(lexi), ...waitKept];
+  const pick = out.find((j) => !j.uncertain);
   for (const j of out) if (j === pick) j.fastest = true; else delete j.fastest;
+  const ms = Math.round((performance.now() - t0) * 10) / 10;
   return {
     from: place(from),
     to: place(to),
     generatedAt: t,
+    snapshotId: s.id,
+    snapshot: { id: s.id, builtAt: s.builtAt, ...s.meta },
     journeys: out,
-    alternativesConsidered: found.length,
-    corridorsConsidered: new Set(found.map((j) => j.corridor!.join(">"))).size,
+    ...(conditionalOnly ? { allConditional: true, note: "Every journey found relies on a reopening that is not confirmed (at the earliest time announced)." } : {}),
+    ...(!out.length && validation.rejected.length ? { unavailable: "The journeys found did not pass validation on the snapshot; plan again." } : {}),
+    alternativesConsidered: found.size,
+    corridorsConsidered: new Set([...found.values()].map((j) => j.corridor!.join(">"))).size,
     searches,
-    maxTransfers: maxTrips - 1,
+    connectionsScanned: scanned,
+    maxTransfers,
+    validation: { checked: validation.checked, rejected: validation.rejected.length, ...(validation.rejected.length ? { reasons: validation.rejected.slice(0, 3) } : {}) },
+    endpoints: "the requested stations: a published walk to or from a nearby stop (a bus stop at the station) is a walk leg, included in the times",
+    ...(incomplete.length ? { incomplete } : {}),
+    ms,
     ...(via !== undefined ? { via: place(via) } : {}),
   };
 }
@@ -437,37 +1424,45 @@ export function tripGeometry(trip: Trip, i: number, j: number) {
   }
   return { type: "LineString" as const, coordinates: coords };
 }
-/** A planned journey with every stop of every leg (planned and live times, and whether the train still serves it), for
- *  step-by-step itineraries and printed reports. */
+/** A planned journey with every stop of every ride (planned and expected times on the journey's snapshot, and whether
+ *  the vehicle serves it), for step-by-step itineraries and printed reports. Walk legs as planned. */
 export function journeyDetail(id: string) {
   const hit = journeys.get(id);
   if (!hit) return undefined;
-  const t = Date.now();
-  const legs = hit.journey.legs.map((leg, k) => {
-    const { trip, i, j } = hit.parts[k];
-    const lt = liveTimes(trip, t);
+  let r = 0;
+  const legs = hit.journey.legs.map((leg) => {
+    if (leg.type !== "ride") return leg;
+    const { trip, i, j, arr, dep, served: sv, platforms } = hit.rides[r++];
     const calls = [];
-    for (let s = i; s <= j; s++) {
-      const served = !lt.cancelled && !lt.skipped[s] && s >= lt.firstServed && s <= lt.lastServed;
+    for (let c = i; c <= j; c++) {
       calls.push({
-        id: stops[trip.stops[s]].id,
-        name: stops[trip.stops[s]].name,
-        plannedArr: s === i ? null : trip.arr[s],
-        expectedArr: s === i ? null : Math.round(lt.arr[s]),
-        plannedDep: s === j ? null : trip.dep[s],
-        expectedDep: s === j ? null : Math.round(lt.dep[s]),
-        served,
+        id: stops[trip.stops[c]].id,
+        name: stops[trip.stops[c]].name,
+        plannedArr: c === i ? null : trip.arr[c],
+        expectedArr: c === i ? null : arr[c - i],
+        plannedDep: c === j ? null : trip.dep[c],
+        expectedDep: c === j ? null : dep[c - i],
+        served: sv[c - i],
+        ...(platforms[c - i] ? { platform: platforms[c - i] } : {}),
       });
     }
     return { ...leg, calls };
   });
-  return { ...hit.journey, generatedAt: t, legs };
+  return { ...hit.journey, snapshotId: hit.snapshotId, generatedAt: hit.at, legs };
 }
 
 export function journeyGeometry(id: string) {
   const hit = journeys.get(id);
   if (!hit) return null;
-  return { id, legs: hit.parts.map((p, k) => ({ trainId: hit.journey.legs[k].trainId, line: hit.journey.legs[k].line, geometry: tripGeometry(p.trip, p.i, p.j) })) };
+  let r = 0;
+  return {
+    id,
+    legs: hit.journey.legs.map((l) => {
+      if (l.type !== "ride") return { trainId: null, line: "Walk", geometry: { type: "LineString" as const, coordinates: [[r5(l.from.lon), r5(l.from.lat)], [r5(l.to.lon), r5(l.to.lat)]] } };
+      const p = hit.rides[r++];
+      return { trainId: l.trainId, line: l.line, geometry: tripGeometry(p.trip, p.i, p.j) };
+    }),
+  };
 }
 export function trainGeometry(trainId: string, fromQ?: string, toQ?: string) {
   const trip = byTrainId.get(trainId)?.trip ?? dayTrips().find((x) => x.trainId === trainId);
