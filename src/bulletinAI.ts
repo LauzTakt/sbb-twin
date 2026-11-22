@@ -39,7 +39,7 @@ export function validate(text: string, facts: BulletinFacts, template: string): 
   if (!t) return ["empty"];
   if (t.split("\n").length !== template.split("\n").length) errors.push(`line structure: ${t.split("\n").length} lines, expected ${template.split("\n").length}`);
   // the twin does not divert trains: a model copying "and diversions" from the examples adds a claim
-  const divert = /divers|umleitung|déviation|deviazion/i;
+  const divert = /divers|umleitung|d[eé]viation|deviazion/i; // the text is folded (no accents) before this check
   if (divert.test(t) && !divert.test(template)) errors.push("invented diversions");
   for (const l of facts.lines) if (!new RegExp(`(^|[^A-Za-z0-9])${esc(l)}([^A-Za-z0-9]|$)`).test(t)) errors.push(`missing line ${l}`);
   const stations = [facts.section.a, facts.section.b, ...(facts.replacementBus === "running" ? facts.busStops : [])].filter(Boolean) as string[];
