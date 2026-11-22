@@ -23,17 +23,27 @@ export function station(stopId: string) {
   return stopId.replace(/^Parent/, "").split(":")[0];
 }
 
+let pausedUntil = 0; // after a 429 the API is left alone: hammering it keeps the limit exceeded
+let pause = 0;
+
 export async function pollRealtime() {
   if (!config.gtfsRtKey) return false;
+  if (Date.now() < pausedUntil) return false;
   try {
     const r = await fetch(config.gtfsRtUrl, {
       headers: { Authorization: `Bearer ${config.gtfsRtKey}`, "User-Agent": "sbb-twin (LauzHack 2026)", "Accept-Encoding": "gzip, deflate" },
       signal: AbortSignal.timeout(20_000),
     });
     if (!r.ok) {
+      if (r.status === 429) {
+        const wait = Number(r.headers.get("retry-after")) * 1000;
+        pause = Math.min(Math.max(pause * 2, 60_000), 300_000); // 1, 2, 4, 5 min
+        pausedUntil = Date.now() + (wait > 0 ? Math.max(wait, 15_000) : pause);
+      }
       live.error = `GTFS-RT HTTP ${r.status}`;
       return false;
     }
+    pause = 0;
     const feed = rt.FeedMessage.decode(new Uint8Array(await r.arrayBuffer()));
     const trips = new Map<string, TripLive>();
     for (const e of feed.entity) {
