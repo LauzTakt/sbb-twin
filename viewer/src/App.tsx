@@ -1,11 +1,12 @@
 import * as maplibregl from "maplibre-gl";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import type { GeoJSONSource, Map as LibreMap } from "maplibre-gl";
-import { CircleDot, Crosshair, Plus, RefreshCcw, TrainFront, X } from "lucide-react";
+import { CircleDot, Crosshair, Monitor, Moon, Plus, RefreshCcw, Sun, TrainFront, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api, connectLive, send, type Disruption, type Item, type Live, type SnapshotRow, type Status } from "./feed";
 import { Control } from "./Control";
-import { baseStyle } from "./map";
+import { baseStyle, OWN, setMapTheme } from "./map";
+import { applyPageTheme, onSystemThemeChange, readPref, resolveTheme, savePref, shownTheme, switchMs, systemTheme, type Pref, type Theme } from "./theme";
 import { TrainCanvas } from "./trains";
 
 (maplibregl as unknown as { setWorkerUrl?: (u: string) => void }).setWorkerUrl?.(workerUrl);
@@ -58,6 +59,10 @@ export function App() {
   const [following, setFollowing] = useState(false);
   const [station, setStation] = useState<{ id: string; name: string; trains: number }>();
   const [ready, setReady] = useState(false);
+  const [pref, setPref] = useState<Pref>(readPref);
+  const [theme, setTheme] = useState<Theme>(shownTheme);
+  const themeRef = useRef(theme);
+  const mapLoaded = useRef(false);
   const own: Item[] = disruptions.filter((d) => d.status === "active" && d.geometry).map((d) => ({ id: d.id, title: d.summary ?? d.label ?? "Disruption", where: d.where, severity: d.effect === "limited" ? "minor" : "major", note: d.cause?.label ?? "registered in the twin", trains: 0, geometry: d.geometry, description: d.description, source: "auto" as const }));
   const items = [...own, ...alertItems];
   itemsRef.current = items;
@@ -65,14 +70,19 @@ export function App() {
   useEffect(() => {
     let alive = true;
     void (async () => {
-      const m = new maplibregl.Map({ container: mapEl.current!, style: await baseStyle(), center: [8.2, 46.8], zoom: 7.3, maxBounds: BOUNDS, renderWorldCopies: false, maxPitch: 0, dragRotate: false, attributionControl: { compact: true } });
+      const m = new maplibregl.Map({ container: mapEl.current!, style: await baseStyle(themeRef.current), center: [8.2, 46.8], zoom: 7.3, maxBounds: BOUNDS, renderWorldCopies: false, maxPitch: 0, dragRotate: false, attributionControl: { compact: true } });
       if (!alive) return m.remove();
       m.touchZoomRotate.disableRotation();
       mapRef.current = m;
       (window as unknown as { railMap?: LibreMap }).railMap = m; // handy for debugging
       layer.current = new TrainCanvas(m);
+      layer.current.setTheme(themeRef.current, 0);
       setReady(true);
-      m.on("load", () => addLayers(m));
+      m.on("load", () => {
+        addLayers(m);
+        mapLoaded.current = true;
+        setMapTheme(m, themeRef.current, 0); // in case the theme changed while the map was loading
+      });
       m.on("click", (e) => {
         const id = layer.current?.hit(e.point.x, e.point.y);
         if (id) return setSelected(id), setStation(undefined), setPicked(undefined);
@@ -129,28 +139,29 @@ export function App() {
   }
   function addLayers(m: LibreMap) {
     const before = m.getStyle().layers.find((l) => l.type === "symbol")?.id;
+    const c = OWN[themeRef.current]; // setMapTheme switches these colours later
     const width = (a: number, b: number, c: number) => ["interpolate", ["linear"], ["zoom"], 6, a, 10, b, 14, c] as never;
     m.addSource("abroad", { type: "geojson", data: "/api/abroad.geojson", attribution: "© OpenStreetMap contributors" });
-    m.addLayer({ id: "rail-abroad", type: "line", source: "abroad", layout: { "line-join": "round" }, paint: { "line-color": "#b7bcc4", "line-width": width(0.5, 0.8, 1.4) } }, before);
+    m.addLayer({ id: "rail-abroad", type: "line", source: "abroad", layout: { "line-join": "round" }, paint: { "line-color": c.abroad, "line-width": width(0.5, 0.8, 1.4) } }, before);
     m.addSource("network", { type: "geojson", data: "/api/network.geojson" });
-    m.addLayer({ id: "network-halo", type: "line", source: "network", layout: { "line-join": "round", "line-cap": "round" }, paint: { "line-color": "#ffffff", "line-width": width(1.6, 2.4, 4), "line-opacity": 0.85 } }, before);
-    m.addLayer({ id: "network", type: "line", source: "network", layout: { "line-join": "round", "line-cap": "round" }, paint: { "line-color": "#646b77", "line-width": width(0.6, 1, 1.8) } }, before);
-    // the disruptions: the affected track in red (interrupted) or orange (limited), with a white casing
+    m.addLayer({ id: "network-halo", type: "line", source: "network", layout: { "line-join": "round", "line-cap": "round" }, paint: { "line-color": c.halo, "line-width": width(1.6, 2.4, 4), "line-opacity": 0.85 } }, before);
+    m.addLayer({ id: "network", type: "line", source: "network", layout: { "line-join": "round", "line-cap": "round" }, paint: { "line-color": c.track, "line-width": width(0.6, 1, 1.8) } }, before);
+    // the disruptions: the affected track in red (interrupted) or orange (limited), with a casing in the ground's colour
     m.addSource("sections", { type: "geojson", data: features.current as never });
     const lines = ["in", ["geometry-type"], ["literal", ["LineString", "MultiLineString"]]] as never;
     const dots = ["in", ["geometry-type"], ["literal", ["Point", "MultiPoint"]]] as never;
     m.addLayer({ id: "section-picked", type: "line", source: "sections", filter: ["==", ["get", "id"], ""], layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#0079c7", "line-width": width(7, 9, 12), "line-opacity": 0.3 } }, before);
-    m.addLayer({ id: "section-casing", type: "line", source: "sections", filter: lines, layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#ffffff", "line-width": width(4, 5.5, 8) } }, before);
+    m.addLayer({ id: "section-casing", type: "line", source: "sections", filter: lines, layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": c.casing, "line-width": width(4, 5.5, 8) } }, before);
     m.addLayer({ id: "section-line", type: "line", source: "sections", filter: lines, layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": ["get", "colour"], "line-width": width(2.2, 3, 4.6) } }, before);
-    m.addLayer({ id: "section-point", type: "circle", source: "sections", filter: dots, paint: { "circle-radius": width(5, 7, 9), "circle-color": "rgba(255,255,255,0.9)", "circle-stroke-color": ["get", "colour"], "circle-stroke-width": 2.5 } }, before);
+    m.addLayer({ id: "section-point", type: "circle", source: "sections", filter: dots, paint: { "circle-radius": width(5, 7, 9), "circle-color": c.dot, "circle-stroke-color": ["get", "colour"], "circle-stroke-width": 2.5 } }, before);
     m.addSource("stations", { type: "geojson", data: "/api/stations.geojson" });
     for (const [tier, filter, zoom, label] of [
       ["major", [">=", ["get", "trains"], 300], 6, 8],
       ["medium", ["all", ["<", ["get", "trains"], 300], [">=", ["get", "trains"], 60]], 9, 10.5],
       ["minor", ["<", ["get", "trains"], 60], 11, 12.5],
     ] as const) {
-      m.addLayer({ id: `stations-${tier}`, type: "circle", source: "stations", minzoom: zoom, filter: filter as never, paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 6, 2.4, 12, 4], "circle-color": "#ffffff", "circle-stroke-color": "#3b4350", "circle-stroke-width": 1.2 } });
-      m.addLayer({ id: `station-labels-${tier}`, type: "symbol", source: "stations", minzoom: label, filter: filter as never, layout: { "text-field": ["get", "name"], "text-font": ["Frutiger Neue Bold"], "text-size": ["interpolate", ["linear"], ["zoom"], 8, 11, 13, 13], "text-anchor": "top", "text-offset": [0, 0.7], "text-padding": 4 }, paint: { "text-color": "#212121", "text-halo-color": "rgba(255,255,255,0.95)", "text-halo-width": 1.6 } });
+      m.addLayer({ id: `stations-${tier}`, type: "circle", source: "stations", minzoom: zoom, filter: filter as never, paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 6, 2.4, 12, 4], "circle-color": c.station, "circle-stroke-color": c.ring, "circle-stroke-width": 1.2 } });
+      m.addLayer({ id: `station-labels-${tier}`, type: "symbol", source: "stations", minzoom: label, filter: filter as never, layout: { "text-field": ["get", "name"], "text-font": ["Frutiger Neue Bold"], "text-size": ["interpolate", ["linear"], ["zoom"], 8, 11, 13, 13], "text-anchor": "top", "text-offset": [0, 0.7], "text-padding": 4 }, paint: { "text-color": c.label, "text-halo-color": c.labelHalo, "text-halo-width": 1.6 } });
     }
   }
 
@@ -188,6 +199,19 @@ export function App() {
     refocus();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [alertItems, disruptions]);
+  // the theme: the remembered choice, or the system's (followed live)
+  useEffect(() => {
+    setTheme(resolveTheme(pref));
+    if (pref === "system") return onSystemThemeChange(() => setTheme(systemTheme()));
+  }, [pref]);
+  // page, map and trains switch in the same frame and fade over the same time
+  useEffect(() => {
+    themeRef.current = theme;
+    const ms = switchMs();
+    applyPageTheme(theme, ms);
+    if (mapRef.current && mapLoaded.current) setMapTheme(mapRef.current, theme, ms);
+    layer.current?.setTheme(theme, ms);
+  }, [theme]);
   useEffect(() => {
     if (!layer.current) return;
     layer.current.selected = selected;
@@ -220,6 +244,13 @@ export function App() {
         <button className="sync" disabled={syncing} onClick={() => { setSyncing(true); setPicked(undefined); void send("POST", "/control/reset", {}).catch(() => undefined).finally(() => setSyncing(false)); }} title="Remove everything registered in the twin and go back to the live data">
           <RefreshCcw size={15} /> {syncing ? "Syncing…" : "Sync with live"}
         </button>
+        <div className="theme" role="group" aria-label="Colours">
+          {([["light", Sun, "Light"], ["dark", Moon, "Dark"], ["system", Monitor, "Like the system"]] as const).map(([p, Icon, label]) => (
+            <button key={p} aria-pressed={pref === p} title={label} aria-label={label} onClick={() => (savePref(p), setPref(p))}>
+              <Icon size={15} />
+            </button>
+          ))}
+        </div>
         </div>
       </header>
       {registering && (
@@ -275,7 +306,7 @@ export function App() {
           <div className="legend">
             <span><i style={{ background: "#00973b" }} />Moving</span>
             <span><i style={{ background: "#f27e00" }} />Late 3 min or more</span>
-            <span><i style={{ background: "#2d327d" }} />At a station</span>
+            <span><i style={{ background: "var(--train-station)" }} />At a station</span>
             <span><i style={{ background: "#eb0000" }} />Stopped on the line</span>
             <span><i className="line" style={{ background: "#eb0000" }} />Interrupted</span>
             <span><i className="line" style={{ background: "#f27e00" }} />Limited</span>

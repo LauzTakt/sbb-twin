@@ -78,7 +78,15 @@ SBB palette names. Light values are SBB's; dark values are ours (same roles, rea
 }
 ```
 
-Dark mode switches **the whole page and the map** together, never only one of them.
+Roles on top of the palette (the control page uses them; values light / dark): `raised` (selected segment of a
+switch) `#ffffff` / `#30343a`; `red-text` (delays and warnings as text, AA on dark) `#eb0000` / `#ff4d4d`; `map` (map
+ground) `#fcfcfc` / `#1b1e22`; `scrim` (behind a pop-up) `rgba(33,33,33,.45)` / `rgba(0,0,0,.6)`; success box
+`#e8f5ed` on `#005c24` / `rgba(0,151,59,.16)` on `#6fd69a`; floating shadows `rgba(0,0,0,.14)` / `rgba(0,0,0,.5)`.
+
+Dark mode switches **the whole page and the map** together, never only one of them. Three choices: light, dark, like
+the system (default); remembered in `localStorage` (`sbb-twin-theme`) and applied before the first paint. A switch
+cross-fades page, map and trains together in 500 ms (ease-in-out cubic, MapLibre's curve), instantly with
+`prefers-reduced-motion`. The map is recoloured with `setPaintProperty` transitions, never `setStyle`.
 
 ## 4. Meaning (identical in every app)
 
@@ -124,7 +132,8 @@ reason texts ("Overhead line fault", "Track damage", "Person accident") with the
 ## 5. Map
 
 - Base map: swisstopo light base map (vector, `vectortiles.geo.admin.ch`); satellite: SWISSIMAGE. In dark mode the
-  same base map is recoloured, not replaced. Attribution "© swisstopo" (and "© OpenStreetMap contributors" when
+  same base map is recoloured, not replaced (colours derived in OKLab: areas just below the dark ground, lines and
+  labels light, relief toned down; layers whose colour depends on the feature are split per case so they can fade). Attribution "© swisstopo" (and "© OpenStreetMap contributors" when
   showing railways outside Switzerland).
 - Keep the view on Switzerland (bounds `5.4, 45.55` – `11.0, 48.05`).
 - Track: Swiss network `iron` 1–3.2 px with a white halo (dark: `#9aa6b8` with a dark halo; satellite: white with a

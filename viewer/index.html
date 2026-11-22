@@ -5,6 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>sbb-twin</title>
+    <script>
+      // The theme before the first paint, so a dark page never flashes white: the remembered choice, else the
+      // system's (src/theme.ts keeps it up to date afterwards).
+      (function () {
+        var pref = null;
+        try {
+          pref = localStorage.getItem("sbb-twin-theme");
+        } catch (e) {}
+        var dark = pref === "dark" || (pref !== "light" && !!window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
