@@ -63,7 +63,7 @@ for (const i of incidents.values()) publish(`incidents/${i.id}`, incidentPayload
 for (const b of bulletins()) publish(`bulletins/${b.id}`, { v: 1, ...b }, { retain: true, qos: 1 });
 setInterval(saveState, 2000).unref();
 server.listen(config.port, config.host, () =>
-  console.log(`[sbb-twin] viewer + API http://${config.host}:${config.port}/ · MQTT ${config.mqttUrl ? `on ${new URL(config.mqttUrl).host} (read-only WebSocket proxy at /mqtt)` : `tcp://${config.host}:${config.mqttPort} + ws://${config.host}:${config.port}/mqtt`}`),
+  console.log(`[sbb-twin] viewer + API http://${config.host}:${config.port}/ · MQTT ${config.mqttUrl ? `on ${new URL(config.mqttUrl).host} (read-only WebSocket proxy at /mqtt)` : `ws://${config.host}:${config.port}/mqtt`}`),
 );
 event("system", { type: "system.started" });
 if (process.env.RAIL_REPLAY_SCENARIO) console.log("[replay]", JSON.stringify(startReplay(process.env.RAIL_REPLAY_SCENARIO).upcoming?.length ?? 0), "steps to come");
