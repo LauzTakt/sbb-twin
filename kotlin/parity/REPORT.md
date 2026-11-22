@@ -26,3 +26,8 @@
 | scenario control/reset | differs | $.synced: ts=20 kt=19 |
 | night plan (15 pairs) | differs | 16 values within tolerance (max arrival=1e+03, departure=1e+03, expectedArr=1e+03, expectedDep=1e+03); $.journeys[0].legs[0].delaySec: ts=1 kt=0; $.journeys[0].legs[0].delaySec: ts=0 kt=1; $.alternativesConsidered: ts=8 kt=9; $.journeys[0].legs[len]: ts=2 kt=3; ... 152 more differences |
 | night brief | differs | 4 values within tolerance (max arrival=1e+03, departure=1e+03, expectedArr=1e+03, expectedDep=1e+03); $.journeys[0].legs[0].delaySec: ts=0 kt=1 |
+
+## Wädenswil replay (20x, run separately)
+exact: /replays, /disruptions, /bulletins, /incidents (control), auto incident counts.
+differs (explained): /situation, /brief, /replays/outcome. The JVM starts ~1.4 s after node, i.e. a 28 s virtual offset at 20x,
+so expected times and train actuals are shifted by up to ~50 s; one cancelled flag differs for a train at the edge of that offset.
