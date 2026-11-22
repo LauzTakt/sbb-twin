@@ -87,7 +87,12 @@ export function loadRouting(date: string) {
     const rule: TripRule = { fromTrip: f, toTrip: t, fromQuay: map[fq], toQuay: map[tq], type, sec, ...(dates ? { dates } : {}) };
     let list = rulesFrom.get(f);
     if (!list) rulesFrom.set(f, (list = []));
-    if (list.some((x) => x.toTrip === t && x.fromQuay === rule.fromQuay && x.toQuay === rule.toQuay && x.type === type)) continue;
+    const same = list.find((x) => x.toTrip === t && x.fromQuay === rule.fromQuay && x.toQuay === rule.toQuay && x.type === type && x.sec === sec);
+    if (same) {
+      // the same rule from another day's file: it applies on the service days of both (a dated rule lists them)
+      if (same.dates) same.dates = rule.dates ? [...new Set([...same.dates, ...rule.dates])] : undefined;
+      continue;
+    }
     list.push(rule);
     rules++;
   }

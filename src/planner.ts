@@ -458,7 +458,7 @@ function tripCalls(trip: Trip, route: TripRoute | undefined, e: Eff, closures: C
   const road = trip.cat === "EV";
   const first = Math.max(e.from, e.firstServed);
   let stop = e.cancelled ? first : e.lastServed; // the vehicle does not get past a blocked leg
-  let cond = 0;
+  let carry = 0; // a vehicle that crossed conditionally (or after a reopening) reaches every later call that way
   if (!road && closures.length)
     for (let i = first; i < stop; i++) {
       const st = legState(closures, trip.stops[i], trip.stops[i + 1], e.dep[i], e.arr[i + 1]);
@@ -466,8 +466,8 @@ function tripCalls(trip: Trip, route: TripRoute | undefined, e: Eff, closures: C
         stop = i;
         break;
       }
-      if (st & CONDITIONAL) cond = C_COND;
-      a.legFlag[b + i] = cond | (st & AFTER_REOPENING);
+      carry |= st & (CONDITIONAL | AFTER_REOPENING);
+      a.legFlag[b + i] = carry;
     }
   for (let i = 0; i < n; i++) {
     const st = trip.stops[i];
@@ -1299,6 +1299,13 @@ function validate(q: Query, w: Witness, tau: number): string | null {
       }
     }
     if (!seated) changes++;
+    if (trip.cat !== "EV")
+      for (let c = Math.max(e.from, e.firstServed); c < p.i; c++) {
+        const st = legState(s.closures.map((x) => ({ ...x, pairs: undefined })), trip.stops[c], trip.stops[c + 1], e.dep[c], e.arr[c + 1]);
+        if (st & BLOCKED) return `${trip.trainId} cannot reach ${stops[trip.stops[p.i]].name}: closed between ${stops[trip.stops[c]].name} and ${stops[trip.stops[c + 1]].name}`;
+        if (q.certain && st & CONDITIONAL) return `${trip.trainId} reaches ${stops[trip.stops[p.i]].name} only after an unconfirmed reopening`;
+        if (st & (CONDITIONAL | AFTER_REOPENING)) crossed = true;
+      }
     for (let c = p.i; c < p.j; c++) {
       if (e.arr[c + 1] < e.dep[c] || e.dep[c + 1] < e.arr[c + 1]) return `${trip.trainId}: times not monotonic at call ${c}`;
       if (trip.cat !== "EV") {
@@ -1377,8 +1384,11 @@ function toJourney(q: Query, w: Witness, kind: Journey["kind"]): Journey {
     const ids = new Set<string>();
     for (let c = p.i; c <= p.j; c++) ids.add(stops[trip.stops[c]].id);
     let note: string | undefined;
-    if (trip.cat !== "EV")
-      for (let c = p.i; c < p.j; c++) {
+    const lf = s.legFlag[s.base[p.trip] + p.j - 1];
+    if (lf & C_COND) uncertain = true;
+    if (lf & (C_COND | C_REOPEN)) waits = true;
+    if (trip.cat !== "EV" && lf)
+      for (let c = s.firstUsable[p.trip]; c < p.j; c++) {
         const hitBy: string[] = [];
         const st = legState(s.closures, trip.stops[c], trip.stops[c + 1], e.dep[c], e.arr[c + 1], hitBy);
         if (!(st & (CONDITIONAL | AFTER_REOPENING))) continue;
@@ -1522,15 +1532,20 @@ export function plan(fromQ: string, toQ: string, after = Date.now(), limit = 4, 
   const validation = { checked: 0, rejected: [] as string[] };
   const found = new Map<string, Journey>();
   /** The profile: scan, take the Pareto levels' witnesses, scan again just after the earliest departure found. */
+  let cut = false; // a profile stopped on its round or time budget before its proof condition
   const profile = (q: Query, kind: Journey["kind"], want: number, rounds: number, budgetMs: number) => {
     const mine: Journey[] = [];
     let tau = after;
+    let done = false;
     for (let r = 0; r < rounds && (r === 0 || performance.now() - tSearch < budgetMs); r++) {
       const res = scan(q, tau);
       searches++;
       scanned += res.scanned;
       const ws = witnesses(q, res);
-      if (!ws.length) break;
+      if (!ws.length) {
+        done = true;
+        break;
+      }
       let minDep = Infinity;
       let roundBest = Infinity;
       for (const w of ws) {
@@ -1550,26 +1565,34 @@ export function plan(fromQ: string, toQ: string, after = Date.now(), limit = 4, 
           remember(q, w, j, t);
         }
       }
-      if (!Number.isFinite(minDep)) break;
+      if (!Number.isFinite(minDep)) {
+        done = true;
+        break;
+      }
       tau = Math.floor(minDep / 1000) * 1000 + 1000; // the next option leaves at least a second later
       const nd = mine.filter((j) => !mine.some((k) => beats(k, j))).sort(lexi);
-      if (nd.length >= want && roundBest > nd[want - 1].arrival) break;
+      if (nd.length >= want && roundBest > nd[want - 1].arrival) {
+        done = true; // every later departure arrives later than the options kept: the list is final
+        break;
+      }
     }
+    if (!done && kind !== "wait") cut = true;
     return mine;
   };
   const main = profile(base, via !== undefined ? "via" : "best", limit, opts.quick ? limit + 2 : limit * 3, 110);
   let conditionalOnly = false;
   let wait: Journey[] = [];
   const reopening = s.closures.length > 0;
-  if (!main.length && reopening) {
-    // nothing confirmed: the journeys that rely on a reopening at its lower bound, said so
-    wait = profile({ ...base, certain: false }, "wait", 2, 3, 130);
-    conditionalOnly = wait.length > 0;
-  } else if (opts.includeWait && reopening && via === undefined) wait = profile({ ...base, mode: 2, certain: false }, "wait", 2, 3, 130);
-  for (const j of wait) {
-    j.kind = "wait";
-    j.waitsForReopening = true;
+  const lowerBound = s.closures.some((c) => c.conditional.length > 0);
+  if (lowerBound) {
+    // the conditional class (crossing at a lower-bound reopening): its journeys that beat every confirmed one
+    const bestCertain = main.reduce((m, j) => Math.min(m, j.uncertain ? Infinity : j.arrival), Infinity);
+    const cond = profile({ ...base, certain: false }, "wait", 2, 4, 130).filter((j) => j.uncertain && j.arrival < bestCertain);
+    wait.push(...cond);
+    conditionalOnly = !main.some((j) => !j.uncertain) && cond.length > 0;
   }
+  if (opts.includeWait && reopening && via === undefined) for (const j of profile({ ...base, mode: 2, certain: false }, "wait", 2, 3, 130)) if (!wait.some((k) => k.id === j.id)) wait.push(j);
+  for (const j of wait) j.kind = "wait";
   for (const [id, v] of journeys) if (t - v.at > 30 * 60_000) journeys.delete(id);
   // keep the real choices: an option another one beats on every count goes, unless it uses a corridor no better
   // option uses (then it is kept, flagged dominated, after the others)
@@ -1600,6 +1623,7 @@ export function plan(fromQ: string, toQ: string, after = Date.now(), limit = 4, 
   const pick = out.find((j) => !j.uncertain);
   for (const j of out) if (j === pick) j.fastest = true; else delete j.fastest;
   const ms = Math.round((performance.now() - t0) * 10) / 10;
+  if (cut) incomplete.push("the search stopped at its time budget: the best journey is exact, later alternatives may be missing");
   return {
     from: place(from),
     to: place(to),
