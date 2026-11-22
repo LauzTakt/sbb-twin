@@ -1,0 +1,2175 @@
+{
+ "summary": {
+  "after": {
+   "W1": true,
+   "W1violations": 0,
+   "W1seen18823": [],
+   "W2": true,
+   "W2offered": [
+    {
+     "snapshot": "10:57",
+     "od": "8503206>8503209",
+     "leg": "Wädenswil 11:07:00 -> Pfäffikon SZ 11:19:00",
+     "planned": "11:07:00 -> 11:19:00",
+     "uncertain": false,
+     "depErrorSec": -46,
+     "arrErrorSec": -95
+    },
+    {
+     "snapshot": "10:57",
+     "od": "8503206>8503209",
+     "leg": "Wädenswil 11:07:00 -> Pfäffikon SZ 11:19:00",
+     "planned": "11:07:00 -> 11:19:00",
+     "uncertain": false,
+     "depErrorSec": -46,
+     "arrErrorSec": -95
+    },
+    {
+     "snapshot": "11:02",
+     "od": "8503206>8503209",
+     "leg": "Wädenswil 11:07:00 -> Pfäffikon SZ 11:19:00",
+     "planned": "11:07:00 -> 11:19:00",
+     "uncertain": false,
+     "depErrorSec": -46,
+     "arrErrorSec": -95
+    }
+   ]
+  }
+ },
+ "witnesses": {
+  "18823": {
+   "day": "2026-09-10",
+   "wadenswil_arr_real": "07:08:02",
+   "pfaeffikon": "cancelled"
+  },
+  "18839": {
+   "day": "2026-09-10",
+   "dep_real": "11:07:46",
+   "arr_real": "11:20:35",
+   "dep_planned": "11:07",
+   "arr_planned": "11:19"
+  }
+ },
+ "results": {
+  "after": {
+   "snapshots": [
+    {
+     "at": "10:57",
+     "virtualNow": "10:57:00",
+     "note": "after 10:53/10:55: limited from 11:00, S8/IR35 run",
+     "stepsDone": [
+      {
+       "at": 1789011780000,
+       "note": "VIA: interrupted, overhead line fault, end unknown"
+      },
+      {
+       "at": 1789016040000,
+       "note": "TCC: replacement buses are being sought"
+      },
+      {
+       "at": 1789016160000,
+       "note": "TCC: long-distance trains diverted (the twin turns them back before the section)"
+      },
+      {
+       "at": 1789016280000,
+       "note": "TCC: S2, S8 and S25 cancelled between Wädenswil and Pfäffikon SZ"
+      },
+      {
+       "at": 1789017180000,
+       "note": "TCC: shuttle bus, Wädenswil at :10, Pfäffikon SZ at :40"
+      },
+      {
+       "at": 1789017420000,
+       "note": "VIA: at least until 12:00"
+      },
+      {
+       "at": 1789021920000,
+       "note": "TCC: new bus times, Wädenswil :15 and :50, Pfäffikon SZ :22 and :42"
+      },
+      {
+       "at": 1789029300000,
+       "note": "VIA: at least until 11:00"
+      },
+      {
+       "at": 1789030380000,
+       "note": "VIA: limited service from 11:00, at least until 19:00"
+      },
+      {
+       "at": 1789030500000,
+       "note": "TCC: from 11:00 S2, S25 and IC3 stay cancelled, the S8 and IR35 run; no more buses from 11:00"
+      }
+     ],
+     "queries": [
+      {
+       "frm": "8503000",
+       "to": "8503209",
+       "after": "10:57:00",
+       "status": 200,
+       "snapshotId": "s-6f6c6cedbbcb",
+       "error": null,
+       "journeys": [
+        {
+         "dep": "11:12:00",
+         "arr": "11:39:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "IR35 2365 Zürich HB 11:12:00 -> Pfäffikon SZ 11:39:00"
+         ]
+        },
+        {
+         "dep": "11:24:00",
+         "arr": "12:11:00",
+         "changes": 1,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S5 18541 Zürich HB 11:24:00 -> Rapperswil SG 12:01:00",
+          "S40 16944 Rapperswil SG 12:06:00 -> Pfäffikon SZ 12:11:00"
+         ]
+        },
+        {
+         "dep": "11:24:00",
+         "arr": "12:15:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S5 18541 Zürich HB 11:24:00 -> Pfäffikon SZ 12:15:00"
+         ]
+        },
+        {
+         "dep": "11:37:00",
+         "arr": "12:19:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18843 Zürich HB 11:37:00 -> Pfäffikon SZ 12:19:00"
+         ]
+        },
+        {
+         "dep": "11:43:00",
+         "arr": "12:19:00",
+         "changes": 1,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S25 20543 Zürich HB 11:43:00 -> Wädenswil 12:00:00",
+          "S8 18843 Wädenswil 12:07:00 -> Pfäffikon SZ 12:19:00"
+         ]
+        },
+        {
+         "dep": "11:54:00",
+         "arr": "12:38:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S5 18543 Zürich HB 11:54:00 -> Pfäffikon SZ 12:38:00"
+         ]
+        }
+       ]
+      },
+      {
+       "frm": "8503000",
+       "to": "8503209",
+       "after": "11:00:00",
+       "status": 200,
+       "snapshotId": "s-6f6c6cedbbcb",
+       "error": null,
+       "journeys": [
+        {
+         "dep": "11:12:00",
+         "arr": "11:39:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "IR35 2365 Zürich HB 11:12:00 -> Pfäffikon SZ 11:39:00"
+         ]
+        },
+        {
+         "dep": "11:24:00",
+         "arr": "12:11:00",
+         "changes": 1,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S5 18541 Zürich HB 11:24:00 -> Rapperswil SG 12:01:00",
+          "S40 16944 Rapperswil SG 12:06:00 -> Pfäffikon SZ 12:11:00"
+         ]
+        },
+        {
+         "dep": "11:24:00",
+         "arr": "12:15:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S5 18541 Zürich HB 11:24:00 -> Pfäffikon SZ 12:15:00"
+         ]
+        },
+        {
+         "dep": "11:37:00",
+         "arr": "12:19:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18843 Zürich HB 11:37:00 -> Pfäffikon SZ 12:19:00"
+         ]
+        },
+        {
+         "dep": "11:43:00",
+         "arr": "12:19:00",
+         "changes": 1,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S25 20543 Zürich HB 11:43:00 -> Wädenswil 12:00:00",
+          "S8 18843 Wädenswil 12:07:00 -> Pfäffikon SZ 12:19:00"
+         ]
+        },
+        {
+         "dep": "11:54:00",
+         "arr": "12:38:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S5 18543 Zürich HB 11:54:00 -> Pfäffikon SZ 12:38:00"
+         ]
+        }
+       ]
+      },
+      {
+       "frm": "8503206",
+       "to": "8503209",
+       "after": "10:57:00",
+       "status": 200,
+       "snapshotId": "s-6f6c6cedbbcb",
+       "error": null,
+       "journeys": [
+        {
+         "dep": "11:07:00",
+         "arr": "11:19:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18839 Wädenswil 11:07:00 -> Pfäffikon SZ 11:19:00"
+         ]
+        },
+        {
+         "dep": "11:31:00",
+         "arr": "11:39:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "IR35 2365 Wädenswil 11:31:00 -> Pfäffikon SZ 11:39:00"
+         ]
+        },
+        {
+         "dep": "11:37:00",
+         "arr": "11:49:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18841 Wädenswil 11:37:00 -> Pfäffikon SZ 11:49:00"
+         ]
+        },
+        {
+         "dep": "12:07:00",
+         "arr": "12:19:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18843 Wädenswil 12:07:00 -> Pfäffikon SZ 12:19:00"
+         ]
+        },
+        {
+         "dep": "12:31:00",
+         "arr": "12:39:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "IR35 2367 Wädenswil 12:31:00 -> Pfäffikon SZ 12:39:00"
+         ]
+        },
+        {
+         "dep": "12:37:00",
+         "arr": "12:49:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18845 Wädenswil 12:37:00 -> Pfäffikon SZ 12:49:00"
+         ]
+        }
+       ]
+      },
+      {
+       "frm": "8503206",
+       "to": "8503209",
+       "after": "11:00:00",
+       "status": 200,
+       "snapshotId": "s-6f6c6cedbbcb",
+       "error": null,
+       "journeys": [
+        {
+         "dep": "11:07:00",
+         "arr": "11:19:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18839 Wädenswil 11:07:00 -> Pfäffikon SZ 11:19:00"
+         ]
+        },
+        {
+         "dep": "11:31:00",
+         "arr": "11:39:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "IR35 2365 Wädenswil 11:31:00 -> Pfäffikon SZ 11:39:00"
+         ]
+        },
+        {
+         "dep": "11:37:00",
+         "arr": "11:49:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18841 Wädenswil 11:37:00 -> Pfäffikon SZ 11:49:00"
+         ]
+        },
+        {
+         "dep": "12:07:00",
+         "arr": "12:19:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18843 Wädenswil 12:07:00 -> Pfäffikon SZ 12:19:00"
+         ]
+        },
+        {
+         "dep": "12:31:00",
+         "arr": "12:39:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "IR35 2367 Wädenswil 12:31:00 -> Pfäffikon SZ 12:39:00"
+         ]
+        },
+        {
+         "dep": "12:37:00",
+         "arr": "12:49:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18845 Wädenswil 12:37:00 -> Pfäffikon SZ 12:49:00"
+         ]
+        }
+       ]
+      },
+      {
+       "frm": "8503202",
+       "to": "8503209",
+       "after": "10:57:00",
+       "status": 200,
+       "snapshotId": "s-6f6c6cedbbcb",
+       "error": null,
+       "journeys": [
+        {
+         "dep": "11:21:00",
+         "arr": "11:39:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "IR35 2365 Thalwil 11:21:00 -> Pfäffikon SZ 11:39:00"
+         ]
+        },
+        {
+         "dep": "11:24:00",
+         "arr": "11:49:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18841 Thalwil 11:24:00 -> Pfäffikon SZ 11:49:00"
+         ]
+        },
+        {
+         "dep": "11:54:00",
+         "arr": "12:19:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18843 Thalwil 11:54:00 -> Pfäffikon SZ 12:19:00"
+         ]
+        },
+        {
+         "dep": "12:21:00",
+         "arr": "12:39:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "IR35 2367 Thalwil 12:21:00 -> Pfäffikon SZ 12:39:00"
+         ]
+        },
+        {
+         "dep": "12:24:00",
+         "arr": "12:49:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18845 Thalwil 12:24:00 -> Pfäffikon SZ 12:49:00"
+         ]
+        },
+        {
+         "dep": "12:54:00",
+         "arr": "13:19:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18847 Thalwil 12:54:00 -> Pfäffikon SZ 13:19:00"
+         ]
+        }
+       ]
+      },
+      {
+       "frm": "8503202",
+       "to": "8503209",
+       "after": "11:00:00",
+       "status": 200,
+       "snapshotId": "s-6f6c6cedbbcb",
+       "error": null,
+       "journeys": [
+        {
+         "dep": "11:21:00",
+         "arr": "11:39:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "IR35 2365 Thalwil 11:21:00 -> Pfäffikon SZ 11:39:00"
+         ]
+        },
+        {
+         "dep": "11:24:00",
+         "arr": "11:49:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18841 Thalwil 11:24:00 -> Pfäffikon SZ 11:49:00"
+         ]
+        },
+        {
+         "dep": "11:54:00",
+         "arr": "12:19:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18843 Thalwil 11:54:00 -> Pfäffikon SZ 12:19:00"
+         ]
+        },
+        {
+         "dep": "12:21:00",
+         "arr": "12:39:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "IR35 2367 Thalwil 12:21:00 -> Pfäffikon SZ 12:39:00"
+         ]
+        },
+        {
+         "dep": "12:24:00",
+         "arr": "12:49:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18845 Thalwil 12:24:00 -> Pfäffikon SZ 12:49:00"
+         ]
+        },
+        {
+         "dep": "12:54:00",
+         "arr": "13:19:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18847 Thalwil 12:54:00 -> Pfäffikon SZ 13:19:00"
+         ]
+        }
+       ]
+      },
+      {
+       "frm": "8503209",
+       "to": "8503206",
+       "after": "10:57:00",
+       "status": 200,
+       "snapshotId": "s-6f6c6cedbbcb",
+       "error": null,
+       "journeys": [
+        {
+         "dep": "11:11:00",
+         "arr": "11:22:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18842 Pfäffikon SZ 11:11:00 -> Wädenswil 11:22:00"
+         ]
+        },
+        {
+         "dep": "11:19:00",
+         "arr": "11:27:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "IR35 2366 Pfäffikon SZ 11:19:00 -> Wädenswil 11:27:00"
+         ]
+        },
+        {
+         "dep": "11:41:00",
+         "arr": "11:52:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18844 Pfäffikon SZ 11:41:00 -> Wädenswil 11:52:00"
+         ]
+        },
+        {
+         "dep": "12:11:00",
+         "arr": "12:22:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18846 Pfäffikon SZ 12:11:00 -> Wädenswil 12:22:00"
+         ]
+        },
+        {
+         "dep": "12:19:00",
+         "arr": "12:27:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "IR35 2368 Pfäffikon SZ 12:19:00 -> Wädenswil 12:27:00"
+         ]
+        },
+        {
+         "dep": "12:41:00",
+         "arr": "12:52:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18848 Pfäffikon SZ 12:41:00 -> Wädenswil 12:52:00"
+         ]
+        }
+       ]
+      },
+      {
+       "frm": "8503209",
+       "to": "8503206",
+       "after": "11:00:00",
+       "status": 200,
+       "snapshotId": "s-bcb90a4f3b52",
+       "error": null,
+       "journeys": [
+        {
+         "dep": "11:11:00",
+         "arr": "11:22:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18842 Pfäffikon SZ 11:11:00 -> Wädenswil 11:22:00"
+         ]
+        },
+        {
+         "dep": "11:19:00",
+         "arr": "11:27:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "IR35 2366 Pfäffikon SZ 11:19:00 -> Wädenswil 11:27:00"
+         ]
+        },
+        {
+         "dep": "11:41:00",
+         "arr": "11:52:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18844 Pfäffikon SZ 11:41:00 -> Wädenswil 11:52:00"
+         ]
+        },
+        {
+         "dep": "12:11:00",
+         "arr": "12:22:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18846 Pfäffikon SZ 12:11:00 -> Wädenswil 12:22:00"
+         ]
+        },
+        {
+         "dep": "12:19:00",
+         "arr": "12:27:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "IR35 2368 Pfäffikon SZ 12:19:00 -> Wädenswil 12:27:00"
+         ]
+        },
+        {
+         "dep": "12:41:00",
+         "arr": "12:52:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18848 Pfäffikon SZ 12:41:00 -> Wädenswil 12:52:00"
+         ]
+        }
+       ]
+      },
+      {
+       "frm": "8503209",
+       "to": "8503000",
+       "after": "10:57:00",
+       "status": 200,
+       "snapshotId": "s-bcb90a4f3b52",
+       "error": null,
+       "journeys": [
+        {
+         "dep": "11:19:00",
+         "arr": "11:48:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "IR35 2366 Pfäffikon SZ 11:19:00 -> Zürich HB 11:48:00"
+         ]
+        },
+        {
+         "dep": "11:22:00",
+         "arr": "12:05:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S5 18544 Pfäffikon SZ 11:22:00 -> Zürich HB 12:05:00"
+         ]
+        },
+        {
+         "dep": "11:41:00",
+         "arr": "12:23:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18844 Pfäffikon SZ 11:41:00 -> Zürich HB 12:23:00"
+         ]
+        },
+        {
+         "dep": "11:51:00",
+         "arr": "12:35:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S5 18546 Pfäffikon SZ 11:51:00 -> Zürich HB 12:35:00"
+         ]
+        },
+        {
+         "dep": "11:54:00",
+         "arr": "12:47:00",
+         "changes": 1,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "IRVAE 2021 Pfäffikon SZ 11:54:00 -> Rapperswil SG 12:03:00",
+          "S7 18746 Rapperswil SG 12:09:00 -> Zürich HB 12:47:00"
+         ]
+        },
+        {
+         "dep": "12:19:00",
+         "arr": "12:48:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "IR35 2368 Pfäffikon SZ 12:19:00 -> Zürich HB 12:48:00"
+         ]
+        }
+       ]
+      },
+      {
+       "frm": "8503209",
+       "to": "8503000",
+       "after": "11:00:00",
+       "status": 200,
+       "snapshotId": "s-bcb90a4f3b52",
+       "error": null,
+       "journeys": [
+        {
+         "dep": "11:19:00",
+         "arr": "11:48:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "IR35 2366 Pfäffikon SZ 11:19:00 -> Zürich HB 11:48:00"
+         ]
+        },
+        {
+         "dep": "11:22:00",
+         "arr": "12:05:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S5 18544 Pfäffikon SZ 11:22:00 -> Zürich HB 12:05:00"
+         ]
+        },
+        {
+         "dep": "11:41:00",
+         "arr": "12:23:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18844 Pfäffikon SZ 11:41:00 -> Zürich HB 12:23:00"
+         ]
+        },
+        {
+         "dep": "11:51:00",
+         "arr": "12:35:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S5 18546 Pfäffikon SZ 11:51:00 -> Zürich HB 12:35:00"
+         ]
+        },
+        {
+         "dep": "11:54:00",
+         "arr": "12:47:00",
+         "changes": 1,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "IRVAE 2021 Pfäffikon SZ 11:54:00 -> Rapperswil SG 12:03:00",
+          "S7 18746 Rapperswil SG 12:09:00 -> Zürich HB 12:47:00"
+         ]
+        },
+        {
+         "dep": "12:19:00",
+         "arr": "12:48:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "IR35 2368 Pfäffikon SZ 12:19:00 -> Zürich HB 12:48:00"
+         ]
+        }
+       ]
+      },
+      {
+       "frm": "8503000",
+       "to": "8503206",
+       "after": "10:57:00",
+       "status": 200,
+       "snapshotId": "s-bcb90a4f3b52",
+       "error": null,
+       "journeys": [
+        {
+         "dep": "11:12:00",
+         "arr": "11:31:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "IR35 2365 Zürich HB 11:12:00 -> Wädenswil 11:31:00"
+         ]
+        },
+        {
+         "dep": "11:17:00",
+         "arr": "11:41:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S2 18241 Zürich HB 11:17:00 -> Wädenswil 11:41:00"
+         ]
+        },
+        {
+         "dep": "11:43:00",
+         "arr": "12:00:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S25 20543 Zürich HB 11:43:00 -> Wädenswil 12:00:00"
+         ]
+        },
+        {
+         "dep": "11:47:00",
+         "arr": "12:11:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S2 18243 Zürich HB 11:47:00 -> Wädenswil 12:11:00"
+         ]
+        },
+        {
+         "dep": "12:12:00",
+         "arr": "12:31:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "IR35 2367 Zürich HB 12:12:00 -> Wädenswil 12:31:00"
+         ]
+        },
+        {
+         "dep": "12:17:00",
+         "arr": "12:41:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S2 18245 Zürich HB 12:17:00 -> Wädenswil 12:41:00"
+         ]
+        }
+       ]
+      },
+      {
+       "frm": "8503000",
+       "to": "8503206",
+       "after": "11:00:00",
+       "status": 200,
+       "snapshotId": "s-bcb90a4f3b52",
+       "error": null,
+       "journeys": [
+        {
+         "dep": "11:12:00",
+         "arr": "11:31:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "IR35 2365 Zürich HB 11:12:00 -> Wädenswil 11:31:00"
+         ]
+        },
+        {
+         "dep": "11:17:00",
+         "arr": "11:41:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S2 18241 Zürich HB 11:17:00 -> Wädenswil 11:41:00"
+         ]
+        },
+        {
+         "dep": "11:43:00",
+         "arr": "12:00:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S25 20543 Zürich HB 11:43:00 -> Wädenswil 12:00:00"
+         ]
+        },
+        {
+         "dep": "11:47:00",
+         "arr": "12:11:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S2 18243 Zürich HB 11:47:00 -> Wädenswil 12:11:00"
+         ]
+        },
+        {
+         "dep": "12:12:00",
+         "arr": "12:31:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "IR35 2367 Zürich HB 12:12:00 -> Wädenswil 12:31:00"
+         ]
+        },
+        {
+         "dep": "12:17:00",
+         "arr": "12:41:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S2 18245 Zürich HB 12:17:00 -> Wädenswil 12:41:00"
+         ]
+        }
+       ]
+      },
+      {
+       "frm": "8503202",
+       "to": "8503206",
+       "after": "10:57:00",
+       "status": 200,
+       "snapshotId": "s-bcb90a4f3b52",
+       "error": null,
+       "journeys": [
+        {
+         "dep": "11:01:00",
+         "arr": "11:11:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S2 18239 Thalwil 11:01:00 -> Wädenswil 11:11:00"
+         ]
+        },
+        {
+         "dep": "11:21:00",
+         "arr": "11:31:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "IR35 2365 Thalwil 11:21:00 -> Wädenswil 11:31:00"
+         ]
+        },
+        {
+         "dep": "11:24:00",
+         "arr": "11:37:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18841 Thalwil 11:24:00 -> Wädenswil 11:37:00"
+         ]
+        },
+        {
+         "dep": "11:31:00",
+         "arr": "11:41:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S2 18241 Thalwil 11:31:00 -> Wädenswil 11:41:00"
+         ]
+        },
+        {
+         "dep": "11:54:00",
+         "arr": "12:07:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18843 Thalwil 11:54:00 -> Wädenswil 12:07:00"
+         ]
+        },
+        {
+         "dep": "12:01:00",
+         "arr": "12:11:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S2 18243 Thalwil 12:01:00 -> Wädenswil 12:11:00"
+         ]
+        }
+       ]
+      },
+      {
+       "frm": "8503202",
+       "to": "8503206",
+       "after": "11:00:00",
+       "status": 200,
+       "snapshotId": "s-bcb90a4f3b52",
+       "error": null,
+       "journeys": [
+        {
+         "dep": "11:01:00",
+         "arr": "11:11:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S2 18239 Thalwil 11:01:00 -> Wädenswil 11:11:00"
+         ]
+        },
+        {
+         "dep": "11:21:00",
+         "arr": "11:31:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "IR35 2365 Thalwil 11:21:00 -> Wädenswil 11:31:00"
+         ]
+        },
+        {
+         "dep": "11:24:00",
+         "arr": "11:37:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18841 Thalwil 11:24:00 -> Wädenswil 11:37:00"
+         ]
+        },
+        {
+         "dep": "11:31:00",
+         "arr": "11:41:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S2 18241 Thalwil 11:31:00 -> Wädenswil 11:41:00"
+         ]
+        },
+        {
+         "dep": "11:54:00",
+         "arr": "12:07:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18843 Thalwil 11:54:00 -> Wädenswil 12:07:00"
+         ]
+        },
+        {
+         "dep": "12:01:00",
+         "arr": "12:11:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S2 18243 Thalwil 12:01:00 -> Wädenswil 12:11:00"
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "at": "11:02",
+     "virtualNow": "11:02:00",
+     "note": "after the 11:00 partial reopening",
+     "stepsDone": [
+      {
+       "at": 1789011780000,
+       "note": "VIA: interrupted, overhead line fault, end unknown"
+      },
+      {
+       "at": 1789016040000,
+       "note": "TCC: replacement buses are being sought"
+      },
+      {
+       "at": 1789016160000,
+       "note": "TCC: long-distance trains diverted (the twin turns them back before the section)"
+      },
+      {
+       "at": 1789016280000,
+       "note": "TCC: S2, S8 and S25 cancelled between Wädenswil and Pfäffikon SZ"
+      },
+      {
+       "at": 1789017180000,
+       "note": "TCC: shuttle bus, Wädenswil at :10, Pfäffikon SZ at :40"
+      },
+      {
+       "at": 1789017420000,
+       "note": "VIA: at least until 12:00"
+      },
+      {
+       "at": 1789021920000,
+       "note": "TCC: new bus times, Wädenswil :15 and :50, Pfäffikon SZ :22 and :42"
+      },
+      {
+       "at": 1789029300000,
+       "note": "VIA: at least until 11:00"
+      },
+      {
+       "at": 1789030380000,
+       "note": "VIA: limited service from 11:00, at least until 19:00"
+      },
+      {
+       "at": 1789030500000,
+       "note": "TCC: from 11:00 S2, S25 and IC3 stay cancelled, the S8 and IR35 run; no more buses from 11:00"
+      }
+     ],
+     "queries": [
+      {
+       "frm": "8503000",
+       "to": "8503209",
+       "after": "11:02:00",
+       "status": 200,
+       "snapshotId": "s-88912a38fbfc",
+       "error": null,
+       "journeys": [
+        {
+         "dep": "11:12:00",
+         "arr": "11:39:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "IR35 2365 Zürich HB 11:12:00 -> Pfäffikon SZ 11:39:00"
+         ]
+        },
+        {
+         "dep": "11:24:00",
+         "arr": "12:11:00",
+         "changes": 1,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S5 18541 Zürich HB 11:24:00 -> Rapperswil SG 12:01:00",
+          "S40 16944 Rapperswil SG 12:06:00 -> Pfäffikon SZ 12:11:00"
+         ]
+        },
+        {
+         "dep": "11:24:00",
+         "arr": "12:15:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S5 18541 Zürich HB 11:24:00 -> Pfäffikon SZ 12:15:00"
+         ]
+        },
+        {
+         "dep": "11:37:00",
+         "arr": "12:19:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18843 Zürich HB 11:37:00 -> Pfäffikon SZ 12:19:00"
+         ]
+        },
+        {
+         "dep": "11:43:00",
+         "arr": "12:19:00",
+         "changes": 1,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S25 20543 Zürich HB 11:43:00 -> Wädenswil 12:00:00",
+          "S8 18843 Wädenswil 12:07:00 -> Pfäffikon SZ 12:19:00"
+         ]
+        },
+        {
+         "dep": "11:54:00",
+         "arr": "12:38:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S5 18543 Zürich HB 11:54:00 -> Pfäffikon SZ 12:38:00"
+         ]
+        }
+       ]
+      },
+      {
+       "frm": "8503000",
+       "to": "8503209",
+       "after": "11:00:00",
+       "status": 200,
+       "snapshotId": "s-88912a38fbfc",
+       "error": null,
+       "journeys": [
+        {
+         "dep": "11:12:00",
+         "arr": "11:39:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "IR35 2365 Zürich HB 11:12:00 -> Pfäffikon SZ 11:39:00"
+         ]
+        },
+        {
+         "dep": "11:24:00",
+         "arr": "12:11:00",
+         "changes": 1,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S5 18541 Zürich HB 11:24:00 -> Rapperswil SG 12:01:00",
+          "S40 16944 Rapperswil SG 12:06:00 -> Pfäffikon SZ 12:11:00"
+         ]
+        },
+        {
+         "dep": "11:24:00",
+         "arr": "12:15:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S5 18541 Zürich HB 11:24:00 -> Pfäffikon SZ 12:15:00"
+         ]
+        },
+        {
+         "dep": "11:37:00",
+         "arr": "12:19:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18843 Zürich HB 11:37:00 -> Pfäffikon SZ 12:19:00"
+         ]
+        },
+        {
+         "dep": "11:43:00",
+         "arr": "12:19:00",
+         "changes": 1,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S25 20543 Zürich HB 11:43:00 -> Wädenswil 12:00:00",
+          "S8 18843 Wädenswil 12:07:00 -> Pfäffikon SZ 12:19:00"
+         ]
+        },
+        {
+         "dep": "11:54:00",
+         "arr": "12:38:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S5 18543 Zürich HB 11:54:00 -> Pfäffikon SZ 12:38:00"
+         ]
+        }
+       ]
+      },
+      {
+       "frm": "8503206",
+       "to": "8503209",
+       "after": "11:02:00",
+       "status": 200,
+       "snapshotId": "s-88912a38fbfc",
+       "error": null,
+       "journeys": [
+        {
+         "dep": "11:07:00",
+         "arr": "11:19:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18839 Wädenswil 11:07:00 -> Pfäffikon SZ 11:19:00"
+         ]
+        },
+        {
+         "dep": "11:31:00",
+         "arr": "11:39:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "IR35 2365 Wädenswil 11:31:00 -> Pfäffikon SZ 11:39:00"
+         ]
+        },
+        {
+         "dep": "11:37:00",
+         "arr": "11:49:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18841 Wädenswil 11:37:00 -> Pfäffikon SZ 11:49:00"
+         ]
+        },
+        {
+         "dep": "12:07:00",
+         "arr": "12:19:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18843 Wädenswil 12:07:00 -> Pfäffikon SZ 12:19:00"
+         ]
+        },
+        {
+         "dep": "12:31:00",
+         "arr": "12:39:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "IR35 2367 Wädenswil 12:31:00 -> Pfäffikon SZ 12:39:00"
+         ]
+        },
+        {
+         "dep": "12:37:00",
+         "arr": "12:49:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18845 Wädenswil 12:37:00 -> Pfäffikon SZ 12:49:00"
+         ]
+        }
+       ]
+      },
+      {
+       "frm": "8503206",
+       "to": "8503209",
+       "after": "11:00:00",
+       "status": 200,
+       "snapshotId": "s-88912a38fbfc",
+       "error": null,
+       "journeys": [
+        {
+         "dep": "11:07:00",
+         "arr": "11:19:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18839 Wädenswil 11:07:00 -> Pfäffikon SZ 11:19:00"
+         ]
+        },
+        {
+         "dep": "11:31:00",
+         "arr": "11:39:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "IR35 2365 Wädenswil 11:31:00 -> Pfäffikon SZ 11:39:00"
+         ]
+        },
+        {
+         "dep": "11:37:00",
+         "arr": "11:49:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18841 Wädenswil 11:37:00 -> Pfäffikon SZ 11:49:00"
+         ]
+        },
+        {
+         "dep": "12:07:00",
+         "arr": "12:19:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18843 Wädenswil 12:07:00 -> Pfäffikon SZ 12:19:00"
+         ]
+        },
+        {
+         "dep": "12:31:00",
+         "arr": "12:39:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "IR35 2367 Wädenswil 12:31:00 -> Pfäffikon SZ 12:39:00"
+         ]
+        },
+        {
+         "dep": "12:37:00",
+         "arr": "12:49:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18845 Wädenswil 12:37:00 -> Pfäffikon SZ 12:49:00"
+         ]
+        }
+       ]
+      },
+      {
+       "frm": "8503202",
+       "to": "8503209",
+       "after": "11:02:00",
+       "status": 200,
+       "snapshotId": "s-88912a38fbfc",
+       "error": null,
+       "journeys": [
+        {
+         "dep": "11:21:00",
+         "arr": "11:39:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "IR35 2365 Thalwil 11:21:00 -> Pfäffikon SZ 11:39:00"
+         ]
+        },
+        {
+         "dep": "11:24:00",
+         "arr": "11:49:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18841 Thalwil 11:24:00 -> Pfäffikon SZ 11:49:00"
+         ]
+        },
+        {
+         "dep": "11:54:00",
+         "arr": "12:19:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18843 Thalwil 11:54:00 -> Pfäffikon SZ 12:19:00"
+         ]
+        },
+        {
+         "dep": "12:21:00",
+         "arr": "12:39:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "IR35 2367 Thalwil 12:21:00 -> Pfäffikon SZ 12:39:00"
+         ]
+        },
+        {
+         "dep": "12:24:00",
+         "arr": "12:49:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18845 Thalwil 12:24:00 -> Pfäffikon SZ 12:49:00"
+         ]
+        },
+        {
+         "dep": "12:54:00",
+         "arr": "13:19:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18847 Thalwil 12:54:00 -> Pfäffikon SZ 13:19:00"
+         ]
+        }
+       ]
+      },
+      {
+       "frm": "8503202",
+       "to": "8503209",
+       "after": "11:00:00",
+       "status": 200,
+       "snapshotId": "s-88912a38fbfc",
+       "error": null,
+       "journeys": [
+        {
+         "dep": "11:21:00",
+         "arr": "11:39:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "IR35 2365 Thalwil 11:21:00 -> Pfäffikon SZ 11:39:00"
+         ]
+        },
+        {
+         "dep": "11:24:00",
+         "arr": "11:49:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18841 Thalwil 11:24:00 -> Pfäffikon SZ 11:49:00"
+         ]
+        },
+        {
+         "dep": "11:54:00",
+         "arr": "12:19:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18843 Thalwil 11:54:00 -> Pfäffikon SZ 12:19:00"
+         ]
+        },
+        {
+         "dep": "12:21:00",
+         "arr": "12:39:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "IR35 2367 Thalwil 12:21:00 -> Pfäffikon SZ 12:39:00"
+         ]
+        },
+        {
+         "dep": "12:24:00",
+         "arr": "12:49:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18845 Thalwil 12:24:00 -> Pfäffikon SZ 12:49:00"
+         ]
+        },
+        {
+         "dep": "12:54:00",
+         "arr": "13:19:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18847 Thalwil 12:54:00 -> Pfäffikon SZ 13:19:00"
+         ]
+        }
+       ]
+      },
+      {
+       "frm": "8503209",
+       "to": "8503206",
+       "after": "11:02:00",
+       "status": 200,
+       "snapshotId": "s-88912a38fbfc",
+       "error": null,
+       "journeys": [
+        {
+         "dep": "11:11:00",
+         "arr": "11:22:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18842 Pfäffikon SZ 11:11:00 -> Wädenswil 11:22:00"
+         ]
+        },
+        {
+         "dep": "11:19:00",
+         "arr": "11:27:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "IR35 2366 Pfäffikon SZ 11:19:00 -> Wädenswil 11:27:00"
+         ]
+        },
+        {
+         "dep": "11:41:00",
+         "arr": "11:52:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18844 Pfäffikon SZ 11:41:00 -> Wädenswil 11:52:00"
+         ]
+        },
+        {
+         "dep": "12:11:00",
+         "arr": "12:22:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18846 Pfäffikon SZ 12:11:00 -> Wädenswil 12:22:00"
+         ]
+        },
+        {
+         "dep": "12:19:00",
+         "arr": "12:27:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "IR35 2368 Pfäffikon SZ 12:19:00 -> Wädenswil 12:27:00"
+         ]
+        },
+        {
+         "dep": "12:41:00",
+         "arr": "12:52:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18848 Pfäffikon SZ 12:41:00 -> Wädenswil 12:52:00"
+         ]
+        }
+       ]
+      },
+      {
+       "frm": "8503209",
+       "to": "8503206",
+       "after": "11:00:00",
+       "status": 200,
+       "snapshotId": "s-88912a38fbfc",
+       "error": null,
+       "journeys": [
+        {
+         "dep": "11:11:00",
+         "arr": "11:22:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18842 Pfäffikon SZ 11:11:00 -> Wädenswil 11:22:00"
+         ]
+        },
+        {
+         "dep": "11:19:00",
+         "arr": "11:27:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "IR35 2366 Pfäffikon SZ 11:19:00 -> Wädenswil 11:27:00"
+         ]
+        },
+        {
+         "dep": "11:41:00",
+         "arr": "11:52:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18844 Pfäffikon SZ 11:41:00 -> Wädenswil 11:52:00"
+         ]
+        },
+        {
+         "dep": "12:11:00",
+         "arr": "12:22:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18846 Pfäffikon SZ 12:11:00 -> Wädenswil 12:22:00"
+         ]
+        },
+        {
+         "dep": "12:19:00",
+         "arr": "12:27:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "IR35 2368 Pfäffikon SZ 12:19:00 -> Wädenswil 12:27:00"
+         ]
+        },
+        {
+         "dep": "12:41:00",
+         "arr": "12:52:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18848 Pfäffikon SZ 12:41:00 -> Wädenswil 12:52:00"
+         ]
+        }
+       ]
+      },
+      {
+       "frm": "8503209",
+       "to": "8503000",
+       "after": "11:02:00",
+       "status": 200,
+       "snapshotId": "s-88912a38fbfc",
+       "error": null,
+       "journeys": [
+        {
+         "dep": "11:19:00",
+         "arr": "11:48:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "IR35 2366 Pfäffikon SZ 11:19:00 -> Zürich HB 11:48:00"
+         ]
+        },
+        {
+         "dep": "11:22:00",
+         "arr": "12:05:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S5 18544 Pfäffikon SZ 11:22:00 -> Zürich HB 12:05:00"
+         ]
+        },
+        {
+         "dep": "11:41:00",
+         "arr": "12:23:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18844 Pfäffikon SZ 11:41:00 -> Zürich HB 12:23:00"
+         ]
+        },
+        {
+         "dep": "11:51:00",
+         "arr": "12:35:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S5 18546 Pfäffikon SZ 11:51:00 -> Zürich HB 12:35:00"
+         ]
+        },
+        {
+         "dep": "11:54:00",
+         "arr": "12:47:00",
+         "changes": 1,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "IRVAE 2021 Pfäffikon SZ 11:54:00 -> Rapperswil SG 12:03:00",
+          "S7 18746 Rapperswil SG 12:09:00 -> Zürich HB 12:47:00"
+         ]
+        },
+        {
+         "dep": "12:19:00",
+         "arr": "12:48:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "IR35 2368 Pfäffikon SZ 12:19:00 -> Zürich HB 12:48:00"
+         ]
+        }
+       ]
+      },
+      {
+       "frm": "8503209",
+       "to": "8503000",
+       "after": "11:00:00",
+       "status": 200,
+       "snapshotId": "s-88912a38fbfc",
+       "error": null,
+       "journeys": [
+        {
+         "dep": "11:19:00",
+         "arr": "11:48:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "IR35 2366 Pfäffikon SZ 11:19:00 -> Zürich HB 11:48:00"
+         ]
+        },
+        {
+         "dep": "11:22:00",
+         "arr": "12:05:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S5 18544 Pfäffikon SZ 11:22:00 -> Zürich HB 12:05:00"
+         ]
+        },
+        {
+         "dep": "11:41:00",
+         "arr": "12:23:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18844 Pfäffikon SZ 11:41:00 -> Zürich HB 12:23:00"
+         ]
+        },
+        {
+         "dep": "11:51:00",
+         "arr": "12:35:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S5 18546 Pfäffikon SZ 11:51:00 -> Zürich HB 12:35:00"
+         ]
+        },
+        {
+         "dep": "11:54:00",
+         "arr": "12:47:00",
+         "changes": 1,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "IRVAE 2021 Pfäffikon SZ 11:54:00 -> Rapperswil SG 12:03:00",
+          "S7 18746 Rapperswil SG 12:09:00 -> Zürich HB 12:47:00"
+         ]
+        },
+        {
+         "dep": "12:19:00",
+         "arr": "12:48:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "IR35 2368 Pfäffikon SZ 12:19:00 -> Zürich HB 12:48:00"
+         ]
+        }
+       ]
+      },
+      {
+       "frm": "8503000",
+       "to": "8503206",
+       "after": "11:02:00",
+       "status": 200,
+       "snapshotId": "s-88912a38fbfc",
+       "error": null,
+       "journeys": [
+        {
+         "dep": "11:12:00",
+         "arr": "11:31:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "IR35 2365 Zürich HB 11:12:00 -> Wädenswil 11:31:00"
+         ]
+        },
+        {
+         "dep": "11:17:00",
+         "arr": "11:41:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S2 18241 Zürich HB 11:17:00 -> Wädenswil 11:41:00"
+         ]
+        },
+        {
+         "dep": "11:43:00",
+         "arr": "12:00:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S25 20543 Zürich HB 11:43:00 -> Wädenswil 12:00:00"
+         ]
+        },
+        {
+         "dep": "11:47:00",
+         "arr": "12:11:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S2 18243 Zürich HB 11:47:00 -> Wädenswil 12:11:00"
+         ]
+        },
+        {
+         "dep": "12:12:00",
+         "arr": "12:31:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "IR35 2367 Zürich HB 12:12:00 -> Wädenswil 12:31:00"
+         ]
+        },
+        {
+         "dep": "12:17:00",
+         "arr": "12:41:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S2 18245 Zürich HB 12:17:00 -> Wädenswil 12:41:00"
+         ]
+        }
+       ]
+      },
+      {
+       "frm": "8503000",
+       "to": "8503206",
+       "after": "11:00:00",
+       "status": 200,
+       "snapshotId": "s-88912a38fbfc",
+       "error": null,
+       "journeys": [
+        {
+         "dep": "11:12:00",
+         "arr": "11:31:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "IR35 2365 Zürich HB 11:12:00 -> Wädenswil 11:31:00"
+         ]
+        },
+        {
+         "dep": "11:17:00",
+         "arr": "11:41:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S2 18241 Zürich HB 11:17:00 -> Wädenswil 11:41:00"
+         ]
+        },
+        {
+         "dep": "11:43:00",
+         "arr": "12:00:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S25 20543 Zürich HB 11:43:00 -> Wädenswil 12:00:00"
+         ]
+        },
+        {
+         "dep": "11:47:00",
+         "arr": "12:11:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S2 18243 Zürich HB 11:47:00 -> Wädenswil 12:11:00"
+         ]
+        },
+        {
+         "dep": "12:12:00",
+         "arr": "12:31:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "IR35 2367 Zürich HB 12:12:00 -> Wädenswil 12:31:00"
+         ]
+        },
+        {
+         "dep": "12:17:00",
+         "arr": "12:41:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S2 18245 Zürich HB 12:17:00 -> Wädenswil 12:41:00"
+         ]
+        }
+       ]
+      },
+      {
+       "frm": "8503202",
+       "to": "8503206",
+       "after": "11:02:00",
+       "status": 200,
+       "snapshotId": "s-88912a38fbfc",
+       "error": null,
+       "journeys": [
+        {
+         "dep": "11:21:00",
+         "arr": "11:31:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "IR35 2365 Thalwil 11:21:00 -> Wädenswil 11:31:00"
+         ]
+        },
+        {
+         "dep": "11:24:00",
+         "arr": "11:37:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18841 Thalwil 11:24:00 -> Wädenswil 11:37:00"
+         ]
+        },
+        {
+         "dep": "11:31:00",
+         "arr": "11:41:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S2 18241 Thalwil 11:31:00 -> Wädenswil 11:41:00"
+         ]
+        },
+        {
+         "dep": "11:54:00",
+         "arr": "12:07:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18843 Thalwil 11:54:00 -> Wädenswil 12:07:00"
+         ]
+        },
+        {
+         "dep": "12:01:00",
+         "arr": "12:11:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S2 18243 Thalwil 12:01:00 -> Wädenswil 12:11:00"
+         ]
+        },
+        {
+         "dep": "12:21:00",
+         "arr": "12:31:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "IR35 2367 Thalwil 12:21:00 -> Wädenswil 12:31:00"
+         ]
+        }
+       ]
+      },
+      {
+       "frm": "8503202",
+       "to": "8503206",
+       "after": "11:00:00",
+       "status": 200,
+       "snapshotId": "s-88912a38fbfc",
+       "error": null,
+       "journeys": [
+        {
+         "dep": "11:21:00",
+         "arr": "11:31:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "IR35 2365 Thalwil 11:21:00 -> Wädenswil 11:31:00"
+         ]
+        },
+        {
+         "dep": "11:24:00",
+         "arr": "11:37:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18841 Thalwil 11:24:00 -> Wädenswil 11:37:00"
+         ]
+        },
+        {
+         "dep": "11:31:00",
+         "arr": "11:41:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S2 18241 Thalwil 11:31:00 -> Wädenswil 11:41:00"
+         ]
+        },
+        {
+         "dep": "11:54:00",
+         "arr": "12:07:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S8 18843 Thalwil 11:54:00 -> Wädenswil 12:07:00"
+         ]
+        },
+        {
+         "dep": "12:01:00",
+         "arr": "12:11:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "S2 18243 Thalwil 12:01:00 -> Wädenswil 12:11:00"
+         ]
+        },
+        {
+         "dep": "12:21:00",
+         "arr": "12:31:00",
+         "changes": 0,
+         "uncertain": false,
+         "kind": "best",
+         "legs": [
+          "IR35 2367 Thalwil 12:21:00 -> Wädenswil 12:31:00"
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "W1": {
+    "pass_": true,
+    "violations": []
+   },
+   "W2": {
+    "pass_": true,
+    "offered": [
+     {
+      "snapshot": "10:57",
+      "od": "8503206>8503209",
+      "leg": "Wädenswil 11:07:00 -> Pfäffikon SZ 11:19:00",
+      "planned": "11:07:00 -> 11:19:00",
+      "uncertain": false,
+      "depErrorSec": -46,
+      "arrErrorSec": -95
+     },
+     {
+      "snapshot": "10:57",
+      "od": "8503206>8503209",
+      "leg": "Wädenswil 11:07:00 -> Pfäffikon SZ 11:19:00",
+      "planned": "11:07:00 -> 11:19:00",
+      "uncertain": false,
+      "depErrorSec": -46,
+      "arrErrorSec": -95
+     },
+     {
+      "snapshot": "11:02",
+      "od": "8503206>8503209",
+      "leg": "Wädenswil 11:07:00 -> Pfäffikon SZ 11:19:00",
+      "planned": "11:07:00 -> 11:19:00",
+      "uncertain": false,
+      "depErrorSec": -46,
+      "arrErrorSec": -95
+     },
+     {
+      "snapshot": "11:02",
+      "od": "8503206>8503209",
+      "leg": "Wädenswil 11:07:00 -> Pfäffikon SZ 11:19:00",
+      "planned": "11:07:00 -> 11:19:00",
+      "uncertain": false,
+      "depErrorSec": -46,
+      "arrErrorSec": -95
+     }
+    ]
+   }
+  }
+ },
+ "generatedAt": "2026-11-22T09:19:52.279644+01:00"
+}

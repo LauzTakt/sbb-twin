@@ -103,7 +103,15 @@ def validate(journey, origin, dest, T, net=None, measures=None, reported_changes
                 if ak:
                     arr = net.arr[o][ak[-1]]
             if o is None:
-                errs.append(f"leg {i+1} bus {tid} {f.get('name')} {hms(dep, False)} -> {t.get('name')} {hms(arr, False)}: not a bus of the projected measure (timing model or route differs)")
+                near = []
+                for o2, (tid2, d2) in enumerate(net.occ):
+                    if str(tid2).startswith("EV-"):
+                        for k2, q2 in enumerate(net.quay[o2]):
+                            if net.didok.get(q2) == str(f.get("id")):
+                                near.append(net.dep[o2][k2] - dep)
+                nb = min(near, key=abs) if near else None
+                errs.append(f"leg {i+1} bus {tid} {f.get('name')} {hms(dep, False)} -> {t.get('name')} {hms(arr, False)}: not a bus of the projected measure (timing model or route differs"
+                            + (f"; nearest projected departure there {int(nb):+d}s" if nb is not None else "; no projected bus calls there") + ")")
                 continue
         if o is None:
             if fallback is not None and any(fallback.occ_index.get(c) is not None for c in trip_candidates(tid, l)):

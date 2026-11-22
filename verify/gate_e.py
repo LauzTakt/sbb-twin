@@ -16,7 +16,7 @@ from common import RESULTS, Z, dump, get_json, hms, local_epoch  # noqa: E402
 
 PKL_SEP = os.path.join(HERE, ".cache", "gtfs-20260909-20260910-20260911.pkl")
 W, P, ZH, TH = "8503206", "8503209", "8503000", "8503202"
-ODS = [(ZH, P), (W, P), (TH, P), (P, W), (P, ZH)]
+ODS = [(ZH, P), (W, P), (TH, P), (P, W), (P, ZH), (ZH, W), (TH, W)]
 SNAPSHOTS = [("06:10", "after the 05:43 closure (UNKNOWN)"), ("06:57", "after 06:54 buses sought, 06:56 short turn"),
              ("07:03", "after 06:58 S2/S8/S25 cancelled; S8 18823 due at Wädenswil 07:07"),
              ("07:15", "after 07:13 first bus announcement"), ("08:35", "after 08:32 revised buses"),
@@ -91,11 +91,13 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--twin", action="append", default=[])
     ap.add_argument("--out", default=os.path.join(RESULTS, "gate_e.json"))
+    ap.add_argument("--snapshots", default="", help="comma list of HH:MM to take (default: all)")
     a = ap.parse_args()
     twins = dict(t.split("=", 1) for t in a.twin)
+    snaps = [x for x in SNAPSHOTS if not a.snapshots or x[0] in a.snapshots.split(",")]
     nums = trip_numbers()
     res = {lb: dict(snapshots=[], W1=dict(pass_=True, violations=[]), W2=dict(pass_=False, offered=[])) for lb in twins}
-    for hhmm, note in SNAPSHOTS:
+    for hhmm, note in snaps:
         target = local_epoch("2026-09-10", hhmm)
         while True:
             ts = [clock(b) for b in twins.values()]
@@ -113,7 +115,8 @@ def main():
             for (o, d) in ODS:
                 afters = [now]
                 if hhmm in ("06:10", "06:57", "07:03"):
-                    afters.append(local_epoch("2026-09-10", "06:50"))  # S8 18823 is a candidate from Zürich side
+                    afters.append(local_epoch("2026-09-10", "06:30"))  # S8 18823 (Zürich HB 06:35, Thalwil 06:53) is a candidate
+                    afters.append(local_epoch("2026-09-10", "06:50"))
                 if hhmm in ("10:57", "11:02"):
                     afters.append(local_epoch("2026-09-10", "11:00"))
                 for after in afters:
@@ -131,6 +134,8 @@ def main():
                         for x in ls:
                             # W1: S8 18823 beyond Wädenswil, or any certain crossing before the 11:00 partial reopening
                             cx = leg_crosses(x, crosser) if (x["category"] or "").upper() not in ("EV", "WALK", "B", "BUS") else False
+                            if x["number"] == "18823":
+                                res[lb]["W1"].setdefault("seen", []).append(dict(snapshot=hhmm, od=f"{o}>{d}", leg=f"{x['from_']} {hms(x['dep'], False)} -> {x['to']} {hms(x['arr'], False)}"))
                             if x["number"] == "18823" and x["toId"] != W and x["fromId"] != P:
                                 if x["toId"] == P or cx:
                                     res[lb]["W1"]["violations"].append(dict(snapshot=hhmm, od=f"{o}>{d}", leg=jrec["legs"], uncertain=jrec["uncertain"], why="rides S8 18823 beyond Wädenswil"))
@@ -149,7 +154,7 @@ def main():
     for lb in twins:
         res[lb]["W1"]["pass_"] = not res[lb]["W1"]["violations"]
         res[lb]["W2"]["pass_"] = any(x["od"].startswith(W) and x["leg"].startswith("Wädenswil") for x in res[lb]["W2"]["offered"])
-    summ = {lb: dict(W1=res[lb]["W1"]["pass_"], W1violations=len(res[lb]["W1"]["violations"]), W2=res[lb]["W2"]["pass_"],
+    summ = {lb: dict(W1=res[lb]["W1"]["pass_"], W1violations=len(res[lb]["W1"]["violations"]), W1seen18823=res[lb]["W1"].get("seen", [])[:3], W2=res[lb]["W2"]["pass_"],
                      W2offered=res[lb]["W2"]["offered"][:3]) for lb in twins}
     dump(a.out, dict(summary=summ, witnesses=WITNESS, results=res, generatedAt=datetime.now(Z).isoformat()))
     print(json.dumps(summ, indent=1, ensure_ascii=False))

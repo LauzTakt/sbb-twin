@@ -1,6 +1,6 @@
 {
  "summary": {
-  "runid": "20261122T0902",
+  "runid": "20261122T0913",
   "day": "2026-11-22",
   "times": [
    "09:37",
@@ -11,9 +11,9 @@
   ],
   "eligibility": "scheduled",
   "cases": 217,
-  "startedAt": 1795334557.2052805,
-  "finishedAt": 1795334576.862418,
-  "minLeadMinAtFinish": 34.1,
+  "startedAt": 1795335225.2983453,
+  "finishedAt": 1795335235.7700322,
+  "minLeadMinAtFinish": 23.1,
   "minRefLeadMin": 65.2,
   "leadOk": true,
   "twins": {
@@ -24,7 +24,7 @@
     },
     "resolverDisagreements": 0,
     "invalidJourneys": 1,
-    "journeysValidated": 1238,
+    "journeysValidated": 1244,
     "oracleAgrees": 212
    }
   }
@@ -576,7 +576,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8507000&to=8503000&after=1795336620000&limit=6",
       "status": 200,
-      "ms": 206,
+      "ms": 141,
       "error": null,
       "resolvedFrom": {
        "id": "8507000",
@@ -590,7 +590,7 @@
        "lon": 8.540212,
        "lat": 47.378176
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-231d98bd1f",
@@ -711,6 +711,115 @@
           "expArr": 1795343280,
           "quayDep": "7",
           "quayArr": "33"
+         }
+        ],
+        "modes": [
+         "IC"
+        ]
+       },
+       {
+        "id": "j-d862fa7c16",
+        "dep": 1795340160,
+        "arr": 1795344720,
+        "expDep": 1795340160,
+        "expArr": 1795344720,
+        "transfers": 1,
+        "kind": "best",
+        "uncertain": false,
+        "fastest": false,
+        "legs": [
+         {
+          "trainId": "20261122_ojp-91-16-B.1.TA.541.j26",
+          "line": "IR16",
+          "cat": "IR",
+          "fromId": "8507000",
+          "fromName": "Bern",
+          "dep": 1795340160,
+          "expDep": 1795340160,
+          "toId": "8502113",
+          "toName": "Aarau",
+          "arr": 1795342380,
+          "expArr": 1795342380,
+          "quayDep": "12",
+          "quayArr": "2"
+         },
+         {
+          "trainId": "20261122_ojp-91-37.1.TA.2417.j26",
+          "line": "IR37",
+          "cat": "IR",
+          "fromId": "8502113",
+          "fromName": "Aarau",
+          "dep": 1795342980,
+          "expDep": 1795342980,
+          "toId": "8503000",
+          "toName": "Zürich HB",
+          "arr": 1795344720,
+          "expArr": 1795344720,
+          "quayDep": "3",
+          "quayArr": "15"
+         }
+        ],
+        "modes": [
+         "IR",
+         "IR"
+        ]
+       },
+       {
+        "id": "j-1af1c63f66",
+        "dep": 1795340160,
+        "arr": 1795344840,
+        "expDep": 1795340160,
+        "expArr": 1795344840,
+        "transfers": 0,
+        "kind": "best",
+        "uncertain": false,
+        "fastest": false,
+        "legs": [
+         {
+          "trainId": "20261122_ojp-91-16-B.1.TA.541.j26",
+          "line": "IR16",
+          "cat": "IR",
+          "fromId": "8507000",
+          "fromName": "Bern",
+          "dep": 1795340160,
+          "expDep": 1795340160,
+          "toId": "8503000",
+          "toName": "Zürich HB",
+          "arr": 1795344840,
+          "expArr": 1795344840,
+          "quayDep": "12",
+          "quayArr": "14"
+         }
+        ],
+        "modes": [
+         "IR"
+        ]
+       },
+       {
+        "id": "j-d74a9a7b8a",
+        "dep": 1795341720,
+        "arr": 1795345080,
+        "expDep": 1795341720,
+        "expArr": 1795345080,
+        "transfers": 0,
+        "kind": "best",
+        "uncertain": false,
+        "fastest": false,
+        "legs": [
+         {
+          "trainId": "20261122_ojp-91-8-E.1.TA.759.j26",
+          "line": "IC8",
+          "cat": "IC",
+          "fromId": "8507000",
+          "fromName": "Bern",
+          "dep": 1795341720,
+          "expDep": 1795341720,
+          "toId": "8503000",
+          "toName": "Zürich HB",
+          "arr": 1795345080,
+          "expArr": 1795345080,
+          "quayDep": "2",
+          "quayArr": "34"
          }
         ],
         "modes": [
@@ -926,6 +1035,34 @@
        "errors": [],
        "lines": [
         "IC1"
+       ]
+      },
+      {
+       "dep": 1795340160,
+       "arr": 1795344720,
+       "valid": true,
+       "errors": [],
+       "lines": [
+        "IR16",
+        "IR37"
+       ]
+      },
+      {
+       "dep": 1795340160,
+       "arr": 1795344840,
+       "valid": true,
+       "errors": [],
+       "lines": [
+        "IR16"
+       ]
+      },
+      {
+       "dep": 1795341720,
+       "arr": 1795345080,
+       "valid": true,
+       "errors": [],
+       "lines": [
+        "IC8"
        ]
       }
      ],
@@ -1542,7 +1679,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8503000&to=8501120&after=1795336620000&limit=6",
       "status": 200,
-      "ms": 81,
+      "ms": 75,
       "error": null,
       "resolvedFrom": {
        "id": "8503000",
@@ -1556,7 +1693,7 @@
        "lon": 6.629091,
        "lat": 46.516793
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-a67f6d2655",
@@ -2920,7 +3057,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8501008&to=8500010&after=1795336620000&limit=6",
       "status": 200,
-      "ms": 118,
+      "ms": 69,
       "error": null,
       "resolvedFrom": {
        "id": "8501008",
@@ -2934,7 +3071,7 @@
        "lon": 7.58956,
        "lat": 47.547413
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-9b96a6ff01",
@@ -3220,10 +3357,10 @@
         ]
        },
        {
-        "id": "j-69b610a576",
-        "dep": 1795345680,
+        "id": "j-3cfc9a9c4b",
+        "dep": 1795347300,
         "arr": 1795357560,
-        "expDep": 1795345680,
+        "expDep": 1795347300,
         "expArr": 1795357560,
         "transfers": 1,
         "kind": "best",
@@ -3231,38 +3368,38 @@
         "fastest": false,
         "legs": [
          {
-          "trainId": "20261122_ojp-91-33-C.1.TA.4582.j26",
-          "line": "RE33",
-          "cat": "RE",
+          "trainId": "20261122_ojp-91-1-D.1.TA.1075.j26",
+          "line": "IC1",
+          "cat": "IC",
           "fromId": "8501008",
           "fromName": "Genève",
-          "dep": 1795345680,
-          "expDep": 1795345680,
-          "toId": "8501120",
-          "toName": "Lausanne",
-          "arr": 1795348740,
-          "expArr": 1795348740,
-          "quayDep": "4",
-          "quayArr": "4"
+          "dep": 1795347300,
+          "expDep": 1795347300,
+          "toId": "8501118",
+          "toName": "Renens VD",
+          "arr": 1795349220,
+          "expArr": 1795349220,
+          "quayDep": "5",
+          "quayArr": "3"
          },
          {
           "trainId": "20261122_ojp-91-51-B.1.TA.475.j26",
           "line": "IC51",
           "cat": "IC",
-          "fromId": "8501120",
-          "fromName": "Lausanne",
-          "dep": 1795349040,
-          "expDep": 1795349040,
+          "fromId": "8501118",
+          "fromName": "Renens VD",
+          "dep": 1795349460,
+          "expDep": 1795349460,
           "toId": "8500010",
           "toName": "Basel SBB",
           "arr": 1795357560,
           "expArr": 1795357560,
-          "quayDep": "3",
+          "quayDep": "2",
           "quayArr": "20"
          }
         ],
         "modes": [
-         "RE",
+         "IC",
          "IC"
         ]
        }
@@ -3639,12 +3776,12 @@
        ]
       },
       {
-       "dep": 1795345680,
+       "dep": 1795347300,
        "arr": 1795357560,
        "valid": true,
        "errors": [],
        "lines": [
-        "RE33",
+        "IC1",
         "IC51"
        ]
       }
@@ -4000,7 +4137,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8505000&to=8505300&after=1795336620000&limit=6",
       "status": 200,
-      "ms": 65,
+      "ms": 32,
       "error": null,
       "resolvedFrom": {
        "id": "8505000",
@@ -4014,7 +4151,7 @@
        "lon": 8.946996,
        "lat": 46.005502
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-d5dddd9dd4",
@@ -4963,7 +5100,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8506302&to=8509000&after=1795336620000&limit=6",
       "status": 200,
-      "ms": 22,
+      "ms": 18,
       "error": null,
       "resolvedFrom": {
        "id": "8506302",
@@ -4977,7 +5114,7 @@
        "lon": 9.528933,
        "lat": 46.853087
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-63f0be9a77",
@@ -5787,7 +5924,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8500218&to=8502113&after=1795336620000&limit=6",
       "status": 200,
-      "ms": 4,
+      "ms": 3,
       "error": null,
       "resolvedFrom": {
        "id": "8500218",
@@ -5801,7 +5938,7 @@
        "lon": 8.051277,
        "lat": 47.391362
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-a1427639a4",
@@ -6611,7 +6748,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8504300&to=8504100&after=1795336620000&limit=6",
       "status": 200,
-      "ms": 37,
+      "ms": 24,
       "error": null,
       "resolvedFrom": {
        "id": "8504300",
@@ -6625,7 +6762,7 @@
        "lon": 7.151048,
        "lat": 46.803149
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-17c27b8c6a",
@@ -7535,7 +7672,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8504221&to=8507000&after=1795336620000&limit=6",
       "status": 200,
-      "ms": 28,
+      "ms": 11,
       "error": null,
       "resolvedFrom": {
        "id": "8504221",
@@ -7549,7 +7686,7 @@
        "lon": 7.439129,
        "lat": 46.948831
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-c4f6e79ebd",
@@ -8396,7 +8533,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8501506&to=8501609&after=1795336620000&limit=6",
       "status": 200,
-      "ms": 27,
+      "ms": 8,
       "error": null,
       "resolvedFrom": {
        "id": "8501506",
@@ -8410,7 +8547,7 @@
        "lon": 7.988098,
        "lat": 46.319426
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-25bad76eff",
@@ -9803,7 +9940,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8507492&to=8503000&after=1795336620000&limit=6",
       "status": 200,
-      "ms": 38,
+      "ms": 86,
       "error": null,
       "resolvedFrom": {
        "id": "8507492",
@@ -9817,7 +9954,7 @@
        "lon": 8.540212,
        "lat": 47.378176
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-a085ddadc5",
@@ -11456,7 +11593,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8506000&to=8502204&after=1795336620000&limit=6",
       "status": 200,
-      "ms": 19,
+      "ms": 13,
       "error": null,
       "resolvedFrom": {
        "id": "8506000",
@@ -11470,7 +11607,7 @@
        "lon": 8.51505,
        "lat": 47.173709
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-29c7ff96fe",
@@ -12851,7 +12988,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8507100&to=8505000&after=1795336620000&limit=6",
       "status": 200,
-      "ms": 50,
+      "ms": 38,
       "error": null,
       "resolvedFrom": {
        "id": "8507100",
@@ -12865,7 +13002,7 @@
        "lon": 8.31018,
        "lat": 47.050176
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-54cace4696",
@@ -14341,7 +14478,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8503424&to=8503016&after=1795336620000&limit=6",
       "status": 200,
-      "ms": 13,
+      "ms": 10,
       "error": null,
       "resolvedFrom": {
        "id": "8503424",
@@ -14355,7 +14492,7 @@
        "lon": 8.5624,
        "lat": 47.450387
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-4d235b890c",
@@ -15219,7 +15356,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8505213&to=8505004&after=1795336620000&limit=6",
       "status": 200,
-      "ms": 12,
+      "ms": 8,
       "error": null,
       "resolvedFrom": {
        "id": "8505213",
@@ -15233,7 +15370,7 @@
        "lon": 8.549446,
        "lat": 47.049044
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-abb0f9f896",
@@ -16060,7 +16197,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8501300&to=8504100&after=1795336620000&limit=6",
       "status": 200,
-      "ms": 72,
+      "ms": 32,
       "error": null,
       "resolvedFrom": {
        "id": "8501300",
@@ -16074,7 +16211,7 @@
        "lon": 7.151048,
        "lat": 46.803149
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-35b771ac67",
@@ -17069,7 +17206,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8504200&to=8501008&after=1795336620000&limit=6",
       "status": 200,
-      "ms": 136,
+      "ms": 45,
       "error": null,
       "resolvedFrom": {
        "id": "8504200",
@@ -17083,7 +17220,7 @@
        "lon": 6.142455,
        "lat": 46.210212
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-f104b67c85",
@@ -18272,7 +18409,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8501118&to=8503000&after=1795336620000&limit=6",
       "status": 200,
-      "ms": 46,
+      "ms": 23,
       "error": null,
       "resolvedFrom": {
        "id": "8501118",
@@ -18286,7 +18423,7 @@
        "lon": 8.540212,
        "lat": 47.378176
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-a840b7053f",
@@ -19130,7 +19267,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8503206&to=8503110&after=1795336620000&limit=6",
       "status": 200,
-      "ms": 96,
+      "ms": 16,
       "error": null,
       "resolvedFrom": {
        "id": "8503206",
@@ -19144,7 +19281,7 @@
        "lon": 8.816749,
        "lat": 47.224888
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-8a79b7230a",
@@ -20020,7 +20157,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8501605&to=8507000&after=1795336620000&limit=6",
       "status": 200,
-      "ms": 28,
+      "ms": 11,
       "error": null,
       "resolvedFrom": {
        "id": "8501605",
@@ -20034,7 +20171,7 @@
        "lon": 7.439129,
        "lat": 46.948831
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-91c57f264b",
@@ -20810,7 +20947,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8500010&to=8509000&after=1795336620000&limit=6",
       "status": 200,
-      "ms": 63,
+      "ms": 43,
       "error": null,
       "resolvedFrom": {
        "id": "8500010",
@@ -20824,7 +20961,7 @@
        "lon": 9.528933,
        "lat": 46.853087
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-6d3d8ef2a8",
@@ -21600,7 +21737,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8501120&to=8501609&after=1795336620000&limit=6",
       "status": 200,
-      "ms": 70,
+      "ms": 22,
       "error": null,
       "resolvedFrom": {
        "id": "8501120",
@@ -21614,7 +21751,7 @@
        "lon": 7.988098,
        "lat": 46.319426
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-9d565c26da",
@@ -22356,7 +22493,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8502204&to=8505300&after=1795336620000&limit=6",
       "status": 200,
-      "ms": 42,
+      "ms": 31,
       "error": null,
       "resolvedFrom": {
        "id": "8502204",
@@ -22370,7 +22507,7 @@
        "lon": 8.946996,
        "lat": 46.005502
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-835a0d8d49",
@@ -23197,7 +23334,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8502113&to=8506000&after=1795336620000&limit=6",
       "status": 200,
-      "ms": 16,
+      "ms": 15,
       "error": null,
       "resolvedFrom": {
        "id": "8502113",
@@ -23211,7 +23348,7 @@
        "lon": 8.723818,
        "lat": 47.500333
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-1e4cd0d426",
@@ -24490,7 +24627,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8504100&to=8501008&after=1795336620000&limit=6",
       "status": 200,
-      "ms": 117,
+      "ms": 33,
       "error": null,
       "resolvedFrom": {
        "id": "8504100",
@@ -24504,7 +24641,7 @@
        "lon": 6.142455,
        "lat": 46.210212
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-f7c4f30de3",
@@ -25365,7 +25502,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8509000&to=8503016&after=1795336620000&limit=6",
       "status": 200,
-      "ms": 131,
+      "ms": 45,
       "error": null,
       "resolvedFrom": {
        "id": "8509000",
@@ -25379,7 +25516,7 @@
        "lon": 8.5624,
        "lat": 47.450387
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-a8d59203ba",
@@ -25614,6 +25751,53 @@
         "modes": [
          "IC",
          "IC"
+        ]
+       },
+       {
+        "id": "j-3a30315131",
+        "dep": 1795345680,
+        "arr": 1795351440,
+        "expDep": 1795345680,
+        "expArr": 1795351440,
+        "transfers": 1,
+        "kind": "best",
+        "uncertain": false,
+        "fastest": false,
+        "legs": [
+         {
+          "trainId": "20261122_ojp-91-2H-Y.1.TA.464.j26",
+          "line": "IC",
+          "cat": "IC",
+          "fromId": "8509000",
+          "fromName": "Chur",
+          "dep": 1795345680,
+          "expDep": 1795345680,
+          "toId": "8503000",
+          "toName": "Zürich HB",
+          "arr": 1795350120,
+          "expArr": 1795350120,
+          "quayDep": "9",
+          "quayArr": "11"
+         },
+         {
+          "trainId": "20261122_ojp-91-75.1.TA.953.j26",
+          "line": "IR75",
+          "cat": "IR",
+          "fromId": "8503000",
+          "fromName": "Zürich HB",
+          "dep": 1795350840,
+          "expDep": 1795350840,
+          "toId": "8503016",
+          "toName": "Zürich Flughafen",
+          "arr": 1795351440,
+          "expArr": 1795351440,
+          "quayDep": "9",
+          "quayArr": "2"
+         }
+        ],
+        "modes": [
+         "IC",
+         "IR"
         ]
        }
       ],
@@ -25912,6 +26096,16 @@
        "lines": [
         "IC3",
         "IC5"
+       ]
+      },
+      {
+       "dep": 1795345680,
+       "arr": 1795351440,
+       "valid": true,
+       "errors": [],
+       "lines": [
+        "IC",
+        "IR75"
        ]
       }
      ],
@@ -26266,7 +26460,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8505000&to=8507000&after=1795336620000&limit=6",
       "status": 200,
-      "ms": 30,
+      "ms": 36,
       "error": null,
       "resolvedFrom": {
        "id": "8505000",
@@ -26280,7 +26474,7 @@
        "lon": 7.439129,
        "lat": 46.948831
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-80db202ab0",
@@ -27738,7 +27932,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8506302&to=8501120&after=1795336620000&limit=6",
       "status": 200,
-      "ms": 209,
+      "ms": 33,
       "error": null,
       "resolvedFrom": {
        "id": "8506302",
@@ -27752,7 +27946,7 @@
        "lon": 6.629091,
        "lat": 46.516793
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-85ca194210",
@@ -28879,7 +29073,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8500218&to=8507492&after=1795336620000&limit=6",
       "status": 200,
-      "ms": 77,
+      "ms": 34,
       "error": null,
       "resolvedFrom": {
        "id": "8500218",
@@ -28893,7 +29087,7 @@
        "lon": 7.870266,
        "lat": 46.69112
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-8246911614",
@@ -30109,7 +30303,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8500207&to=8503000&after=1795336620000&limit=6",
       "status": 200,
-      "ms": 17,
+      "ms": 8,
       "error": null,
       "resolvedFrom": {
        "id": "8500207",
@@ -30123,7 +30317,7 @@
        "lon": 8.540212,
        "lat": 47.378176
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-945682b0a7",
@@ -30975,7 +31169,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8505300&to=8505400&after=1795336620000&limit=6",
       "status": 200,
-      "ms": 69,
+      "ms": 16,
       "error": null,
       "resolvedFrom": {
        "id": "8505300",
@@ -30989,7 +31183,7 @@
        "lon": 8.801361,
        "lat": 46.172421
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-9e7aaf44e6",
@@ -32282,7 +32476,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8507483&to=8507492&after=1795336620000&limit=6",
       "status": 200,
-      "ms": 81,
+      "ms": 30,
       "error": null,
       "resolvedFrom": {
        "id": "8507483",
@@ -32296,7 +32490,7 @@
        "lon": 7.870266,
        "lat": 46.69112
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-9b2bf0e620",
@@ -33444,7 +33638,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8501118&to=8501008&after=1795336620000&limit=6",
       "status": 200,
-      "ms": 16,
+      "ms": 6,
       "error": null,
       "resolvedFrom": {
        "id": "8501118",
@@ -33458,7 +33652,7 @@
        "lon": 6.142455,
        "lat": 46.210212
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-db8843b0b2",
@@ -34167,7 +34361,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8500218&to=8507000&after=1795336620000&limit=6",
       "status": 200,
-      "ms": 206,
+      "ms": 4,
       "error": null,
       "resolvedFrom": {
        "id": "8500218",
@@ -34181,7 +34375,7 @@
        "lon": 7.439129,
        "lat": 46.948831
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-9ce4de4bc2",
@@ -34890,7 +35084,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8503000&to=8509000&after=1795336620000&limit=6",
       "status": 200,
-      "ms": 44,
+      "ms": 11,
       "error": null,
       "resolvedFrom": {
        "id": "8503000",
@@ -34904,7 +35098,7 @@
        "lon": 9.528933,
        "lat": 46.853087
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-0c0abea9dd",
@@ -35764,7 +35958,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8507492&to=8507483&after=1795336620000&limit=6",
       "status": 200,
-      "ms": 20,
+      "ms": 12,
       "error": null,
       "resolvedFrom": {
        "id": "8507492",
@@ -35778,7 +35972,7 @@
        "lon": 7.680102,
        "lat": 46.686394
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-a13a90cc85",
@@ -36991,7 +37185,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8507493&to=8507492&after=1795336620000&limit=6",
       "status": 200,
-      "ms": 15,
+      "ms": 4,
       "error": null,
       "resolvedFrom": {
        "id": "8507493",
@@ -37005,7 +37199,7 @@
        "lon": 7.870266,
        "lat": 46.69112
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-82a58cf4b4",
@@ -38007,7 +38201,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8505404&to=8505400&after=1795336620000&limit=6",
       "status": 200,
-      "ms": 9,
+      "ms": 5,
       "error": null,
       "resolvedFrom": {
        "id": "8505404",
@@ -38021,7 +38215,7 @@
        "lon": 8.801361,
        "lat": 46.172421
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-172027bf75",
@@ -39142,7 +39336,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8505400&to=8505300&after=1795336620000&limit=6",
       "status": 200,
-      "ms": 64,
+      "ms": 23,
       "error": null,
       "resolvedFrom": {
        "id": "8505400",
@@ -39156,7 +39350,7 @@
        "lon": 8.946996,
        "lat": 46.005502
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-49880a74a0",
@@ -40315,7 +40509,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8503206&to=8503209&after=1795336620000&limit=6",
       "status": 200,
-      "ms": 12,
+      "ms": 4,
       "error": null,
       "resolvedFrom": {
        "id": "8503206",
@@ -40329,7 +40523,7 @@
        "lon": 8.77813,
        "lat": 47.203
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-b872c674c0",
@@ -41418,7 +41612,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8507000&to=8503000&after=1795345440000&limit=6",
       "status": 200,
-      "ms": 23,
+      "ms": 13,
       "error": null,
       "resolvedFrom": {
        "id": "8507000",
@@ -41432,7 +41626,7 @@
        "lon": 8.540212,
        "lat": 47.378176
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-3840026c08",
@@ -42675,7 +42869,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8503000&to=8501120&after=1795345440000&limit=6",
       "status": 200,
-      "ms": 35,
+      "ms": 68,
       "error": null,
       "resolvedFrom": {
        "id": "8503000",
@@ -42689,7 +42883,7 @@
        "lon": 6.629091,
        "lat": 46.516793
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-51372dd6a5",
@@ -43982,7 +44176,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8501008&to=8500010&after=1795345440000&limit=6",
       "status": 200,
-      "ms": 113,
+      "ms": 87,
       "error": null,
       "resolvedFrom": {
        "id": "8501008",
@@ -43996,7 +44190,7 @@
        "lon": 7.58956,
        "lat": 47.547413
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-3cfc9a9c4b",
@@ -44266,10 +44460,10 @@
         ]
        },
        {
-        "id": "j-906c6d9754",
-        "dep": 1795354740,
+        "id": "j-0c6e2a25c0",
+        "dep": 1795355580,
         "arr": 1795366500,
-        "expDep": 1795354740,
+        "expDep": 1795355580,
         "expArr": 1795366500,
         "transfers": 2,
         "kind": "best",
@@ -44277,33 +44471,33 @@
         "fastest": false,
         "legs": [
          {
-          "trainId": "20261122_ojp-91-33-C.1.TA.4168.j26",
-          "line": "RE33",
-          "cat": "RE",
+          "trainId": "20261122_ojp-91-90.1.TA.1299.j26",
+          "line": "IR90",
+          "cat": "IR",
           "fromId": "8501008",
           "fromName": "Genève",
-          "dep": 1795354740,
-          "expDep": 1795354740,
-          "toId": "8501120",
-          "toName": "Lausanne",
-          "arr": 1795357740,
-          "expArr": 1795357740,
-          "quayDep": "3",
-          "quayArr": "6"
+          "dep": 1795355580,
+          "expDep": 1795355580,
+          "toId": "8501118",
+          "toName": "Renens VD",
+          "arr": 1795357980,
+          "expArr": 1795357980,
+          "quayDep": "5",
+          "quayArr": "5"
          },
          {
           "trainId": "20261122_ojp-91-5-A.1.TA.983.j26",
           "line": "IC5",
           "cat": "IC",
-          "fromId": "8501120",
-          "fromName": "Lausanne",
-          "dep": 1795358040,
-          "expDep": 1795358040,
+          "fromId": "8501118",
+          "fromName": "Renens VD",
+          "dep": 1795358460,
+          "expDep": 1795358460,
           "toId": "8500218",
           "toName": "Olten",
           "arr": 1795364280,
           "expArr": 1795364280,
-          "quayDep": "4",
+          "quayDep": "2",
           "quayArr": "7"
          },
          {
@@ -44323,7 +44517,7 @@
          }
         ],
         "modes": [
-         "RE",
+         "IR",
          "IC",
          "IR"
         ]
@@ -44629,12 +44823,12 @@
        ]
       },
       {
-       "dep": 1795354740,
+       "dep": 1795355580,
        "arr": 1795366500,
        "valid": true,
        "errors": [],
        "lines": [
-        "RE33",
+        "IR90",
         "IC5",
         "IR26"
        ]
@@ -44991,7 +45185,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8505000&to=8505300&after=1795345440000&limit=6",
       "status": 200,
-      "ms": 169,
+      "ms": 61,
       "error": null,
       "resolvedFrom": {
        "id": "8505000",
@@ -45005,7 +45199,7 @@
        "lon": 8.946996,
        "lat": 46.005502
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-9d401a037d",
@@ -45086,57 +45280,10 @@
         ]
        },
        {
-        "id": "j-f521354304",
-        "dep": 1795346460,
-        "arr": 1795354080,
-        "expDep": 1795346460,
-        "expArr": 1795354080,
-        "transfers": 1,
-        "kind": "best",
-        "uncertain": false,
-        "fastest": false,
-        "legs": [
-         {
-          "trainId": "20261122_ojp-91-1-A.1.TA.1239.j26",
-          "line": "S1",
-          "cat": "S",
-          "fromId": "8505000",
-          "fromName": "Luzern",
-          "dep": 1795346460,
-          "expDep": 1795346460,
-          "toId": "8502204",
-          "toName": "Zug",
-          "arr": 1795348260,
-          "expArr": 1795348260,
-          "quayDep": "8",
-          "quayArr": "5"
-         },
-         {
-          "trainId": "20261122_ojp-91-2A-Y.1.TA.475.j26",
-          "line": "EC",
-          "cat": "EC",
-          "fromId": "8502204",
-          "fromName": "Zug",
-          "dep": 1795348800,
-          "expDep": 1795348800,
-          "toId": "8505300",
-          "toName": "Lugano",
-          "arr": 1795354080,
-          "expArr": 1795354080,
-          "quayDep": "2",
-          "quayArr": "2"
-         }
-        ],
-        "modes": [
-         "S",
-         "EC"
-        ]
-       },
-       {
-        "id": "j-1616aba01d",
-        "dep": 1795349160,
+        "id": "j-c987ca3fea",
+        "dep": 1795349880,
         "arr": 1795355880,
-        "expDep": 1795349160,
+        "expDep": 1795349880,
         "expArr": 1795355880,
         "transfers": 1,
         "kind": "best",
@@ -45144,18 +45291,18 @@
         "fastest": false,
         "legs": [
          {
-          "trainId": "20261122_ojp-91-3-H.1.TA.186.j26",
-          "line": "S3",
-          "cat": "S",
+          "trainId": "20261122_ojp-91-26-C.1.TA.953.j26",
+          "line": "IR26",
+          "cat": "IR",
           "fromId": "8505000",
           "fromName": "Luzern",
-          "dep": 1795349160,
-          "expDep": 1795349160,
+          "dep": 1795349880,
+          "expDep": 1795349880,
           "toId": "8505004",
           "toName": "Arth-Goldau",
-          "arr": 1795351080,
-          "expArr": 1795351080,
-          "quayDep": "11",
+          "arr": 1795351500,
+          "expArr": 1795351500,
+          "quayDep": "7",
           "quayArr": "5"
          },
          {
@@ -45175,8 +45322,55 @@
          }
         ],
         "modes": [
-         "S",
+         "IR",
          "IC"
+        ]
+       },
+       {
+        "id": "j-11d8ff2d11",
+        "dep": 1795351140,
+        "arr": 1795357680,
+        "expDep": 1795351140,
+        "expArr": 1795357680,
+        "transfers": 1,
+        "kind": "best",
+        "uncertain": false,
+        "fastest": false,
+        "legs": [
+         {
+          "trainId": "20261122_ojp-91-VAE.1.TA.563.j26",
+          "line": "IRVAE",
+          "cat": "IR",
+          "fromId": "8505000",
+          "fromName": "Luzern",
+          "dep": 1795351140,
+          "expDep": 1795351140,
+          "toId": "8505004",
+          "toName": "Arth-Goldau",
+          "arr": 1795353060,
+          "expArr": 1795353060,
+          "quayDep": "2",
+          "quayArr": "6"
+         },
+         {
+          "trainId": "20261122_ojp-91-2A-Y.1.TA.292.j26",
+          "line": "EC",
+          "cat": "EC",
+          "fromId": "8505004",
+          "fromName": "Arth-Goldau",
+          "dep": 1795353480,
+          "expDep": 1795353480,
+          "toId": "8505300",
+          "toName": "Lugano",
+          "arr": 1795357680,
+          "expArr": 1795357680,
+          "quayDep": "3",
+          "quayArr": "2"
+         }
+        ],
+        "modes": [
+         "IR",
+         "EC"
         ]
        },
        {
@@ -45208,6 +45402,53 @@
         ],
         "modes": [
          "IC"
+        ]
+       },
+       {
+        "id": "j-334b669d3f",
+        "dep": 1795354740,
+        "arr": 1795361280,
+        "expDep": 1795354740,
+        "expArr": 1795361280,
+        "transfers": 1,
+        "kind": "best",
+        "uncertain": false,
+        "fastest": false,
+        "legs": [
+         {
+          "trainId": "20261122_ojp-91-VAE.1.TA.425.j26",
+          "line": "IRVAE",
+          "cat": "IR",
+          "fromId": "8505000",
+          "fromName": "Luzern",
+          "dep": 1795354740,
+          "expDep": 1795354740,
+          "toId": "8505004",
+          "toName": "Arth-Goldau",
+          "arr": 1795356660,
+          "expArr": 1795356660,
+          "quayDep": "3",
+          "quayArr": "6"
+         },
+         {
+          "trainId": "20261122_ojp-91-2A-Y.1.TA.248.j26",
+          "line": "EC",
+          "cat": "EC",
+          "fromId": "8505004",
+          "fromName": "Arth-Goldau",
+          "dep": 1795357080,
+          "expDep": 1795357080,
+          "toId": "8505300",
+          "toName": "Lugano",
+          "arr": 1795361280,
+          "expArr": 1795361280,
+          "quayDep": "3",
+          "quayArr": "2"
+         }
+        ],
+        "modes": [
+         "IR",
+         "EC"
         ]
        }
       ],
@@ -45412,23 +45653,23 @@
        ]
       },
       {
-       "dep": 1795346460,
-       "arr": 1795354080,
-       "valid": true,
-       "errors": [],
-       "lines": [
-        "S1",
-        "EC"
-       ]
-      },
-      {
-       "dep": 1795349160,
+       "dep": 1795349880,
        "arr": 1795355880,
        "valid": true,
        "errors": [],
        "lines": [
-        "S3",
+        "IR26",
         "IC2"
+       ]
+      },
+      {
+       "dep": 1795351140,
+       "arr": 1795357680,
+       "valid": true,
+       "errors": [],
+       "lines": [
+        "IRVAE",
+        "EC"
        ]
       },
       {
@@ -45438,6 +45679,16 @@
        "errors": [],
        "lines": [
         "IC21"
+       ]
+      },
+      {
+       "dep": 1795354740,
+       "arr": 1795361280,
+       "valid": true,
+       "errors": [],
+       "lines": [
+        "IRVAE",
+        "EC"
        ]
       }
      ],
@@ -45826,7 +46077,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8506302&to=8509000&after=1795345440000&limit=6",
       "status": 200,
-      "ms": 24,
+      "ms": 50,
       "error": null,
       "resolvedFrom": {
        "id": "8506302",
@@ -45840,7 +46091,7 @@
        "lon": 9.528933,
        "lat": 46.853087
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-b74fdac096",
@@ -46792,7 +47043,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8500218&to=8502113&after=1795345440000&limit=6",
       "status": 200,
-      "ms": 3,
+      "ms": 5,
       "error": null,
       "resolvedFrom": {
        "id": "8500218",
@@ -46806,7 +47057,7 @@
        "lon": 8.051277,
        "lat": 47.391362
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-ec0a65161a",
@@ -47616,7 +47867,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8504300&to=8504100&after=1795345440000&limit=6",
       "status": 200,
-      "ms": 38,
+      "ms": 26,
       "error": null,
       "resolvedFrom": {
        "id": "8504300",
@@ -47630,7 +47881,7 @@
        "lon": 7.151048,
        "lat": 46.803149
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-0942c5b9a0",
@@ -48540,7 +48791,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8504221&to=8507000&after=1795345440000&limit=6",
       "status": 200,
-      "ms": 12,
+      "ms": 11,
       "error": null,
       "resolvedFrom": {
        "id": "8504221",
@@ -48554,7 +48805,7 @@
        "lon": 7.439129,
        "lat": 46.948831
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-db5c5c430f",
@@ -49362,7 +49613,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8501506&to=8501609&after=1795345440000&limit=6",
       "status": 200,
-      "ms": 11,
+      "ms": 7,
       "error": null,
       "resolvedFrom": {
        "id": "8501506",
@@ -49376,7 +49627,7 @@
        "lon": 7.988098,
        "lat": 46.319426
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-5dc9fc0af4",
@@ -50769,7 +51020,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8507492&to=8503000&after=1795345440000&limit=6",
       "status": 200,
-      "ms": 35,
+      "ms": 29,
       "error": null,
       "resolvedFrom": {
        "id": "8507492",
@@ -50783,7 +51034,7 @@
        "lon": 8.540212,
        "lat": 47.378176
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-9e9573614e",
@@ -52422,7 +52673,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8506000&to=8502204&after=1795345440000&limit=6",
       "status": 200,
-      "ms": 21,
+      "ms": 16,
       "error": null,
       "resolvedFrom": {
        "id": "8506000",
@@ -52436,7 +52687,7 @@
        "lon": 8.51505,
        "lat": 47.173709
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-7272f1fff8",
@@ -53834,7 +54085,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8507100&to=8505000&after=1795345440000&limit=6",
       "status": 200,
-      "ms": 48,
+      "ms": 47,
       "error": null,
       "resolvedFrom": {
        "id": "8507100",
@@ -53848,7 +54099,7 @@
        "lon": 8.31018,
        "lat": 47.050176
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-5614e6c752",
@@ -54850,7 +55101,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8503424&to=8503016&after=1795345440000&limit=6",
       "status": 200,
-      "ms": 13,
+      "ms": 12,
       "error": null,
       "resolvedFrom": {
        "id": "8503424",
@@ -54864,7 +55115,7 @@
        "lon": 8.5624,
        "lat": 47.450387
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-bcebe77d0e",
@@ -55728,7 +55979,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8505213&to=8505004&after=1795345440000&limit=6",
       "status": 200,
-      "ms": 11,
+      "ms": 10,
       "error": null,
       "resolvedFrom": {
        "id": "8505213",
@@ -55742,7 +55993,7 @@
        "lon": 8.549446,
        "lat": 47.049044
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-5a5eaab308",
@@ -56586,7 +56837,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8501300&to=8504100&after=1795345440000&limit=6",
       "status": 200,
-      "ms": 40,
+      "ms": 34,
       "error": null,
       "resolvedFrom": {
        "id": "8501300",
@@ -56600,7 +56851,7 @@
        "lon": 7.151048,
        "lat": 46.803149
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-7f2fb6f9ea",
@@ -57612,7 +57863,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8504200&to=8501008&after=1795345440000&limit=6",
       "status": 200,
-      "ms": 120,
+      "ms": 54,
       "error": null,
       "resolvedFrom": {
        "id": "8504200",
@@ -57626,7 +57877,7 @@
        "lon": 6.142455,
        "lat": 46.210212
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-dcd61c0c60",
@@ -58815,7 +59066,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8501118&to=8503000&after=1795345440000&limit=6",
       "status": 200,
-      "ms": 47,
+      "ms": 26,
       "error": null,
       "resolvedFrom": {
        "id": "8501118",
@@ -58829,7 +59080,7 @@
        "lon": 8.540212,
        "lat": 47.378176
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-e88946f9c1",
@@ -59673,7 +59924,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8503206&to=8503110&after=1795345440000&limit=6",
       "status": 200,
-      "ms": 35,
+      "ms": 34,
       "error": null,
       "resolvedFrom": {
        "id": "8503206",
@@ -59687,7 +59938,7 @@
        "lon": 8.816749,
        "lat": 47.224888
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-8cc3ceb6b1",
@@ -60563,7 +60814,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8501605&to=8507000&after=1795345440000&limit=6",
       "status": 200,
-      "ms": 16,
+      "ms": 14,
       "error": null,
       "resolvedFrom": {
        "id": "8501605",
@@ -60577,7 +60828,7 @@
        "lon": 7.439129,
        "lat": 46.948831
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-d34cd90710",
@@ -61319,7 +61570,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8500010&to=8509000&after=1795345440000&limit=6",
       "status": 200,
-      "ms": 62,
+      "ms": 33,
       "error": null,
       "resolvedFrom": {
        "id": "8500010",
@@ -61333,7 +61584,7 @@
        "lon": 9.528933,
        "lat": 46.853087
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-913751b2d2",
@@ -62075,7 +62326,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8501120&to=8501609&after=1795345440000&limit=6",
       "status": 200,
-      "ms": 47,
+      "ms": 18,
       "error": null,
       "resolvedFrom": {
        "id": "8501120",
@@ -62089,7 +62340,7 @@
        "lon": 7.988098,
        "lat": 46.319426
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-9b65a4f0c0",
@@ -62831,7 +63082,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8502204&to=8505300&after=1795345440000&limit=6",
       "status": 200,
-      "ms": 69,
+      "ms": 59,
       "error": null,
       "resolvedFrom": {
        "id": "8502204",
@@ -62845,7 +63096,7 @@
        "lon": 8.946996,
        "lat": 46.005502
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-4681b6879e",
@@ -64039,7 +64290,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8502113&to=8506000&after=1795345440000&limit=6",
       "status": 200,
-      "ms": 35,
+      "ms": 17,
       "error": null,
       "resolvedFrom": {
        "id": "8502113",
@@ -64053,7 +64304,7 @@
        "lon": 8.723818,
        "lat": 47.500333
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-c70edade6c",
@@ -64880,7 +65131,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8504100&to=8501008&after=1795345440000&limit=6",
       "status": 200,
-      "ms": 33,
+      "ms": 30,
       "error": null,
       "resolvedFrom": {
        "id": "8504100",
@@ -64894,7 +65145,7 @@
        "lon": 6.142455,
        "lat": 46.210212
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-c3cef70370",
@@ -66173,7 +66424,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8509000&to=8503016&after=1795345440000&limit=6",
       "status": 200,
-      "ms": 115,
+      "ms": 43,
       "error": null,
       "resolvedFrom": {
        "id": "8509000",
@@ -66187,7 +66438,7 @@
        "lon": 8.5624,
        "lat": 47.450387
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-3a30315131",
@@ -66425,10 +66676,10 @@
         ]
        },
        {
-        "id": "j-fb23ebb671",
-        "dep": 1795353060,
+        "id": "j-a83e854b4a",
+        "dep": 1795354680,
         "arr": 1795360260,
-        "expDep": 1795353060,
+        "expDep": 1795354680,
         "expArr": 1795360260,
         "transfers": 1,
         "kind": "best",
@@ -66436,19 +66687,19 @@
         "fastest": false,
         "legs": [
          {
-          "trainId": "20261122_ojp-91-35-A.1.TA.2072.j26",
-          "line": "IR35",
-          "cat": "IR",
+          "trainId": "20261122_ojp-91-N-Y.1.TA.437.j26",
+          "line": "ICE",
+          "cat": "ICE",
           "fromId": "8509000",
           "fromName": "Chur",
-          "dep": 1795353060,
-          "expDep": 1795353060,
+          "dep": 1795354680,
+          "expDep": 1795354680,
           "toId": "8503000",
           "toName": "Zürich HB",
-          "arr": 1795358880,
-          "expArr": 1795358880,
-          "quayDep": "7",
-          "quayArr": "17"
+          "arr": 1795359180,
+          "expArr": 1795359180,
+          "quayDep": "9",
+          "quayArr": "12"
          },
          {
           "trainId": "20261122_ojp-91-5-A.1.TA.977.j26",
@@ -66467,7 +66718,7 @@
          }
         ],
         "modes": [
-         "IR",
+         "ICE",
          "IC"
         ]
        }
@@ -66770,12 +67021,12 @@
        ]
       },
       {
-       "dep": 1795353060,
+       "dep": 1795354680,
        "arr": 1795360260,
        "valid": true,
        "errors": [],
        "lines": [
-        "IR35",
+        "ICE",
         "IC5"
        ]
       }
@@ -67131,7 +67382,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8505000&to=8507000&after=1795345440000&limit=6",
       "status": 200,
-      "ms": 17,
+      "ms": 10,
       "error": null,
       "resolvedFrom": {
        "id": "8505000",
@@ -67145,7 +67396,7 @@
        "lon": 7.439129,
        "lat": 46.948831
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-09f1b36a62",
@@ -68691,7 +68942,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8506302&to=8501120&after=1795345440000&limit=6",
       "status": 200,
-      "ms": 60,
+      "ms": 61,
       "error": null,
       "resolvedFrom": {
        "id": "8506302",
@@ -68705,7 +68956,7 @@
        "lon": 6.629091,
        "lat": 46.516793
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-1cc59dd7b3",
@@ -69766,7 +70017,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8500218&to=8507492&after=1795345440000&limit=6",
       "status": 200,
-      "ms": 142,
+      "ms": 47,
       "error": null,
       "resolvedFrom": {
        "id": "8500218",
@@ -69780,7 +70031,7 @@
        "lon": 7.870266,
        "lat": 46.69112
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-a09ea1d2fa",
@@ -70208,6 +70459,101 @@
          "EV",
          "WALK"
         ]
+       },
+       {
+        "id": "j-6645481354",
+        "dep": 1795355880,
+        "arr": 1795361880,
+        "expDep": 1795355880,
+        "expArr": 1795361880,
+        "transfers": 2,
+        "kind": "best",
+        "uncertain": false,
+        "fastest": false,
+        "legs": [
+         {
+          "trainId": "20261122_ojp-91-6-H.1.TA.1140.j26",
+          "line": "IC6",
+          "cat": "IC",
+          "fromId": "8500218",
+          "fromName": "Olten",
+          "dep": 1795355880,
+          "expDep": 1795355880,
+          "toId": "8507483",
+          "toName": "Spiez",
+          "arr": 1795359780,
+          "expArr": 1795359780,
+          "quayDep": "12",
+          "quayArr": "3"
+         },
+         {
+          "trainId": "20261122_ojp-91-9-H.1.TA.48.j26",
+          "line": "RE9",
+          "cat": "RE",
+          "fromId": "8507483",
+          "fromName": "Spiez",
+          "dep": 1795359960,
+          "expDep": 1795359960,
+          "toId": "8507493",
+          "toName": "Interlaken West",
+          "arr": 1795360860,
+          "expArr": 1795360860,
+          "quayDep": "2",
+          "quayArr": "1"
+         },
+         {
+          "trainId": null,
+          "line": "Walk",
+          "cat": "WALK",
+          "fromId": "8507493",
+          "fromName": "Interlaken West",
+          "dep": 1795360860,
+          "expDep": 1795360860,
+          "toId": "8579332",
+          "toName": "Interlaken, Rugenparkstrasse",
+          "arr": 1795361040,
+          "expArr": 1795361040,
+          "quayDep": null,
+          "quayArr": null
+         },
+         {
+          "trainId": "20261122_ojp-92-EV1-J.1.TA.12.j26",
+          "line": "EV1",
+          "cat": "EV",
+          "fromId": "8579332",
+          "fromName": "Interlaken, Rugenparkstrasse",
+          "dep": 1795361280,
+          "expDep": 1795361280,
+          "toId": "8576376",
+          "toName": "Interlaken Ost, Bahnhof",
+          "arr": 1795361640,
+          "expArr": 1795361640,
+          "quayDep": "K",
+          "quayArr": "C"
+         },
+         {
+          "trainId": null,
+          "line": "Walk",
+          "cat": "WALK",
+          "fromId": "8576376",
+          "fromName": "Interlaken Ost, Bahnhof",
+          "dep": 1795361640,
+          "expDep": 1795361640,
+          "toId": "8507492",
+          "toName": "Interlaken Ost",
+          "arr": 1795361880,
+          "expArr": 1795361880,
+          "quayDep": null,
+          "quayArr": null
+         }
+        ],
+        "modes": [
+         "IC",
+         "RE",
+         "WALK",
+         "EV",
+         "WALK"
+        ]
        }
       ],
       "departsBeforeQuery": []
@@ -70620,6 +70966,19 @@
         "EV1",
         "Walk"
        ]
+      },
+      {
+       "dep": 1795355880,
+       "arr": 1795361880,
+       "valid": true,
+       "errors": [],
+       "lines": [
+        "IC6",
+        "RE9",
+        "Walk",
+        "EV1",
+        "Walk"
+       ]
       }
      ],
      "oracleAgrees": true
@@ -70905,7 +71264,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8500207&to=8503000&after=1795345440000&limit=6",
       "status": 200,
-      "ms": 14,
+      "ms": 11,
       "error": null,
       "resolvedFrom": {
        "id": "8500207",
@@ -70919,7 +71278,7 @@
        "lon": 8.540212,
        "lat": 47.378176
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-2e72c68a83",
@@ -71771,7 +72130,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8505300&to=8505400&after=1795345440000&limit=6",
       "status": 200,
-      "ms": 33,
+      "ms": 16,
       "error": null,
       "resolvedFrom": {
        "id": "8505300",
@@ -71785,7 +72144,7 @@
        "lon": 8.801361,
        "lat": 46.172421
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-508adfb72a",
@@ -73101,7 +73460,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8507483&to=8507492&after=1795345440000&limit=6",
       "status": 200,
-      "ms": 70,
+      "ms": 17,
       "error": null,
       "resolvedFrom": {
        "id": "8507483",
@@ -73115,7 +73474,7 @@
        "lon": 7.870266,
        "lat": 46.69112
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-0e1516f106",
@@ -74298,7 +74657,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8501118&to=8501008&after=1795345440000&limit=6",
       "status": 200,
-      "ms": 9,
+      "ms": 5,
       "error": null,
       "resolvedFrom": {
        "id": "8501118",
@@ -74312,7 +74671,7 @@
        "lon": 6.142455,
        "lat": 46.210212
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-41579fddaa",
@@ -75021,7 +75380,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8500218&to=8507000&after=1795345440000&limit=6",
       "status": 200,
-      "ms": 8,
+      "ms": 5,
       "error": null,
       "resolvedFrom": {
        "id": "8500218",
@@ -75035,7 +75394,7 @@
        "lon": 7.439129,
        "lat": 46.948831
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-2265cef2b6",
@@ -75744,7 +76103,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8503000&to=8509000&after=1795345440000&limit=6",
       "status": 200,
-      "ms": 71,
+      "ms": 17,
       "error": null,
       "resolvedFrom": {
        "id": "8503000",
@@ -75758,7 +76117,7 @@
        "lon": 9.528933,
        "lat": 46.853087
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-5dd2dfbddf",
@@ -76595,7 +76954,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8507492&to=8507483&after=1795345440000&limit=6",
       "status": 200,
-      "ms": 20,
+      "ms": 19,
       "error": null,
       "resolvedFrom": {
        "id": "8507492",
@@ -76609,7 +76968,7 @@
        "lon": 7.680102,
        "lat": 46.686394
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-bba46cd55e",
@@ -77836,7 +78195,7 @@
        "lon": 7.870266,
        "lat": 46.69112
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-d1b4d988fe",
@@ -78827,7 +79186,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8505404&to=8505400&after=1795345440000&limit=6",
       "status": 200,
-      "ms": 18,
+      "ms": 9,
       "error": null,
       "resolvedFrom": {
        "id": "8505404",
@@ -78841,7 +79200,7 @@
        "lon": 8.801361,
        "lat": 46.172421
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-1cad082b67",
@@ -79962,7 +80321,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8505400&to=8505300&after=1795345440000&limit=6",
       "status": 200,
-      "ms": 38,
+      "ms": 13,
       "error": null,
       "resolvedFrom": {
        "id": "8505400",
@@ -79976,7 +80335,7 @@
        "lon": 8.946996,
        "lat": 46.005502
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-1137c678b0",
@@ -81135,7 +81494,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8503206&to=8503209&after=1795345440000&limit=6",
       "status": 200,
-      "ms": 22,
+      "ms": 3,
       "error": null,
       "resolvedFrom": {
        "id": "8503206",
@@ -81149,7 +81508,7 @@
        "lon": 8.77813,
        "lat": 47.203
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-ed4137c217",
@@ -81908,7 +82267,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8507000&to=8503000&after=1795363080000&limit=6",
       "status": 200,
-      "ms": 16,
+      "ms": 12,
       "error": null,
       "resolvedFrom": {
        "id": "8507000",
@@ -81922,7 +82281,7 @@
        "lon": 8.540212,
        "lat": 47.378176
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-0ae43f31b0",
@@ -82994,7 +83353,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8503000&to=8501120&after=1795363080000&limit=6",
       "status": 200,
-      "ms": 40,
+      "ms": 28,
       "error": null,
       "resolvedFrom": {
        "id": "8503000",
@@ -83008,7 +83367,7 @@
        "lon": 6.629091,
        "lat": 46.516793
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-95051fbb2a",
@@ -84423,7 +84782,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8501008&to=8500010&after=1795363080000&limit=6",
       "status": 200,
-      "ms": 98,
+      "ms": 89,
       "error": null,
       "resolvedFrom": {
        "id": "8501008",
@@ -84437,7 +84796,7 @@
        "lon": 7.58956,
        "lat": 47.547413
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-044388ff0a",
@@ -85449,7 +85808,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8505000&to=8505300&after=1795363080000&limit=6",
       "status": 200,
-      "ms": 56,
+      "ms": 49,
       "error": null,
       "resolvedFrom": {
        "id": "8505000",
@@ -85463,7 +85822,7 @@
        "lon": 8.946996,
        "lat": 46.005502
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-a05c0adab2",
@@ -86429,7 +86788,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8506302&to=8509000&after=1795363080000&limit=6",
       "status": 200,
-      "ms": 22,
+      "ms": 20,
       "error": null,
       "resolvedFrom": {
        "id": "8506302",
@@ -86443,7 +86802,7 @@
        "lon": 9.528933,
        "lat": 46.853087
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-855558fbaa",
@@ -87395,7 +87754,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8500218&to=8502113&after=1795363080000&limit=6",
       "status": 200,
-      "ms": 12,
+      "ms": 3,
       "error": null,
       "resolvedFrom": {
        "id": "8500218",
@@ -87409,7 +87768,7 @@
        "lon": 8.051277,
        "lat": 47.391362
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-f013baf4b4",
@@ -88219,7 +88578,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8504300&to=8504100&after=1795363080000&limit=6",
       "status": 200,
-      "ms": 132,
+      "ms": 30,
       "error": null,
       "resolvedFrom": {
        "id": "8504300",
@@ -88233,7 +88592,7 @@
        "lon": 7.151048,
        "lat": 46.803149
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-8854331133",
@@ -89143,7 +89502,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8504221&to=8507000&after=1795363080000&limit=6",
       "status": 200,
-      "ms": 13,
+      "ms": 11,
       "error": null,
       "resolvedFrom": {
        "id": "8504221",
@@ -89157,7 +89516,7 @@
        "lon": 7.439129,
        "lat": 46.948831
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-3b5c9c4cc8",
@@ -89979,7 +90338,7 @@
        "lon": 7.988098,
        "lat": 46.319426
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-67c72c997b",
@@ -91403,7 +91762,7 @@
        "lon": 8.540212,
        "lat": 47.378176
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-5ea89ffaa0",
@@ -93061,7 +93420,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8506000&to=8502204&after=1795363080000&limit=6",
       "status": 200,
-      "ms": 45,
+      "ms": 21,
       "error": null,
       "resolvedFrom": {
        "id": "8506000",
@@ -93075,7 +93434,7 @@
        "lon": 8.51505,
        "lat": 47.173709
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-20084a4845",
@@ -94490,7 +94849,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8507100&to=8505000&after=1795363080000&limit=6",
       "status": 200,
-      "ms": 99,
+      "ms": 58,
       "error": null,
       "resolvedFrom": {
        "id": "8507100",
@@ -94504,7 +94863,7 @@
        "lon": 8.31018,
        "lat": 47.050176
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-82db220154",
@@ -95867,7 +96226,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8503424&to=8503016&after=1795363080000&limit=6",
       "status": 200,
-      "ms": 12,
+      "ms": 13,
       "error": null,
       "resolvedFrom": {
        "id": "8503424",
@@ -95881,7 +96240,7 @@
        "lon": 8.5624,
        "lat": 47.450387
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-ef185dd994",
@@ -96745,7 +97104,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8505213&to=8505004&after=1795363080000&limit=6",
       "status": 200,
-      "ms": 11,
+      "ms": 6,
       "error": null,
       "resolvedFrom": {
        "id": "8505213",
@@ -96759,7 +97118,7 @@
        "lon": 8.549446,
        "lat": 47.049044
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-838290be24",
@@ -97603,7 +97962,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8501300&to=8504100&after=1795363080000&limit=6",
       "status": 200,
-      "ms": 32,
+      "ms": 19,
       "error": null,
       "resolvedFrom": {
        "id": "8501300",
@@ -97617,7 +97976,7 @@
        "lon": 7.151048,
        "lat": 46.803149
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-4da46ee1c3",
@@ -98629,7 +98988,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8504200&to=8501008&after=1795363080000&limit=6",
       "status": 200,
-      "ms": 46,
+      "ms": 43,
       "error": null,
       "resolvedFrom": {
        "id": "8504200",
@@ -98643,7 +99002,7 @@
        "lon": 6.142455,
        "lat": 46.210212
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-d169cc4fe6",
@@ -99866,7 +100225,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8501118&to=8503000&after=1795363080000&limit=6",
       "status": 200,
-      "ms": 26,
+      "ms": 23,
       "error": null,
       "resolvedFrom": {
        "id": "8501118",
@@ -99880,7 +100239,7 @@
        "lon": 8.540212,
        "lat": 47.378176
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-194db95a5d",
@@ -100724,7 +101083,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8503206&to=8503110&after=1795363080000&limit=6",
       "status": 200,
-      "ms": 33,
+      "ms": 66,
       "error": null,
       "resolvedFrom": {
        "id": "8503206",
@@ -100738,7 +101097,7 @@
        "lon": 8.816749,
        "lat": 47.224888
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-910299c257",
@@ -101614,7 +101973,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8501605&to=8507000&after=1795363080000&limit=6",
       "status": 200,
-      "ms": 48,
+      "ms": 9,
       "error": null,
       "resolvedFrom": {
        "id": "8501605",
@@ -101628,7 +101987,7 @@
        "lon": 7.439129,
        "lat": 46.948831
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-3c58f33a10",
@@ -102387,7 +102746,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8500010&to=8509000&after=1795363080000&limit=6",
       "status": 200,
-      "ms": 45,
+      "ms": 31,
       "error": null,
       "resolvedFrom": {
        "id": "8500010",
@@ -102401,7 +102760,7 @@
        "lon": 9.528933,
        "lat": 46.853087
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-c21eb3140f",
@@ -103160,7 +103519,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8501120&to=8501609&after=1795363080000&limit=6",
       "status": 200,
-      "ms": 21,
+      "ms": 12,
       "error": null,
       "resolvedFrom": {
        "id": "8501120",
@@ -103174,7 +103533,7 @@
        "lon": 7.988098,
        "lat": 46.319426
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-4d13644fae",
@@ -103899,7 +104258,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8502204&to=8505300&after=1795363080000&limit=6",
       "status": 200,
-      "ms": 23,
+      "ms": 22,
       "error": null,
       "resolvedFrom": {
        "id": "8502204",
@@ -103913,7 +104272,7 @@
        "lon": 8.946996,
        "lat": 46.005502
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-abb44abf1f",
@@ -105036,7 +105395,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8502113&to=8506000&after=1795363080000&limit=6",
       "status": 200,
-      "ms": 14,
+      "ms": 13,
       "error": null,
       "resolvedFrom": {
        "id": "8502113",
@@ -105050,7 +105409,7 @@
        "lon": 8.723818,
        "lat": 47.500333
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-c542a6ca76",
@@ -106031,7 +106390,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8504100&to=8501008&after=1795363080000&limit=6",
       "status": 200,
-      "ms": 32,
+      "ms": 19,
       "error": null,
       "resolvedFrom": {
        "id": "8504100",
@@ -106045,7 +106404,7 @@
        "lon": 6.142455,
        "lat": 46.210212
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-ebea64a0f8",
@@ -107348,7 +107707,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8509000&to=8503016&after=1795363080000&limit=6",
       "status": 200,
-      "ms": 73,
+      "ms": 27,
       "error": null,
       "resolvedFrom": {
        "id": "8509000",
@@ -107362,7 +107721,7 @@
        "lon": 8.5624,
        "lat": 47.450387
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-e90219f19f",
@@ -108306,7 +108665,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8505000&to=8507000&after=1795363080000&limit=6",
       "status": 200,
-      "ms": 47,
+      "ms": 13,
       "error": null,
       "resolvedFrom": {
        "id": "8505000",
@@ -108320,7 +108679,7 @@
        "lon": 7.439129,
        "lat": 46.948831
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-2cc0df130d",
@@ -109795,7 +110154,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8506302&to=8501120&after=1795363080000&limit=6",
       "status": 200,
-      "ms": 70,
+      "ms": 29,
       "error": null,
       "resolvedFrom": {
        "id": "8506302",
@@ -109809,7 +110168,7 @@
        "lon": 6.629091,
        "lat": 46.516793
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-d26c1842a7",
@@ -110879,7 +111238,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8500218&to=8507492&after=1795363080000&limit=6",
       "status": 200,
-      "ms": 43,
+      "ms": 27,
       "error": null,
       "resolvedFrom": {
        "id": "8500218",
@@ -110893,7 +111252,7 @@
        "lon": 7.870266,
        "lat": 46.69112
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-66875b0fef",
@@ -112164,7 +112523,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8500207&to=8503000&after=1795363080000&limit=6",
       "status": 200,
-      "ms": 16,
+      "ms": 7,
       "error": null,
       "resolvedFrom": {
        "id": "8500207",
@@ -112178,7 +112537,7 @@
        "lon": 8.540212,
        "lat": 47.378176
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-9625c18720",
@@ -113030,7 +113389,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8505300&to=8505400&after=1795363080000&limit=6",
       "status": 200,
-      "ms": 56,
+      "ms": 13,
       "error": null,
       "resolvedFrom": {
        "id": "8505300",
@@ -113044,7 +113403,7 @@
        "lon": 8.801361,
        "lat": 46.172421
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-528dff058e",
@@ -114354,7 +114713,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8507483&to=8507492&after=1795363080000&limit=6",
       "status": 200,
-      "ms": 34,
+      "ms": 16,
       "error": null,
       "resolvedFrom": {
        "id": "8507483",
@@ -114368,7 +114727,7 @@
        "lon": 7.870266,
        "lat": 46.69112
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-ca2b25e6c2",
@@ -115551,7 +115910,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8501118&to=8501008&after=1795363080000&limit=6",
       "status": 200,
-      "ms": 11,
+      "ms": 7,
       "error": null,
       "resolvedFrom": {
        "id": "8501118",
@@ -115565,7 +115924,7 @@
        "lon": 6.142455,
        "lat": 46.210212
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-f055db4f44",
@@ -116274,7 +116633,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8500218&to=8507000&after=1795363080000&limit=6",
       "status": 200,
-      "ms": 11,
+      "ms": 7,
       "error": null,
       "resolvedFrom": {
        "id": "8500218",
@@ -116288,7 +116647,7 @@
        "lon": 7.439129,
        "lat": 46.948831
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-5b0c2f3f1b",
@@ -116997,7 +117356,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8503000&to=8509000&after=1795363080000&limit=6",
       "status": 200,
-      "ms": 24,
+      "ms": 16,
       "error": null,
       "resolvedFrom": {
        "id": "8503000",
@@ -117011,7 +117370,7 @@
        "lon": 9.528933,
        "lat": 46.853087
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-5dc6fa02c2",
@@ -117854,7 +118213,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8507492&to=8507483&after=1795363080000&limit=6",
       "status": 200,
-      "ms": 35,
+      "ms": 18,
       "error": null,
       "resolvedFrom": {
        "id": "8507492",
@@ -117868,7 +118227,7 @@
        "lon": 7.680102,
        "lat": 46.686394
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-d0cecf26ca",
@@ -119081,7 +119440,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8507493&to=8507492&after=1795363080000&limit=6",
       "status": 200,
-      "ms": 8,
+      "ms": 7,
       "error": null,
       "resolvedFrom": {
        "id": "8507493",
@@ -119095,7 +119454,7 @@
        "lon": 7.870266,
        "lat": 46.69112
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-c857224c18",
@@ -120086,7 +120445,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8505404&to=8505400&after=1795363080000&limit=6",
       "status": 200,
-      "ms": 17,
+      "ms": 10,
       "error": null,
       "resolvedFrom": {
        "id": "8505404",
@@ -120100,7 +120459,7 @@
        "lon": 8.801361,
        "lat": 46.172421
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-cf39dbb287",
@@ -121221,7 +121580,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8505400&to=8505300&after=1795363080000&limit=6",
       "status": 200,
-      "ms": 26,
+      "ms": 21,
       "error": null,
       "resolvedFrom": {
        "id": "8505400",
@@ -121235,7 +121594,7 @@
        "lon": 8.946996,
        "lat": 46.005502
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-bc5fa4feba",
@@ -122394,7 +122753,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8503206&to=8503209&after=1795363080000&limit=6",
       "status": 200,
-      "ms": 5,
+      "ms": 4,
       "error": null,
       "resolvedFrom": {
        "id": "8503206",
@@ -122408,7 +122767,7 @@
        "lon": 8.77813,
        "lat": 47.203
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-0ec675f2db",
@@ -123514,7 +123873,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8507000&to=8503000&after=1795372380000&limit=6",
       "status": 200,
-      "ms": 13,
+      "ms": 11,
       "error": null,
       "resolvedFrom": {
        "id": "8507000",
@@ -123528,7 +123887,7 @@
        "lon": 8.540212,
        "lat": 47.378176
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-8462e4c958",
@@ -124814,7 +125173,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8503000&to=8501120&after=1795372380000&limit=6",
       "status": 200,
-      "ms": 28,
+      "ms": 31,
       "error": null,
       "resolvedFrom": {
        "id": "8503000",
@@ -124828,7 +125187,7 @@
        "lon": 6.629091,
        "lat": 46.516793
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-fd4ac546d3",
@@ -126311,7 +126670,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8501008&to=8500010&after=1795372380000&limit=6",
       "status": 200,
-      "ms": 87,
+      "ms": 49,
       "error": null,
       "resolvedFrom": {
        "id": "8501008",
@@ -126325,7 +126684,7 @@
        "lon": 7.58956,
        "lat": 47.547413
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-f9f1117d19",
@@ -127320,7 +127679,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8505000&to=8505300&after=1795372380000&limit=6",
       "status": 200,
-      "ms": 23,
+      "ms": 22,
       "error": null,
       "resolvedFrom": {
        "id": "8505000",
@@ -127334,7 +127693,7 @@
        "lon": 8.946996,
        "lat": 46.005502
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-b22f1aba3b",
@@ -128192,7 +128551,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8506302&to=8509000&after=1795372380000&limit=6",
       "status": 200,
-      "ms": 19,
+      "ms": 17,
       "error": null,
       "resolvedFrom": {
        "id": "8506302",
@@ -128206,7 +128565,7 @@
        "lon": 9.528933,
        "lat": 46.853087
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-d3220dd527",
@@ -128982,7 +129341,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8500218&to=8502113&after=1795372380000&limit=6",
       "status": 200,
-      "ms": 4,
+      "ms": 3,
       "error": null,
       "resolvedFrom": {
        "id": "8500218",
@@ -128996,7 +129355,7 @@
        "lon": 8.051277,
        "lat": 47.391362
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-d3c4198abe",
@@ -129806,7 +130165,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8504300&to=8504100&after=1795372380000&limit=6",
       "status": 200,
-      "ms": 28,
+      "ms": 21,
       "error": null,
       "resolvedFrom": {
        "id": "8504300",
@@ -129820,7 +130179,7 @@
        "lon": 7.151048,
        "lat": 46.803149
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-81eddc5e7b",
@@ -130730,7 +131089,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8504221&to=8507000&after=1795372380000&limit=6",
       "status": 200,
-      "ms": 11,
+      "ms": 10,
       "error": null,
       "resolvedFrom": {
        "id": "8504221",
@@ -130744,7 +131103,7 @@
        "lon": 7.439129,
        "lat": 46.948831
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-5f06b90f50",
@@ -131591,7 +131950,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8501506&to=8501609&after=1795372380000&limit=6",
       "status": 200,
-      "ms": 7,
+      "ms": 6,
       "error": null,
       "resolvedFrom": {
        "id": "8501506",
@@ -131605,7 +131964,7 @@
        "lon": 7.988098,
        "lat": 46.319426
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-23a5dcd621",
@@ -132582,7 +132941,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8507492&to=8503000&after=1795372380000&limit=6",
       "status": 200,
-      "ms": 31,
+      "ms": 11,
       "error": null,
       "resolvedFrom": {
        "id": "8507492",
@@ -132596,7 +132955,7 @@
        "lon": 8.540212,
        "lat": 47.378176
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-4d681a17ed",
@@ -134224,7 +134583,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8506000&to=8502204&after=1795372380000&limit=6",
       "status": 200,
-      "ms": 18,
+      "ms": 14,
       "error": null,
       "resolvedFrom": {
        "id": "8506000",
@@ -134238,7 +134597,7 @@
        "lon": 8.51505,
        "lat": 47.173709
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-38dc2ce1a7",
@@ -135238,7 +135597,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8507100&to=8505000&after=1795372380000&limit=6",
       "status": 200,
-      "ms": 37,
+      "ms": 32,
       "error": null,
       "resolvedFrom": {
        "id": "8507100",
@@ -135252,7 +135611,7 @@
        "lon": 8.31018,
        "lat": 47.050176
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-a7904b3b58",
@@ -136591,7 +136950,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8503424&to=8503016&after=1795372380000&limit=6",
       "status": 200,
-      "ms": 19,
+      "ms": 12,
       "error": null,
       "resolvedFrom": {
        "id": "8503424",
@@ -136605,7 +136964,7 @@
        "lon": 8.5624,
        "lat": 47.450387
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-900993c9fe",
@@ -137469,7 +137828,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8505213&to=8505004&after=1795372380000&limit=6",
       "status": 200,
-      "ms": 18,
+      "ms": 9,
       "error": null,
       "resolvedFrom": {
        "id": "8505213",
@@ -137483,7 +137842,7 @@
        "lon": 8.549446,
        "lat": 47.049044
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-98b9eb56ce",
@@ -138323,7 +138682,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8501300&to=8504100&after=1795372380000&limit=6",
       "status": 200,
-      "ms": 43,
+      "ms": 29,
       "error": null,
       "resolvedFrom": {
        "id": "8501300",
@@ -138337,7 +138696,7 @@
        "lon": 7.151048,
        "lat": 46.803149
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-3dc3fc5b6a",
@@ -139366,7 +139725,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8504200&to=8501008&after=1795372380000&limit=6",
       "status": 200,
-      "ms": 40,
+      "ms": 45,
       "error": null,
       "resolvedFrom": {
        "id": "8504200",
@@ -139380,7 +139739,7 @@
        "lon": 6.142455,
        "lat": 46.210212
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-32156699db",
@@ -140688,7 +141047,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8501118&to=8503000&after=1795372380000&limit=6",
       "status": 200,
-      "ms": 22,
+      "ms": 11,
       "error": null,
       "resolvedFrom": {
        "id": "8501118",
@@ -140702,7 +141061,7 @@
        "lon": 8.540212,
        "lat": 47.378176
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-59237929a6",
@@ -141597,7 +141956,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8503206&to=8503110&after=1795372380000&limit=6",
       "status": 200,
-      "ms": 29,
+      "ms": 16,
       "error": null,
       "resolvedFrom": {
        "id": "8503206",
@@ -141611,7 +141970,7 @@
        "lon": 8.816749,
        "lat": 47.224888
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-708046c2a2",
@@ -142543,7 +142902,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8501605&to=8507000&after=1795372380000&limit=6",
       "status": 200,
-      "ms": 29,
+      "ms": 8,
       "error": null,
       "resolvedFrom": {
        "id": "8501605",
@@ -142557,7 +142916,7 @@
        "lon": 7.439129,
        "lat": 46.948831
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-d0e54d2c64",
@@ -143932,7 +144291,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8500010&to=8509000&after=1795372380000&limit=6",
       "status": 200,
-      "ms": 80,
+      "ms": 31,
       "error": null,
       "resolvedFrom": {
        "id": "8500010",
@@ -143946,7 +144305,7 @@
        "lon": 9.528933,
        "lat": 46.853087
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-6d957eafc2",
@@ -144861,7 +145220,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8501120&to=8501609&after=1795372380000&limit=6",
       "status": 200,
-      "ms": 17,
+      "ms": 12,
       "error": null,
       "resolvedFrom": {
        "id": "8501120",
@@ -144875,7 +145234,7 @@
        "lon": 7.988098,
        "lat": 46.319426
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-ea61dbfcd4",
@@ -145634,7 +145993,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8502204&to=8505300&after=1795372380000&limit=6",
       "status": 200,
-      "ms": 36,
+      "ms": 38,
       "error": null,
       "resolvedFrom": {
        "id": "8502204",
@@ -145648,7 +146007,7 @@
        "lon": 8.946996,
        "lat": 46.005502
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-7f29fbe858",
@@ -146486,7 +146845,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8502113&to=8506000&after=1795372380000&limit=6",
       "status": 200,
-      "ms": 16,
+      "ms": 18,
       "error": null,
       "resolvedFrom": {
        "id": "8502113",
@@ -146500,7 +146859,7 @@
        "lon": 8.723818,
        "lat": 47.500333
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-2feb70edfe",
@@ -147466,7 +147825,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8504100&to=8501008&after=1795372380000&limit=6",
       "status": 200,
-      "ms": 46,
+      "ms": 82,
       "error": null,
       "resolvedFrom": {
        "id": "8504100",
@@ -147480,7 +147839,7 @@
        "lon": 6.142455,
        "lat": 46.210212
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-aa2422cf4e",
@@ -148864,7 +149223,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8509000&to=8503016&after=1795372380000&limit=6",
       "status": 200,
-      "ms": 40,
+      "ms": 29,
       "error": null,
       "resolvedFrom": {
        "id": "8509000",
@@ -148878,7 +149237,7 @@
        "lon": 8.5624,
        "lat": 47.450387
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-4e2c7ced2e",
@@ -149873,7 +150232,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8505000&to=8507000&after=1795372380000&limit=6",
       "status": 200,
-      "ms": 37,
+      "ms": 13,
       "error": null,
       "resolvedFrom": {
        "id": "8505000",
@@ -149887,7 +150246,7 @@
        "lon": 7.439129,
        "lat": 46.948831
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-0f35d280e5",
@@ -151262,7 +151621,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8506302&to=8501120&after=1795372380000&limit=6",
       "status": 200,
-      "ms": 45,
+      "ms": 28,
       "error": null,
       "resolvedFrom": {
        "id": "8506302",
@@ -151276,7 +151635,7 @@
        "lon": 6.629091,
        "lat": 46.516793
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-15c16d176d",
@@ -152454,7 +152813,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8500218&to=8507492&after=1795372380000&limit=6",
       "status": 200,
-      "ms": 26,
+      "ms": 25,
       "error": null,
       "resolvedFrom": {
        "id": "8500218",
@@ -152468,7 +152827,7 @@
        "lon": 7.870266,
        "lat": 46.69112
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-e7bfa44cb0",
@@ -153689,7 +154048,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8500207&to=8503000&after=1795372380000&limit=6",
       "status": 200,
-      "ms": 14,
+      "ms": 16,
       "error": null,
       "resolvedFrom": {
        "id": "8500207",
@@ -153703,7 +154062,7 @@
        "lon": 8.540212,
        "lat": 47.378176
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-88175e4aa1",
@@ -154606,7 +154965,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8505300&to=8505400&after=1795372380000&limit=6",
       "status": 200,
-      "ms": 21,
+      "ms": 27,
       "error": null,
       "resolvedFrom": {
        "id": "8505300",
@@ -154620,7 +154979,7 @@
        "lon": 8.801361,
        "lat": 46.172421
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-990167ee18",
@@ -155890,7 +156249,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8507483&to=8507492&after=1795372380000&limit=6",
       "status": 200,
-      "ms": 30,
+      "ms": 20,
       "error": null,
       "resolvedFrom": {
        "id": "8507483",
@@ -155904,7 +156263,7 @@
        "lon": 7.870266,
        "lat": 46.69112
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-f8f57858b3",
@@ -157087,7 +157446,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8501118&to=8501008&after=1795372380000&limit=6",
       "status": 200,
-      "ms": 8,
+      "ms": 5,
       "error": null,
       "resolvedFrom": {
        "id": "8501118",
@@ -157101,7 +157460,7 @@
        "lon": 6.142455,
        "lat": 46.210212
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-e7b04a99b3",
@@ -157810,7 +158169,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8500218&to=8507000&after=1795372380000&limit=6",
       "status": 200,
-      "ms": 7,
+      "ms": 5,
       "error": null,
       "resolvedFrom": {
        "id": "8500218",
@@ -157824,7 +158183,7 @@
        "lon": 7.439129,
        "lat": 46.948831
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-a4f7050451",
@@ -158601,7 +158960,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8503000&to=8509000&after=1795372380000&limit=6",
       "status": 200,
-      "ms": 154,
+      "ms": 12,
       "error": null,
       "resolvedFrom": {
        "id": "8503000",
@@ -158615,7 +158974,7 @@
        "lon": 9.528933,
        "lat": 46.853087
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-732f09b34a",
@@ -159526,7 +159885,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8507492&to=8507483&after=1795372380000&limit=6",
       "status": 200,
-      "ms": 36,
+      "ms": 13,
       "error": null,
       "resolvedFrom": {
        "id": "8507492",
@@ -159540,7 +159899,7 @@
        "lon": 7.680102,
        "lat": 46.686394
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-c5d7953cbf",
@@ -160668,7 +161027,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8507493&to=8507492&after=1795372380000&limit=6",
       "status": 200,
-      "ms": 36,
+      "ms": 7,
       "error": null,
       "resolvedFrom": {
        "id": "8507493",
@@ -160682,7 +161041,7 @@
        "lon": 7.870266,
        "lat": 46.69112
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-79b7194c7d",
@@ -161690,7 +162049,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8505404&to=8505400&after=1795372380000&limit=6",
       "status": 200,
-      "ms": 29,
+      "ms": 9,
       "error": null,
       "resolvedFrom": {
        "id": "8505404",
@@ -161704,7 +162063,7 @@
        "lon": 8.801361,
        "lat": 46.172421
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-dc1f0e1e32",
@@ -162825,7 +163184,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8505400&to=8505300&after=1795372380000&limit=6",
       "status": 200,
-      "ms": 28,
+      "ms": 16,
       "error": null,
       "resolvedFrom": {
        "id": "8505400",
@@ -162839,7 +163198,7 @@
        "lon": 8.946996,
        "lat": 46.005502
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-3b6eb50d7f",
@@ -163998,7 +164357,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8503206&to=8503209&after=1795372380000&limit=6",
       "status": 200,
-      "ms": 5,
+      "ms": 3,
       "error": null,
       "resolvedFrom": {
        "id": "8503206",
@@ -164012,7 +164371,7 @@
        "lon": 8.77813,
        "lat": 47.203
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-8bcffb30ba",
@@ -164720,7 +165079,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8507000&to=8503000&after=1795386000000&limit=6",
       "status": 200,
-      "ms": 44,
+      "ms": 12,
       "error": null,
       "resolvedFrom": {
        "id": "8507000",
@@ -164734,7 +165093,7 @@
        "lon": 8.540212,
        "lat": 47.378176
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-e4ea50b178",
@@ -165840,7 +166199,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8503000&to=8501120&after=1795386000000&limit=6",
       "status": 200,
-      "ms": 126,
+      "ms": 35,
       "error": null,
       "resolvedFrom": {
        "id": "8503000",
@@ -165854,7 +166213,7 @@
        "lon": 6.629091,
        "lat": 46.516793
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-c1829370d5",
@@ -167320,7 +167679,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8501008&to=8500010&after=1795386000000&limit=6",
       "status": 200,
-      "ms": 68,
+      "ms": 24,
       "error": null,
       "resolvedFrom": {
        "id": "8501008",
@@ -167334,7 +167693,7 @@
        "lon": 7.58956,
        "lat": 47.547413
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-0a722a0e6f",
@@ -168218,7 +168577,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8505000&to=8505300&after=1795386000000&limit=6",
       "status": 200,
-      "ms": 13,
+      "ms": 9,
       "error": null,
       "resolvedFrom": {
        "id": "8505000",
@@ -168232,7 +168591,7 @@
        "lon": 8.946996,
        "lat": 46.005502
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-7c62b6d10b",
@@ -168872,7 +169231,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8506302&to=8509000&after=1795386000000&limit=6",
       "status": 200,
-      "ms": 22,
+      "ms": 20,
       "error": null,
       "resolvedFrom": {
        "id": "8506302",
@@ -168886,7 +169245,7 @@
        "lon": 9.528933,
        "lat": 46.853087
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-a79033075e",
@@ -169813,7 +170172,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8500218&to=8502113&after=1795386000000&limit=6",
       "status": 200,
-      "ms": 4,
+      "ms": 3,
       "error": null,
       "resolvedFrom": {
        "id": "8500218",
@@ -169827,7 +170186,7 @@
        "lon": 8.051277,
        "lat": 47.391362
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-e97c653540",
@@ -170637,7 +170996,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8504300&to=8504100&after=1795386000000&limit=6",
       "status": 200,
-      "ms": 32,
+      "ms": 29,
       "error": null,
       "resolvedFrom": {
        "id": "8504300",
@@ -170651,7 +171010,7 @@
        "lon": 7.151048,
        "lat": 46.803149
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-4c6880c757",
@@ -171544,7 +171903,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8504221&to=8507000&after=1795386000000&limit=6",
       "status": 200,
-      "ms": 10,
+      "ms": 33,
       "error": null,
       "resolvedFrom": {
        "id": "8504221",
@@ -171558,7 +171917,7 @@
        "lon": 7.439129,
        "lat": 46.948831
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-3e7dd20b75",
@@ -172334,7 +172693,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8501506&to=8501609&after=1795386000000&limit=6",
       "status": 200,
-      "ms": 11,
+      "ms": 5,
       "error": null,
       "resolvedFrom": {
        "id": "8501506",
@@ -172348,7 +172707,7 @@
        "lon": 7.988098,
        "lat": 46.319426
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-2fccce17e4",
@@ -173788,7 +174147,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8507492&to=8503000&after=1795386000000&limit=6",
       "status": 200,
-      "ms": 83,
+      "ms": 27,
       "error": null,
       "resolvedFrom": {
        "id": "8507492",
@@ -173802,7 +174161,7 @@
        "lon": 8.540212,
        "lat": 47.378176
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-f8a4055f59",
@@ -175020,7 +175379,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8506000&to=8502204&after=1795386000000&limit=6",
       "status": 200,
-      "ms": 35,
+      "ms": 9,
       "error": null,
       "resolvedFrom": {
        "id": "8506000",
@@ -175034,7 +175393,7 @@
        "lon": 8.51505,
        "lat": 47.173709
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-acbfeb9d85",
@@ -176126,7 +176485,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8507100&to=8505000&after=1795386000000&limit=6",
       "status": 200,
-      "ms": 84,
+      "ms": 38,
       "error": null,
       "resolvedFrom": {
        "id": "8507100",
@@ -176140,7 +176499,7 @@
        "lon": 8.31018,
        "lat": 47.050176
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-005a67046d",
@@ -177542,7 +177901,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8503424&to=8503016&after=1795386000000&limit=6",
       "status": 200,
-      "ms": 12,
+      "ms": 10,
       "error": null,
       "resolvedFrom": {
        "id": "8503424",
@@ -177556,7 +177915,7 @@
        "lon": 8.5624,
        "lat": 47.450387
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-d97599d5ab",
@@ -178420,7 +178779,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8505213&to=8505004&after=1795386000000&limit=6",
       "status": 200,
-      "ms": 11,
+      "ms": 9,
       "error": null,
       "resolvedFrom": {
        "id": "8505213",
@@ -178434,7 +178793,7 @@
        "lon": 8.549446,
        "lat": 47.049044
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-f1e0eb30cb",
@@ -179268,7 +179627,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8501300&to=8504100&after=1795386000000&limit=6",
       "status": 200,
-      "ms": 51,
+      "ms": 26,
       "error": null,
       "resolvedFrom": {
        "id": "8501300",
@@ -179282,7 +179641,7 @@
        "lon": 7.151048,
        "lat": 46.803149
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-b416b7d977",
@@ -180399,7 +180758,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8504200&to=8501008&after=1795386000000&limit=6",
       "status": 200,
-      "ms": 60,
+      "ms": 17,
       "error": null,
       "resolvedFrom": {
        "id": "8504200",
@@ -180413,7 +180772,7 @@
        "lon": 6.142455,
        "lat": 46.210212
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-d084b06d70",
@@ -181374,7 +181733,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8501118&to=8503000&after=1795386000000&limit=6",
       "status": 200,
-      "ms": 113,
+      "ms": 72,
       "error": null,
       "resolvedFrom": {
        "id": "8501118",
@@ -181388,7 +181747,7 @@
        "lon": 8.540212,
        "lat": 47.378176
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-4647740f4c",
@@ -182420,7 +182779,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8503206&to=8503110&after=1795386000000&limit=6",
       "status": 200,
-      "ms": 21,
+      "ms": 10,
       "error": null,
       "resolvedFrom": {
        "id": "8503206",
@@ -182434,7 +182793,7 @@
        "lon": 8.816749,
        "lat": 47.224888
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-37b6d6ed41",
@@ -183298,7 +183657,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8501605&to=8507000&after=1795386000000&limit=6",
       "status": 200,
-      "ms": 8,
+      "ms": 9,
       "error": null,
       "resolvedFrom": {
        "id": "8501605",
@@ -183312,7 +183671,7 @@
        "lon": 7.439129,
        "lat": 46.948831
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-238a0255ff",
@@ -184237,7 +184596,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8500010&to=8509000&after=1795386000000&limit=6",
       "status": 200,
-      "ms": 64,
+      "ms": 38,
       "error": null,
       "resolvedFrom": {
        "id": "8500010",
@@ -184251,7 +184610,7 @@
        "lon": 9.528933,
        "lat": 46.853087
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-3ce6c59b1b",
@@ -185388,7 +185747,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8501120&to=8501609&after=1795386000000&limit=6",
       "status": 200,
-      "ms": 31,
+      "ms": 25,
       "error": null,
       "resolvedFrom": {
        "id": "8501120",
@@ -185402,7 +185761,7 @@
        "lon": 7.988098,
        "lat": 46.319426
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-c48976dbb7",
@@ -186507,7 +186866,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8502204&to=8505300&after=1795386000000&limit=6",
       "status": 200,
-      "ms": 30,
+      "ms": 13,
       "error": null,
       "resolvedFrom": {
        "id": "8502204",
@@ -186521,7 +186880,7 @@
        "lon": 8.946996,
        "lat": 46.005502
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-307cd0126e",
@@ -187288,7 +187647,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8502113&to=8506000&after=1795386000000&limit=6",
       "status": 200,
-      "ms": 16,
+      "ms": 9,
       "error": null,
       "resolvedFrom": {
        "id": "8502113",
@@ -187302,7 +187661,7 @@
        "lon": 8.723818,
        "lat": 47.500333
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-394ef1d69a",
@@ -188281,7 +188640,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8504100&to=8501008&after=1795386000000&limit=6",
       "status": 200,
-      "ms": 18,
+      "ms": 11,
       "error": null,
       "resolvedFrom": {
        "id": "8504100",
@@ -188295,7 +188654,7 @@
        "lon": 6.142455,
        "lat": 46.210212
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-2eb1eca0f0",
@@ -189273,7 +189632,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8509000&to=8503016&after=1795386000000&limit=6",
       "status": 200,
-      "ms": 24,
+      "ms": 17,
       "error": null,
       "resolvedFrom": {
        "id": "8509000",
@@ -189287,7 +189646,7 @@
        "lon": 8.5624,
        "lat": 47.450387
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-087ad609e1",
@@ -190350,7 +190709,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8505000&to=8507000&after=1795386000000&limit=6",
       "status": 200,
-      "ms": 32,
+      "ms": 19,
       "error": null,
       "resolvedFrom": {
        "id": "8505000",
@@ -190364,7 +190723,7 @@
        "lon": 7.439129,
        "lat": 46.948831
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-a1d96cf019",
@@ -192063,7 +192422,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8506302&to=8501120&after=1795386000000&limit=6",
       "status": 200,
-      "ms": 52,
+      "ms": 20,
       "error": null,
       "resolvedFrom": {
        "id": "8506302",
@@ -192077,7 +192436,7 @@
        "lon": 6.629091,
        "lat": 46.516793
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-0976fe444e",
@@ -193035,7 +193394,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8500218&to=8507492&after=1795386000000&limit=6",
       "status": 200,
-      "ms": 63,
+      "ms": 32,
       "error": null,
       "resolvedFrom": {
        "id": "8500218",
@@ -193049,7 +193408,7 @@
        "lon": 7.870266,
        "lat": 46.69112
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-6548142208",
@@ -194326,7 +194685,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8500207&to=8503000&after=1795386000000&limit=6",
       "status": 200,
-      "ms": 21,
+      "ms": 7,
       "error": null,
       "resolvedFrom": {
        "id": "8500207",
@@ -194340,7 +194699,7 @@
        "lon": 8.540212,
        "lat": 47.378176
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-3534099ed6",
@@ -195286,7 +195645,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8505300&to=8505400&after=1795386000000&limit=6",
       "status": 200,
-      "ms": 21,
+      "ms": 9,
       "error": null,
       "resolvedFrom": {
        "id": "8505300",
@@ -195300,7 +195659,7 @@
        "lon": 8.801361,
        "lat": 46.172421
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-07f22a530b",
@@ -196429,7 +196788,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8507483&to=8507492&after=1795386000000&limit=6",
       "status": 200,
-      "ms": 16,
+      "ms": 8,
       "error": null,
       "resolvedFrom": {
        "id": "8507483",
@@ -196443,7 +196802,7 @@
        "lon": 7.870266,
        "lat": 46.69112
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-ab80571b55",
@@ -197626,7 +197985,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8501118&to=8501008&after=1795386000000&limit=6",
       "status": 200,
-      "ms": 14,
+      "ms": 5,
       "error": null,
       "resolvedFrom": {
        "id": "8501118",
@@ -197640,7 +197999,7 @@
        "lon": 6.142455,
        "lat": 46.210212
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-fdab8cd498",
@@ -198366,7 +198725,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8500218&to=8507000&after=1795386000000&limit=6",
       "status": 200,
-      "ms": 8,
+      "ms": 7,
       "error": null,
       "resolvedFrom": {
        "id": "8500218",
@@ -198380,7 +198739,7 @@
        "lon": 7.439129,
        "lat": 46.948831
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-404885ec45",
@@ -199170,7 +199529,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8503000&to=8509000&after=1795386000000&limit=6",
       "status": 200,
-      "ms": 24,
+      "ms": 13,
       "error": null,
       "resolvedFrom": {
        "id": "8503000",
@@ -199184,7 +199543,7 @@
        "lon": 9.528933,
        "lat": 46.853087
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-6c8917803b",
@@ -200296,7 +200655,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8507492&to=8507483&after=1795386000000&limit=6",
       "status": 200,
-      "ms": 88,
+      "ms": 11,
       "error": null,
       "resolvedFrom": {
        "id": "8507492",
@@ -200310,7 +200669,7 @@
        "lon": 7.680102,
        "lat": 46.686394
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-dee32886ca",
@@ -201500,7 +201859,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8507493&to=8507492&after=1795386000000&limit=6",
       "status": 200,
-      "ms": 14,
+      "ms": 4,
       "error": null,
       "resolvedFrom": {
        "id": "8507493",
@@ -201514,7 +201873,7 @@
        "lon": 7.870266,
        "lat": 46.69112
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-0e936b29f3",
@@ -202505,7 +202864,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8505404&to=8505400&after=1795386000000&limit=6",
       "status": 200,
-      "ms": 17,
+      "ms": 4,
       "error": null,
       "resolvedFrom": {
        "id": "8505404",
@@ -202519,7 +202878,7 @@
        "lon": 8.801361,
        "lat": 46.172421
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-78ae9b29a3",
@@ -203452,7 +203811,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8505400&to=8505300&after=1795386000000&limit=6",
       "status": 200,
-      "ms": 16,
+      "ms": 7,
       "error": null,
       "resolvedFrom": {
        "id": "8505400",
@@ -203466,7 +203825,7 @@
        "lon": 8.946996,
        "lat": 46.005502
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-bf67c92d23",
@@ -204451,7 +204810,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8503206&to=8503209&after=1795386000000&limit=6",
       "status": 200,
-      "ms": 4,
+      "ms": 2,
       "error": null,
       "resolvedFrom": {
        "id": "8503206",
@@ -204465,7 +204824,7 @@
        "lon": 8.77813,
        "lat": 47.203
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-087ab3158b",
@@ -205173,7 +205532,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8503000&to=8509000&after=1795336620000&limit=6&maxTransfers=0",
       "status": 200,
-      "ms": 10,
+      "ms": 7,
       "error": null,
       "resolvedFrom": {
        "id": "8503000",
@@ -205187,7 +205546,7 @@
        "lon": 9.528933,
        "lat": 46.853087
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-0c0abea9dd",
@@ -205895,7 +206254,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8503000&to=8509000&after=1795345440000&limit=6&maxTransfers=0",
       "status": 200,
-      "ms": 16,
+      "ms": 8,
       "error": null,
       "resolvedFrom": {
        "id": "8503000",
@@ -205909,7 +206268,7 @@
        "lon": 9.528933,
        "lat": 46.853087
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-5dd2dfbddf",
@@ -206695,7 +207054,7 @@
        "lon": 9.528933,
        "lat": 46.853087
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-c4c14fb55a",
@@ -207590,7 +207949,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8507000&to=8503000&after=1795336620000&limit=6&maxTransfers=0",
       "status": 200,
-      "ms": 10,
+      "ms": 8,
       "error": null,
       "resolvedFrom": {
        "id": "8507000",
@@ -207604,7 +207963,7 @@
        "lon": 8.540212,
        "lat": 47.378176
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-231d98bd1f",
@@ -208693,7 +209052,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8507000&to=8503000&after=1795345440000&limit=6&maxTransfers=0",
       "status": 200,
-      "ms": 19,
+      "ms": 9,
       "error": null,
       "resolvedFrom": {
        "id": "8507000",
@@ -208707,7 +209066,7 @@
        "lon": 8.540212,
        "lat": 47.378176
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-cefbed99e8",
@@ -209415,7 +209774,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8507000&to=8503000&after=1795386000000&limit=6&maxTransfers=0",
       "status": 200,
-      "ms": 19,
+      "ms": 4,
       "error": null,
       "resolvedFrom": {
        "id": "8507000",
@@ -209429,7 +209788,7 @@
        "lon": 8.540212,
        "lat": 47.378176
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-e4ea50b178",
@@ -210137,7 +210496,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8500218&to=8502113&after=1795336620000&limit=6&maxTransfers=0",
       "status": 200,
-      "ms": 9,
+      "ms": 2,
       "error": null,
       "resolvedFrom": {
        "id": "8500218",
@@ -210151,7 +210510,7 @@
        "lon": 8.051277,
        "lat": 47.391362
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-a1427639a4",
@@ -210859,7 +211218,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8500218&to=8502113&after=1795345440000&limit=6&maxTransfers=0",
       "status": 200,
-      "ms": 8,
+      "ms": 2,
       "error": null,
       "resolvedFrom": {
        "id": "8500218",
@@ -210873,7 +211232,7 @@
        "lon": 8.051277,
        "lat": 47.391362
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-ec0a65161a",
@@ -211581,7 +211940,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8500218&to=8502113&after=1795386000000&limit=6&maxTransfers=0",
       "status": 200,
-      "ms": 9,
+      "ms": 2,
       "error": null,
       "resolvedFrom": {
        "id": "8500218",
@@ -211595,7 +211954,7 @@
        "lon": 8.051277,
        "lat": 47.391362
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-e97c653540",
@@ -212337,7 +212696,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8505300&to=8505213&after=1795336620000&limit=6&maxTransfers=0",
       "status": 200,
-      "ms": 5,
+      "ms": 2,
       "error": null,
       "resolvedFrom": {
        "id": "8505300",
@@ -212351,7 +212710,7 @@
        "lon": 9.029515,
        "lat": 46.195433
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-498806b59b",
@@ -213093,7 +213452,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8505300&to=8505213&after=1795345440000&limit=6&maxTransfers=0",
       "status": 200,
-      "ms": 21,
+      "ms": 2,
       "error": null,
       "resolvedFrom": {
        "id": "8505300",
@@ -213107,7 +213466,7 @@
        "lon": 9.029515,
        "lat": 46.195433
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-9ae7f2aecb",
@@ -213832,7 +214191,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8505300&to=8505213&after=1795386000000&limit=6&maxTransfers=0",
       "status": 200,
-      "ms": 10,
+      "ms": 2,
       "error": null,
       "resolvedFrom": {
        "id": "8505300",
@@ -213846,7 +214205,7 @@
        "lon": 9.029515,
        "lat": 46.195433
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-8074b55843",
@@ -215239,7 +215598,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8507492&to=8503000&after=1795336620000&limit=6&maxTransfers=0",
       "status": 200,
-      "ms": 12,
+      "ms": 5,
       "error": null,
       "resolvedFrom": {
        "id": "8507492",
@@ -215253,7 +215612,7 @@
        "lon": 8.540212,
        "lat": 47.378176
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [],
       "departsBeforeQuery": []
      },
@@ -216259,7 +216618,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8507492&to=8503000&after=1795345440000&limit=6&maxTransfers=0",
       "status": 200,
-      "ms": 8,
+      "ms": 6,
       "error": null,
       "resolvedFrom": {
        "id": "8507492",
@@ -216273,7 +216632,7 @@
        "lon": 8.540212,
        "lat": 47.378176
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [],
       "departsBeforeQuery": []
      },
@@ -217326,7 +217685,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8507492&to=8503000&after=1795386000000&limit=6&maxTransfers=0",
       "status": 200,
-      "ms": 13,
+      "ms": 2,
       "error": null,
       "resolvedFrom": {
        "id": "8507492",
@@ -217340,7 +217699,7 @@
        "lon": 8.540212,
        "lat": 47.378176
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [],
       "departsBeforeQuery": []
      },
@@ -218343,7 +218702,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8506302&to=8501120&after=1795336620000&limit=6&maxTransfers=0",
       "status": 200,
-      "ms": 14,
+      "ms": 13,
       "error": null,
       "resolvedFrom": {
        "id": "8506302",
@@ -218357,7 +218716,7 @@
        "lon": 6.629091,
        "lat": 46.516793
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-a190f52af9",
@@ -219684,7 +220043,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8506302&to=8501120&after=1795345440000&limit=6&maxTransfers=0",
       "status": 200,
-      "ms": 15,
+      "ms": 10,
       "error": null,
       "resolvedFrom": {
        "id": "8506302",
@@ -219698,7 +220057,7 @@
        "lon": 6.629091,
        "lat": 46.516793
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-ec5d04d073",
@@ -221008,7 +221367,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8506302&to=8501120&after=1795386000000&limit=6&maxTransfers=0",
       "status": 200,
-      "ms": 14,
+      "ms": 6,
       "error": null,
       "resolvedFrom": {
        "id": "8506302",
@@ -221022,7 +221381,7 @@
        "lon": 6.629091,
        "lat": 46.516793
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-c3b37ef87a",
@@ -221615,7 +221974,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8503000&to=8507000&after=1795387800000&limit=6",
       "status": 200,
-      "ms": 49,
+      "ms": 12,
       "error": null,
       "resolvedFrom": {
        "id": "8503000",
@@ -221629,7 +221988,7 @@
        "lon": 7.439129,
        "lat": 46.948831
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-8c6dd2acbe",
@@ -222456,7 +222815,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8507000&to=8503000&after=1795387800000&limit=6",
       "status": 200,
-      "ms": 28,
+      "ms": 7,
       "error": null,
       "resolvedFrom": {
        "id": "8507000",
@@ -222470,7 +222829,7 @@
        "lon": 8.540212,
        "lat": 47.378176
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-e5e23f6a1f",
@@ -223226,7 +223585,7 @@
        "lon": 6.142455,
        "lat": 46.210212
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-c4413436b1",
@@ -223934,7 +224293,7 @@
      "byId": {
       "url": "http://127.0.0.1:8806/api/plan?from=8503000&to=8506000&after=1795388280000&limit=6",
       "status": 200,
-      "ms": 10,
+      "ms": 4,
       "error": null,
       "resolvedFrom": {
        "id": "8503000",
@@ -223948,7 +224307,7 @@
        "lon": 8.723818,
        "lat": 47.500333
       },
-      "snapshotId": "s-a2ba98fac8bf",
+      "snapshotId": "s-a26e537dc37e",
       "journeys": [
        {
         "id": "j-211f9509cf",

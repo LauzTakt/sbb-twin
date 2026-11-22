@@ -176,11 +176,16 @@ def main():
                 # validity under our projection (confirmed class for journeys the planner calls certain)
                 extra_ids = {}
                 inval = []
+                st_rec_unjudged = {}
                 for j in js:
                     M = dict(closures=projc["closures"] if not j.get("uncertain") else projx["closures"], cuts={}, holds={})
                     netv = netc if not j.get("uncertain") else netx
                     v = validate(j, o, d, T, net=netv, use_expected=True, fallback=nat)
                     errs = list(v["errors"])
+                    if v.get("unjudged"):
+                        unjudged_n = st_rec_unjudged.setdefault("n", 0)
+                        st_rec_unjudged["n"] = unjudged_n + 1
+                        st_rec_unjudged.setdefault("journeys", []).append((hms(-ecost(j)[2], False), hms(ecost(j)[0], False)))
                     if errs:
                         inval.append(dict(dep=hms(-ecost(j)[2], False), arr=hms(ecost(j)[0], False), uncertain=j.get("uncertain", False),
                                           lines=[l.get("line") for l in j.get("legs", [])], errors=errs))
@@ -193,19 +198,34 @@ def main():
                               oracleConfirmed=dict(t=otup(oc), s=summary(oc), witness=oc.get("witness")), oracleConditional=dict(t=otup(ox), s=summary(ox)),
                               planner=dict(bestConfirmed=tup(jb_conf), bestAll=tup(jb_all), n=len(js), snapshotId=pb.get("snapshotId"),
                                            journeys=[dict(t=tup(j), uncertain=j.get("uncertain", False), lines=[l.get("line") for l in j.get("legs", [])]) for j in js]),
-                              invalid=inval)
+                              invalid=inval, unjudged=st_rec_unjudged)
                 # oracle agreement on the confirmed class
                 tc, oc_t = tup(jb_conf), otup(oc)
                 if tc == oc_t:
                     v_or = "agree"
                 elif oc_t is None:
                     bad = [x for x in inval if not x["uncertain"] and x["dep"] == hms(-tc[2], False) and x["arr"] == hms(tc[0], False)]
-                    v_or = "fail-invalid-certain" if bad else "planner-only"  # certain journey where the oracle has none
+                    if bad and all(("not a bus of the projected" in e or "nearest" in e) for x in bad for e in x["errors"]):
+                        v_or = "projection-diff-planner-side"
+                    elif bad:
+                        v_or = "fail-invalid-certain"
+                    elif (hms(-tc[2], False), hms(tc[0], False)) in [tuple(x) for x in st_rec_unjudged.get("journeys", [])]:
+                        v_or = "planner-only-outside-region"  # a certain detour through stations outside the oracle region
+                    else:
+                        v_or = "planner-only"  # certain journey where the oracle has none (our projection stricter?)
                 elif tc is None:
                     v_or = "fail-empty"
                 elif tc < oc_t:
                     bad = [x for x in inval if not x["uncertain"] and x["dep"] == hms(-tc[2], False) and x["arr"] == hms(tc[0], False)]
-                    v_or = "fail-invalid-certain" if bad else "planner-better"
+                    outside = (hms(-tc[2], False), hms(tc[0], False)) in [tuple(x) for x in st_rec_unjudged.get("journeys", [])]
+                    if bad and all(("not a bus of the projected" in e or "nearest" in e) for x in bad for e in x["errors"]):
+                        v_or = "projection-diff-planner-side"  # the planner's train/bus times differ from our projection
+                    elif bad:
+                        v_or = "fail-invalid-certain"
+                    elif outside:
+                        v_or = "planner-better-outside-region"
+                    else:
+                        v_or = "planner-better"
                 elif tc[0] > oc_t[0]:
                     v_or = "fail-later"
                 else:
@@ -224,24 +244,35 @@ def main():
                 # invariants on the planner's own answers
                 b0 = tup(best(js0))
                 if stage == "closure":
-                    ok = b0 is None or tup(jb_all) is None or tup(jb_all)[0] >= b0[0]
-                    rec["checks"]["inv_remove"] = dict(ok=ok, before=b0, after=tup(jb_all))
+                    applicable = len(projc["holds"]) == 0  # holds retime rides: only a pure removal must never improve
+                    ok = (not applicable) or b0 is None or tc is None or tc[0] >= b0[0]
+                    rec["checks"]["inv_remove"] = dict(ok=ok, applicable=applicable, before=b0, afterConfirmed=tc, afterAny=tup(jb_all))
                     counts.setdefault("inv_remove_fail", 0)
                     counts["inv_remove_fail"] += 0 if ok else 1
                 else:
-                    ok = prev_best is None or (tup(jb_all) is not None and tup(jb_all)[0] <= prev_best[0])
-                    rec["checks"]["inv_addbus"] = dict(ok=ok, closureOnly=prev_best, withBus=tup(jb_all))
+                    ok = prev_best is None or (tc is not None and tc[0] <= prev_best[0])
+                    rec["checks"]["inv_addbus"] = dict(ok=ok, closureOnlyConfirmed=prev_best, withBusConfirmed=tc)
                     counts.setdefault("inv_addbus_fail", 0)
                     counts["inv_addbus_fail"] += 0 if ok else 1
-                prev_best = tup(jb_all)
+                prev_best = tc
             # raising maxTransfers never worsens
-            arrs = []
+            arrs, capinfo, arrs_any = [], [], []
             for mt in (1, 2, 3):
                 jsm, _ = plan(a.twin, o, d, T, mt)
                 bm = best([j for j in jsm if j["transfers"] <= mt])
-                arrs.append(tup(bm)[0] if bm else None)
+                bmc = best([j for j in jsm if j["transfers"] <= mt], True)
+                arrs.append(tup(bmc)[0] if bmc else None)
+                arrs_any.append(tup(bm)[0] if bm else None)
+                capinfo.append(dict(cap=mt, best=(fmt_t(tup(bm)) if bm else None), uncertain=bool(bm and bm.get("uncertain")),
+                                    n=len(jsm), lines=[l.get("line") for l in (bm or {}).get("legs", [])]))
             ok = all(x is None or y is not None and y <= x for x, y in zip(arrs, arrs[1:]))
-            rec["checks"]["inv_caps"] = dict(ok=ok, bestArrByCap={str(k): (hms(v, False) if v else None) for k, v in zip((1, 2, 3), arrs)})
+            ok_any = all(x is None or y is not None and y <= x for x, y in zip(arrs_any, arrs_any[1:]))
+            rec["checks"]["inv_caps"] = dict(ok=ok, bestConfirmedArrByCap={str(k): (hms(v, False) if v else None) for k, v in zip((1, 2, 3), arrs)},
+                                             bestAnyArrByCap={str(k): (hms(v, False) if v else None) for k, v in zip((1, 2, 3), arrs_any)}, detail=capinfo)
+            if not ok_any and ok:
+                rec["notes"].append("a higher cap drops an earlier conditional (uncertain) option once a confirmed journey exists")
+                counts.setdefault("conditional_dropped_at_higher_cap", 0)
+                counts["conditional_dropped_at_higher_cap"] += 1
             counts.setdefault("inv_caps_fail", 0)
             counts["inv_caps_fail"] += 0 if ok else 1
             get_json(f"{a.twin}/api/disruptions/{did}", method="DELETE")

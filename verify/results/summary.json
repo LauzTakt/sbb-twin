@@ -1,0 +1,134 @@
+{
+ "generatedAt": "2026-11-22T09:20:52.690928+01:00",
+ "summaryAfter": "A: 165/217 identical, 52 explained, 0 unexplained (oracle agrees 212/217); B: 595/600 oracle agreement; C: 1 invalid of 4635 journeys; D: 100 seeded cases (151 stages), 2 oracle mismatches, 0 invariant failures (122 exact agreements, 18 detours outside the oracle region, 9 projection differences, 0 to check); E: 2/2 witnesses",
+ "rows": {
+  "before": {
+   "commit": "8db1e72",
+   "A": {
+    "cases": 217,
+    "identical": 102,
+    "explained": 9,
+    "unexplained": 106,
+    "oracleAgrees": 100,
+    "invalid": 68,
+    "validated": 579,
+    "resolver": 15,
+    "lead": null
+   },
+   "B": {
+    "cases": 560,
+    "agree": 276,
+    "counts": {
+     "agree": 276,
+     "fail-empty": 211,
+     "oracle-miss": 18,
+     "fail-later": 51,
+     "fail-departure": 4
+    },
+    "invalid": 62,
+    "journeys": 1733,
+    "excludedPast": 160
+   },
+   "D": null,
+   "E": {
+    "W1": true,
+    "W1violations": 0,
+    "W2": true,
+    "W2offered": [
+     {
+      "snapshot": "11:02",
+      "od": "8503206>8503209",
+      "leg": "Wädenswil 11:07:02 -> Pfäffikon SZ 11:19:02",
+      "planned": "11:07:00 -> 11:19:00",
+      "uncertain": false,
+      "depErrorSec": -44,
+      "arrErrorSec": -93
+     },
+     {
+      "snapshot": "11:02",
+      "od": "8503206>8503209",
+      "leg": "Wädenswil 11:07:01 -> Pfäffikon SZ 11:19:01",
+      "planned": "11:07:00 -> 11:19:00",
+      "uncertain": false,
+      "depErrorSec": -45,
+      "arrErrorSec": -94
+     }
+    ]
+   }
+  },
+  "after": {
+   "commit": "9e9c2e0",
+   "A": {
+    "cases": 217,
+    "identical": 165,
+    "explained": 52,
+    "unexplained": 0,
+    "oracleAgrees": 212,
+    "invalid": 1,
+    "validated": 1244,
+    "resolver": 0,
+    "lead": 65.2
+   },
+   "B": {
+    "cases": 600,
+    "agree": 595,
+    "counts": {
+     "agree": 595,
+     "oracle-miss": 5
+    },
+    "invalid": 0,
+    "journeys": 3391,
+    "excludedPast": 0
+   },
+   "D": {
+    "cases": 100,
+    "errors": 0,
+    "stages": 151,
+    "agree": 122,
+    "plannerMiss": 2,
+    "invalidCertain": 0,
+    "projectionDiff": 9,
+    "outsideRegion": 18,
+    "otherToCheck": 0,
+    "invRemove": 0,
+    "invBus": 0,
+    "invCaps": 0,
+    "invalidJourneys": 14
+   },
+   "E": {
+    "W1": true,
+    "W1violations": 0,
+    "W2": true,
+    "W2offered": [
+     {
+      "snapshot": "10:57",
+      "od": "8503206>8503209",
+      "leg": "Wädenswil 11:07:00 -> Pfäffikon SZ 11:19:00",
+      "planned": "11:07:00 -> 11:19:00",
+      "uncertain": false,
+      "depErrorSec": -46,
+      "arrErrorSec": -95
+     },
+     {
+      "snapshot": "10:57",
+      "od": "8503206>8503209",
+      "leg": "Wädenswil 11:07:00 -> Pfäffikon SZ 11:19:00",
+      "planned": "11:07:00 -> 11:19:00",
+      "uncertain": false,
+      "depErrorSec": -46,
+      "arrErrorSec": -95
+     },
+     {
+      "snapshot": "11:02",
+      "od": "8503206>8503209",
+      "leg": "Wädenswil 11:07:00 -> Pfäffikon SZ 11:19:00",
+      "planned": "11:07:00 -> 11:19:00",
+      "uncertain": false,
+      "depErrorSec": -46,
+      "arrErrorSec": -95
+     }
+    ]
+   }
+  }
+ }
+}

@@ -1,0 +1,387 @@
+{
+ "tag": "before",
+ "plannerCommit": "10c3bdc",
+ "generatedAt": "2026-11-22T09:11:52.678917+01:00",
+ "totals": {
+  "A": {
+   "cases": 217,
+   "identical": 102,
+   "unexplained": 106,
+   "explained": 9,
+   "invalidJourneys": 68,
+   "journeysValidated": 579,
+   "resolverDisagreements": 15
+  },
+  "B": {
+   "cases": 720,
+   "futureCases": 560,
+   "futureAgree": 276,
+   "pastCasesExcluded": 160,
+   "agree": 347,
+   "fail-later": 101,
+   "fail-empty": 241,
+   "oracle-miss": 24,
+   "fail-departure": 7,
+   "invalidJourneys": 75,
+   "journeys": 2252
+  }
+ },
+ "counts": {
+  "missed walk link (published footpath to/from a bus stop or station)": 181,
+  "horizon (late evening / overnight)": 143,
+  "Gate C: transfer rule (shorter than the published minimum)": 122,
+  "other": 21,
+  "transfer rule (published short transfer rejected)": 19,
+  "oracle disagreement to check (planner better and valid)": 18,
+  "endpoint resolution (by name differs from the reference station)": 15,
+  "Gate C: ranking (change count reported wrong, e.g. in-seat continuation counted)": 4,
+  "Gate C: boarding/alighting not allowed (pickup/drop-off)": 4,
+  "ranking (same arrival: more changes or earlier departure)": 4,
+  "empty answer": 3,
+  "invalid witness (earlier than the reference and fails validation)": 1
+ },
+ "explained": {
+  "same arrival": 1,
+  "reference best uses modes we do not load": 1,
+  "twin earlier by 360s": 1,
+  "oracle": 2,
+  "twin earlier by 120s": 1,
+  "reference coverage": 2,
+  "twin earlier by 2580s": 1,
+  "B past departure time (live state), excluded": 89
+ },
+ "causes": {
+  "missed walk link (published footpath to/from a bus stop or station)": {
+   "count": 181,
+   "examples": [
+    {
+     "gate": "A",
+     "od": "Lugano > Locarno",
+     "time": "09:37",
+     "planner": "none",
+     "reference": "10:05:00->11:02:00 1ch [RE > walk > EV]",
+     "why": "empty answer; reference 10:05:00->11:02:00 1ch [RE > walk > EV]"
+    },
+    {
+     "gate": "A",
+     "od": "Locarno > Lugano",
+     "time": "09:37",
+     "planner": "none",
+     "reference": "09:55:00->10:54:00 1ch [EV > walk > RE]",
+     "why": "empty answer; reference 09:55:00->10:54:00 1ch [EV > walk > RE]"
+    },
+    {
+     "gate": "A",
+     "od": "Lugano > Locarno",
+     "time": "12:04",
+     "planner": "none",
+     "reference": "12:05:00->13:02:00 1ch [RE > walk > EV]",
+     "why": "empty answer; reference 12:05:00->13:02:00 1ch [RE > walk > EV]"
+    }
+   ]
+  },
+  "horizon (late evening / overnight)": {
+   "count": 143,
+   "examples": [
+    {
+     "gate": "A",
+     "od": "Zürich HB > Lausanne",
+     "time": "19:33",
+     "planner": "none",
+     "reference": "20:02:00->22:20:00 1ch [IC > IR]",
+     "why": "empty answer; reference 20:02:00->22:20:00 1ch [IC > IR]"
+    },
+    {
+     "gate": "A",
+     "od": "Genève > Basel SBB",
+     "time": "19:33",
+     "planner": "none",
+     "reference": "19:35:00->22:26:00 1ch [IC > IC]",
+     "why": "empty answer; reference 19:35:00->22:26:00 1ch [IC > IC]"
+    },
+    {
+     "gate": "A",
+     "od": "Luzern > Lugano",
+     "time": "19:33",
+     "planner": "none",
+     "reference": "19:39:00->21:28:00 1ch [IR > EC]",
+     "why": "empty answer; reference 19:39:00->21:28:00 1ch [IR > EC]"
+    }
+   ]
+  },
+  "Gate C: transfer rule (shorter than the published minimum)": {
+   "count": 122,
+   "examples": [
+    {
+     "gate": "A/C",
+     "od": "Biel/Bienne > Fribourg/Freiburg",
+     "time": "09:37",
+     "planner": "09:54:00->10:56:00 ['S3', 'IC1']",
+     "reference": "published GTFS",
+     "why": "change S3 -> IC1 at Bern: 240s < required 360s (quays 1 -> 8)"
+    },
+    {
+     "gate": "A/C",
+     "od": "Biel/Bienne > Fribourg/Freiburg",
+     "time": "09:37",
+     "planner": "10:24:00->11:26:00 ['S3', 'IR15']",
+     "reference": "published GTFS",
+     "why": "change S3 -> IR15 at Bern: 240s < required 360s (quays 1 -> 7)"
+    },
+    {
+     "gate": "A/C",
+     "od": "Biel/Bienne > Fribourg/Freiburg",
+     "time": "09:37",
+     "planner": "10:54:00->11:56:00 ['S3', 'IC1']",
+     "reference": "published GTFS",
+     "why": "change S3 -> IC1 at Bern: 240s < required 360s (quays 1 -> 6)"
+    }
+   ]
+  },
+  "other": {
+   "count": 21,
+   "examples": [
+    {
+     "gate": "A",
+     "od": "Interlaken Ost > Zürich HB",
+     "time": "09:37",
+     "planner": "10:04:00->12:51:00 1ch [PE > IR]",
+     "reference": "09:40:00->11:58:00 2ch [walk > EV > walk > IC > IC]",
+     "why": "oracle confirms the twin is suboptimal: 09:47:00->11:58:00 2ch [EV1 Interlaken Ost, Bahnhof 09:51:00 > IC61 Interlaken West 10:04:00 > IC8 Bern 11:02:00] | missed connection: twin 10:04:00->12:51:00 1ch [PE > IR] vs reference 09:40:00->11:58:00 2ch [walk > EV > walk > IC > IC] (+3180s); needs published footpaths Interlaken Ost->Interlaken Ost, Bahnhof 660s; Interlaken West, Rugenpark->Interlaken W"
+    },
+    {
+     "gate": "A",
+     "od": "Thun > Luzern",
+     "time": "09:37",
+     "planner": "09:40:00->11:43:00 3ch [S > S > S > S]",
+     "reference": "09:40:00->11:43:00 2ch [S > S > S]",
+     "why": "oracle confirms the twin is suboptimal: 09:40:00->11:43:00 2ch [S41 Thun 09:40:00 > S2 Konolfingen 10:05:00 > S6 Langnau i.E. 10:37:00 > S6 Wolhusen 11:19:00] | suboptimal ranking: more changes (3 vs 2); twin 09:40:00->11:43:00 3ch [S > S > S > S] vs reference 09:40:00->11:43:00 2ch [S > S > S]"
+    },
+    {
+     "gate": "A",
+     "od": "Wädenswil > Rapperswil SG",
+     "time": "09:37",
+     "planner": "09:37:00->10:03:00 1ch [S > IR]",
+     "reference": "09:42:00->10:03:00 1ch [S > IR]",
+     "why": "oracle confirms the twin is suboptimal: 09:42:00->10:03:00 1ch [S2 Wädenswil 09:42:00 > VAE Pfäffikon SZ 09:54:00] | suboptimal ranking: earlier departure for the same arrival (09:37:00 vs 09:42:00); twin 09:37:00->10:03:00 1ch [S > IR] vs reference 09:42:00->10:03:00 1ch [S > IR]"
+    }
+   ]
+  },
+  "transfer rule (published short transfer rejected)": {
+   "count": 19,
+   "examples": [
+    {
+     "gate": "B",
+     "od": "Baden > Olten",
+     "time": "08:53",
+     "planner": "09:04:00->09:53:00 0ch ['S23']",
+     "oracle": "08:54:00->09:36:00 1ch [S27 Baden 08:54:00 > S29 Turgi 09:02:00]",
+     "why": "twin arrives 1020s later: twin 09:04:00->09:53:00 0ch vs oracle 08:54:00->09:36:00 1ch"
+    },
+    {
+     "gate": "B",
+     "od": "Baden > Olten",
+     "time": "20:44",
+     "planner": "none",
+     "oracle": "20:54:00->21:36:00 1ch [S27 Baden 20:54:00 > S29 Turgi 21:02:00]",
+     "why": "twin empty; oracle 21:36:00 1ch dep 20:54:00"
+    },
+    {
+     "gate": "B",
+     "od": "Baden > Olten",
+     "time": "23:47",
+     "planner": "none",
+     "oracle": "23:54:00->00:36:00 1ch [S27 Baden 23:54:00 > S29 Turgi 00:02:00]",
+     "why": "twin empty; oracle 00:36:00 1ch dep 23:54:00"
+    }
+   ]
+  },
+  "oracle disagreement to check (planner better and valid)": {
+   "count": 18,
+   "examples": [
+    {
+     "gate": "B",
+     "od": "Olten > Zürich HB (maxTransfers=0)",
+     "time": "12:04",
+     "planner": "12:05:00->12:52:00 1ch ['S23', 'IR37']",
+     "oracle": "12:04:00->12:54:00 0ch [IR16 Olten 12:04:00]",
+     "why": "twin best 12:52:00 1ch dep 12:05:00 validates and beats the oracle 12:54:00 0ch dep 12:04:00"
+    },
+    {
+     "gate": "B",
+     "od": "Aarau > Zürich HB (maxTransfers=0)",
+     "time": "16:58",
+     "planner": "16:58:00->17:49:00 1ch ['S29', 'IR36']",
+     "oracle": "17:23:00->17:52:00 0ch [IR37 Aarau 17:23:00]",
+     "why": "twin best 17:49:00 1ch dep 16:58:00 validates and beats the oracle 17:52:00 0ch dep 17:23:00"
+    },
+    {
+     "gate": "B",
+     "od": "Lenzburg > Olten (maxTransfers=0)",
+     "time": "12:04",
+     "planner": "12:05:00->12:36:00 1ch ['S11', 'S29']",
+     "oracle": "12:31:00->12:53:00 0ch [S23 Lenzburg 12:31:00]",
+     "why": "twin best 12:36:00 1ch dep 12:05:00 validates and beats the oracle 12:53:00 0ch dep 12:31:00"
+    }
+   ]
+  },
+  "endpoint resolution (by name differs from the reference station)": {
+   "count": 15,
+   "examples": [
+    {
+     "gate": "A",
+     "od": "Lugano > Locarno",
+     "time": "09:37",
+     "planner": "Lugano (8505300) -> Locarno FART (8505470)",
+     "reference": "Lugano (8505300) -> Locarno (8505400)",
+     "why": "name resolution"
+    },
+    {
+     "gate": "A",
+     "od": "Cadenazzo > Locarno",
+     "time": "09:37",
+     "planner": "Cadenazzo (8505404) -> Locarno FART (8505470)",
+     "reference": "Cadenazzo (8505404) -> Locarno (8505400)",
+     "why": "name resolution"
+    },
+    {
+     "gate": "A",
+     "od": "Locarno > Lugano",
+     "time": "09:37",
+     "planner": "Locarno FART (8505470) -> Lugano (8505300)",
+     "reference": "Locarno (8505400) -> Lugano (8505300)",
+     "why": "name resolution"
+    }
+   ]
+  },
+  "Gate C: ranking (change count reported wrong, e.g. in-seat continuation counted)": {
+   "count": 4,
+   "examples": [
+    {
+     "gate": "A/C",
+     "od": "Thun > Luzern",
+     "time": "09:37",
+     "planner": "09:40:00->11:43:00 ['S41', 'S2', 'S6', 'S6']",
+     "reference": "published GTFS",
+     "why": "reported 3 changes, the rides need 2"
+    },
+    {
+     "gate": "A/C",
+     "od": "Thun > Luzern",
+     "time": "09:37",
+     "planner": "10:40:00->12:43:00 ['S41', 'S2', 'S6', 'S6']",
+     "reference": "published GTFS",
+     "why": "reported 3 changes, the rides need 2"
+    },
+    {
+     "gate": "A/C",
+     "od": "Thun > Luzern",
+     "time": "12:04",
+     "planner": "12:40:00->14:43:00 ['S41', 'S2', 'S6', 'S6']",
+     "reference": "published GTFS",
+     "why": "reported 3 changes, the rides need 2"
+    }
+   ]
+  },
+  "Gate C: boarding/alighting not allowed (pickup/drop-off)": {
+   "count": 4,
+   "examples": [
+    {
+     "gate": "A/C",
+     "od": "Chur > Zürich Flughafen",
+     "time": "09:37",
+     "planner": "10:08:00->11:41:00 ['IC', 'EC']",
+     "reference": "published GTFS",
+     "why": "leg 2 EC: alighting not allowed at Zürich Flughafen (drop_off_type=1)"
+    },
+    {
+     "gate": "A/C",
+     "od": "Schaffhausen > Zürich Flughafen",
+     "time": "12:04",
+     "planner": "12:47:00->13:41:00 ['IC', 'EC']",
+     "reference": "published GTFS",
+     "why": "leg 2 EC: alighting not allowed at Zürich Flughafen (drop_off_type=1)"
+    },
+    {
+     "gate": "A/C",
+     "od": "Chur > Zürich Flughafen",
+     "time": "12:04",
+     "planner": "12:08:00->13:41:00 ['IC', 'EC']",
+     "reference": "published GTFS",
+     "why": "leg 2 EC: alighting not allowed at Zürich Flughafen (drop_off_type=1)"
+    }
+   ]
+  },
+  "ranking (same arrival: more changes or earlier departure)": {
+   "count": 4,
+   "examples": [
+    {
+     "gate": "B",
+     "od": "Baden > Olten",
+     "time": "13:41",
+     "planner": "13:43:00->14:36:00 1ch ['S12', 'S29']",
+     "oracle": "13:54:00->14:36:00 1ch [S27 Baden 13:54:00 > S29 Turgi 14:02:00]",
+     "why": "same arrival and changes, twin leaves 13:52:00 vs oracle 13:54:00 (later departure possible)"
+    },
+    {
+     "gate": "B",
+     "od": "Horgen > Rapperswil SG",
+     "time": "10:29",
+     "planner": "10:30:00->11:03:00 1ch ['S8', 'IRVAE']",
+     "oracle": "10:35:00->11:03:00 1ch [S2 Horgen 10:35:00 > VAE Pfäffikon SZ 10:54:00]",
+     "why": "same arrival and changes, twin leaves 10:30:00 vs oracle 10:35:00 (later departure possible)"
+    },
+    {
+     "gate": "B",
+     "od": "Horgen > Rapperswil SG",
+     "time": "15:16",
+     "planner": "15:30:00->16:03:00 1ch ['S8', 'IRVAE']",
+     "oracle": "15:35:00->16:03:00 1ch [S2 Horgen 15:35:00 > VAE Pfäffikon SZ 15:54:00]",
+     "why": "same arrival and changes, twin leaves 15:30:00 vs oracle 15:35:00 (later departure possible)"
+    }
+   ]
+  },
+  "empty answer": {
+   "count": 3,
+   "examples": [
+    {
+     "gate": "A",
+     "od": "Cadenazzo > Locarno",
+     "time": "09:37",
+     "planner": "none",
+     "reference": "10:04:00->10:32:00 0ch [EV]",
+     "why": "empty answer; reference 10:04:00->10:32:00 0ch [EV]"
+    },
+    {
+     "gate": "A",
+     "od": "Cadenazzo > Locarno",
+     "time": "12:04",
+     "planner": "none",
+     "reference": "12:04:00->12:32:00 0ch [EV]",
+     "why": "empty answer; reference 12:04:00->12:32:00 0ch [EV]"
+    },
+    {
+     "gate": "A",
+     "od": "Cadenazzo > Locarno",
+     "time": "16:58",
+     "planner": "none",
+     "reference": "17:04:00->17:32:00 0ch [EV]",
+     "why": "empty answer; reference 17:04:00->17:32:00 0ch [EV]"
+    }
+   ]
+  },
+  "invalid witness (earlier than the reference and fails validation)": {
+   "count": 1,
+   "examples": [
+    {
+     "gate": "A",
+     "od": "Chur > Zürich Flughafen",
+     "time": "12:04",
+     "planner": "12:08:00->13:41:00 1ch [IC > EC]",
+     "reference": "12:08:00->13:44:00 1ch [IC > IR]",
+     "why": "twin earlier by 180s: 12:08:00->13:41:00 1ch [IC > EC] vs reference 12:08:00->13:44:00 1ch [IC > IR]; impossible earlier route: leg 2 EC: alighting not allowed at Zürich Flughafen (drop_off_type=1)"
+    }
+   ]
+  }
+ }
+}

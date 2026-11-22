@@ -333,9 +333,19 @@ class Network:
         return out
 
     # ---- search ----
-    def query(self, origin, dest, T, max_transfers=3, horizon=6 * 3600, allow_walk=True, exclude_occ=None):
+    def query(self, origin, dest, T, max_transfers=3, horizon=None, allow_walk=True, exclude_occ=None):
         K = max_transfers + 1
-        H = T + horizon
+        if horizon is None:
+            # 6 h, and for a night query (from 20:00 to 04:00) up to 10:00 the next morning
+            from datetime import datetime, timedelta
+            from common import Z
+            lt = datetime.fromtimestamp(T, Z)
+            H = T + 6 * 3600
+            if lt.hour >= 20 or lt.hour < 4:
+                morning = (lt + timedelta(days=1 if lt.hour >= 20 else 0)).replace(hour=10, minute=0, second=0, microsecond=0)
+                H = max(H, int(morning.timestamp()))
+        else:
+            H = T + horizon
         acc = self.access(origin, T) if allow_walk else {q: 0 for q in self.station_quays(origin)}
         egr = self.egress(dest) if allow_walk else {q: 0 for q in self.station_quays(dest)}
         dest_quays = set(egr)

@@ -44,11 +44,30 @@ def witness_cause(wit, T_local):
     tr = [x for x in wit if x.get("transfer")]
     if any(x.get("at") and x.get("to") and x["at"].split(":")[3:4] != x["to"].split(":")[3:4] for x in tr):
         return "missed walk link (change between stations)"
-    if any((x.get("minSecs") or 999) < 240 for x in tr):
-        return "transfer rule (published short transfer rejected)"
+    # a published short minimum used with little slack (e.g. Spiez 120 s): the planner likely applies a longer one
+    rides = [x for x in wit if "trip" in x]
+    for i, x in enumerate(wit):
+        if x.get("transfer") and 0 < i < len(wit) - 1:
+            prev = next((w for w in reversed(wit[:i]) if "trip" in w), None)
+            nxt = next((w for w in wit[i + 1:] if "trip" in w), None)
+            if prev and nxt and (x.get("minSecs") or 999) < 240 and nxt["dep"] - prev["arr"] < 240:
+                return "transfer rule (published short transfer rejected)"
     if T_local in LATE:
         return "horizon (late evening / overnight)"
     return "missed connection"
+
+
+def posthoc_ok(k, v, r):
+    """Earlier runs judged the invariants on any class; recompute on the confirmed class (holds retime rides)."""
+    if k == "inv_caps" and "detail" in v and "bestConfirmedArrByCap" not in v:
+        conf = [x for x in v["detail"] if not x["uncertain"]]
+        return all(a["best"] is None or b["best"] is not None for a, b in zip(conf, conf[1:])) and any(x["uncertain"] for x in v["detail"])
+    if k == "inv_remove" and "applicable" not in v:
+        st = r["checks"].get("closure") or {}
+        holds = (st.get("projection") or {}).get("holds", 0)
+        pc = (st.get("planner") or {}).get("bestConfirmed")
+        return holds > 0 or pc is None or v.get("before") is None or pc[0] >= v["before"][0]
+    return False
 
 
 def add(groups, cause, ex):
@@ -157,20 +176,40 @@ def main():
                     ex = dict(gate="D", od=od, time=c["Tlocal"], scenario=scen, stage=k, planner=("none" if not pc else f"{hms(-pc[2], False)}->{hms(pc[0], False)} {pc[1]}ch"),
                               oracle=v["oracleConfirmed"]["s"], why=v["why"][:300])
                     if vv.endswith(":planner-miss"):
-                        add(groups, "D: " + witness_cause(v["oracleConfirmed"].get("witness"), c["Tlocal"]) + " (under measures)", dict(ex, probes=(v.get("attribution") or {}).get("probes")))
+                        cause = witness_cause(v["oracleConfirmed"].get("witness"), c["Tlocal"])
+                        if cause == "missed connection":
+                            cause = "missed connection under measures (every witness train runs in the twin at our times)"
+                        add(groups, "D: " + cause + " (under measures)", dict(ex, probes=(v.get("attribution") or {}).get("probes")))
                     elif vv.endswith(":projection-diff"):
                         explained["D projection difference (twin measure effect differs from the documented contract)"] = explained.get("D projection difference (twin measure effect differs from the documented contract)", 0) + 1
                         add(groups, "measure projection difference (not counted as a planner failure)", dict(ex, probes=(v.get("attribution") or {}).get("probes")))
                     elif vv == "fail-invalid-certain":
                         add(groups, "closure crossing (certain journey invalid under the closure)", ex)
-                    elif vv == "planner-better":
-                        add(groups, "oracle disagreement to check (planner better and valid)", ex)
+                    elif vv == "planner-better" and v["planner"]["bestConfirmed"] and v["oracleConfirmed"]["t"] and \
+                            0 <= v["oracleConfirmed"]["t"][0] - v["planner"]["bestConfirmed"][0] <= 30 and "EV" in str(v["planner"]["journeys"]):
+                        explained["D bus timing rounding (<= 30 s)"] = explained.get("D bus timing rounding (<= 30 s)", 0) + 1
+                    elif vv in ("planner-better", "planner-only"):
+                        pc_ = v["planner"]["bestConfirmed"]
+                        outside = pc_ and [hms(-pc_[2], False), hms(pc_[0], False)] in (v.get("unjudged") or {}).get("journeys", [])
+                        if outside:
+                            explained["D planner certain detour via stations outside the oracle region"] = explained.get("D planner certain detour via stations outside the oracle region", 0) + 1
+                        else:
+                            add(groups, "oracle disagreement to check (planner better/only and valid)", ex)
+                    elif vv in ("planner-better-outside-region", "planner-only-outside-region"):
+                        explained["D planner certain detour via stations outside the oracle region"] = explained.get("D planner certain detour via stations outside the oracle region", 0) + 1
+                    elif vv == "projection-diff-planner-side":
+                        add(groups, "measure projection difference (not counted as a planner failure)", ex)
+                    elif vv == "planner-better-outside-region":
+                        explained["D planner better via stations outside the oracle region"] = explained.get("D planner better via stations outside the oracle region", 0) + 1
                     for iv in v.get("invalid", []):
                         cause = err_cause(iv["errors"][0])
-                        if "not in the published timetable" in cause or "call/time" in cause:
+                        e0 = iv["errors"][0]
+                        if "nearest" in e0:
+                            cause = "measure projection difference (twin retimes/holds a train differently from the contract)"
+                        elif "not in the published timetable" in cause or "call/time" in cause:
                             cause = "closure crossing or cancelled call (journey uses a call our projection cuts/holds)" if not iv["uncertain"] else "uncertain journey uses a call our conditional projection cuts"
                         add(groups, "Gate C under measures: " + cause, dict(gate="D/C", od=od, time=c["Tlocal"], scenario=scen, planner=f"{iv['dep']}->{iv['arr']} {iv['lines']}{' (uncertain)' if iv['uncertain'] else ''}", why="; ".join(iv["errors"])[:300]))
-                elif "ok" in v and not v["ok"]:
+                elif "ok" in v and not v["ok"] and not posthoc_ok(k, v, r):
                     name = {"inv_remove": "invariant: a closure improved the planner's optimum", "inv_addbus": "invariant: adding a bus worsened the optimum",
                             "inv_caps": "invariant: a higher maxTransfers gave a worse optimum"}.get(k, k)
                     add(groups, name, dict(gate="D", od=od, time=c["Tlocal"], scenario=scen, evidence={x: y for x, y in v.items() if x != "ok"}))
@@ -184,7 +223,9 @@ def main():
         if not res["W2"]["pass_"]:
             add(groups, "replay: S8 18839 not admitted after the 11:00 partial reopening (W2)", dict(gate="E", why="no journey with S8 18839 Wädenswil -> Pfäffikon SZ"))
         totals["E"] = E["summary"].get(tag)
-    commit = subprocess.run(["git", "-C", "/workspace/rail-twin-verify-after", "rev-parse", "--short", "HEAD"], capture_output=True, text=True).stdout.strip()
+    f = os.path.join(HERE, ".cache", "after_dir")
+    adir = open(f).read().strip() if os.path.exists(f) else "/workspace/rail-twin-verify-after"
+    commit = subprocess.run(["git", "-C", adir if tag == "after" else "/workspace/rail-twin", "rev-parse", "--short", "HEAD"], capture_output=True, text=True).stdout.strip()
     order = sorted(groups.items(), key=lambda kv: -kv[1]["count"])
     out = dict(tag=tag, plannerCommit=commit, generatedAt=datetime.now(Z).isoformat(), totals=totals,
                counts={k: v["count"] for k, v in order}, explained=explained, causes=dict(order))

@@ -53,6 +53,11 @@ def closed_edges(rec):
             out |= hit
         else:
             miss += 1
+    # plus the physical paths between consecutive section stations (robust to a geometry line that does not match)
+    S = section_of(rec) if rec.get("section") else []
+    for u, v in zip(S, S[1:]):
+        for key in (f"{u}>{v}", f"{v}>{u}"):
+            out |= ph["paths"].get(key, set())
     return out, miss
 
 
