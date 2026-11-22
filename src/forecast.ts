@@ -37,7 +37,7 @@ export type DisruptionForecast = {
   inScope: boolean;
   scopeNote: string | null;
   horizons: Horizon[];
-  median: { at: number; label: string } | null;
+  median: { at: number; label: string; method: "announced_plus_correction" | "model_median"; modelMedian: number } | null; // the end time shown
   band: { level: number; low: number; high: number; lowLabel: string; highLabel: string; method: "conformal" | "quantiles" } | null;
   pAtAnnounced: number | null;
   optimistic: boolean;
@@ -120,27 +120,36 @@ const TEXT_GROUPS: [string, RegExp][] = [
   ["infrastructure", /signal|interlocking|overhead (?:line|wire|contact)|catenary|track damage|damage to the track|power (?:failure|cut|outage)|infrastructure|points failure|switch (?:failure|fault)|level crossing|technical (?:difficult|fault|problem|disruption)/i],
   ["external", /police|outside (?:of )?our control|vandal|obstacle|tree|collision|road vehicle|storm|flood|natural hazard|snow|weather|landslide|rockfall|rock fall|avalanche|fire|animal|lightning|ice|wind/i],
 ];
-function textGroup(text: string) {
+let phrases: { list: [string, string][]; of: Record<string, string> | undefined } | undefined;
+/** The cause group read from an alert's text: the model's phrase list (4 languages, longest phrase wins), then the
+ *  contract's groups in SBB's English wording ("This is due to ..."). */
+function textGroup(text: string, m?: DurationModel) {
+  const low = text.toLowerCase();
+  if (m?.causeText) {
+    if (phrases?.of !== m.causeText) phrases = { of: m.causeText, list: Object.entries(m.causeText).sort((a, b) => b[0].length - a[0].length) };
+    for (const [phrase, g] of phrases.list) if (low.includes(phrase)) return { group: g, label: phrase };
+  }
   const reason = text.match(/due to ([^.]+)\./i)?.[1] ?? "";
   if (!reason) return undefined;
   for (const [g, re] of TEXT_GROUPS) if (re.test(reason)) return { group: g, label: reason.replace(/^(an?|the) /i, "").trim() };
   return undefined;
 }
-type Input = {
+export type Input = {
   id: string; key: string; kind: "sbb" | "twin"; title: string; where: string;
   cause: DisruptionForecast["cause"]; interrupted: boolean; station: boolean;
   start: number; startSource: DisruptionForecast["startSource"];
   announcedEnd: number | null; qualifier: Qualifier; announcedSource: DisruptionForecast["announced"]["source"];
   ends: string[];
 };
-function features(i: Input) {
+function features(i: Input, m: DurationModel) {
   const x: Record<string, number> = {};
   if ((GROUPS as readonly string[]).includes(i.cause.group)) x[`cause:${i.cause.group}`] = 1;
   x.effect_interrupted = i.interrupted ? 1 : 0;
   x.scope_station = i.station ? 1 : 0;
+  // model.json "announced": <= 0 or > maxMinutes is a placeholder end (none); below minMinutes it is raised to it
   const minutes = i.announcedEnd !== null ? (i.announcedEnd - i.start) / MIN : 0;
-  if (i.announcedEnd !== null && minutes > 0) {
-    x.announced_log = Math.log(Math.max(1, minutes));
+  if (i.announcedEnd !== null && minutes > 0 && minutes <= (m.announced?.maxMinutes ?? 10_080)) {
+    x.announced_log = Math.log(Math.max(m.announced?.minMinutes ?? 1, minutes));
     x.announced_none = 0;
     x.announced_at_least = i.qualifier === "at_least" ? 1 : 0;
   } else {
@@ -160,7 +169,7 @@ function features(i: Input) {
 // ---------------------------------------------------------------- one forecast
 const LONG_PLANNED_MIN = 24 * 60; // planned works announced over more than a day: the announced end is the plan
 const MAX_ELAPSED_MIN = 48 * 60; // on for more than two days: outside the incidents the model learned from
-function forecastOne(m: DurationModel, placeholder: boolean, i: Input, now: number): DisruptionForecast {
+export function forecastOne(m: DurationModel, placeholder: boolean, i: Input, now: number): DisruptionForecast {
   const e = Math.max(0, (now - i.start) / MIN);
   const planned = i.cause.group === "planned";
   const announcedMin = i.announcedEnd !== null ? (i.announcedEnd - i.start) / MIN : null;
@@ -177,35 +186,38 @@ function forecastOne(m: DurationModel, placeholder: boolean, i: Input, now: numb
     return { ...base, inScope: false, scopeNote: `Planned works until ${base.announced.label}: the announced end is usually kept, and the model learned from shorter disruptions.`, say: placeholder ? null : `These are planned works until ${base.announced.label}; the announced end is usually kept.` };
   }
   if (e > MAX_ELAPSED_MIN) return { ...base, inScope: false, scopeNote: "On for more than two days: outside the disruptions the model learned from." };
-  const S = survival(m, features(i));
+  const S = survival(m, features(i, m));
   const se = Math.max(S(e), 1e-300);
   const cond = (t: number) => (t <= e ? 1 : Math.min(1, S(t) / se));
   const horizons = (m.horizonsMin ?? [60, 120, 240]).map((h) => ({ minutes: h, at: now + h * MIN, label: label(now + h * MIN, now), p: Math.round(cond(e + h) * 1000) / 1000 }));
   const med = quantile(S, e, 0.5);
   const medianAt = i.start + med * MIN;
-  let band: DisruptionForecast["band"] = null;
-  if (m.interval && Number.isFinite(m.interval.lowLogShift) && Number.isFinite(m.interval.highLogShift)) {
-    // the calibrated band on ln T, around the median given the time already elapsed
-    const low = Math.max(now, i.start + med * Math.exp(m.interval.lowLogShift) * MIN);
-    const high = Math.max(low, i.start + med * Math.exp(m.interval.highLogShift) * MIN);
-    band = { level: m.interval.level ?? 0.8, low, high, lowLabel: label(round5(low, "floor"), now), highLabel: label(round5(high, "ceil"), now), method: "conformal" };
-  } else {
-    const low = i.start + quantile(S, e, 0.9) * MIN;
-    const high = i.start + quantile(S, e, 0.1) * MIN;
-    band = { level: 0.8, low, high, lowLabel: label(round5(low, "floor"), now), highLabel: label(round5(high, "ceil"), now), method: "quantiles" };
-  }
+  // the 80 % band: model.json's conformal rule, [q10 * exp(lowLogShift), q90 * exp(highLogShift)], on the quantiles
+  // of T given the time already elapsed; without an interval, the plain q10..q90
+  const q10 = quantile(S, e, 0.9);
+  const q90 = quantile(S, e, 0.1);
+  const iv = m.interval && Number.isFinite(m.interval.lowLogShift) && Number.isFinite(m.interval.highLogShift) ? m.interval : undefined;
+  const low = Math.max(now, i.start + q10 * Math.exp(iv?.lowLogShift ?? 0) * MIN);
+  const high = Math.max(low, i.start + q90 * Math.exp(iv?.highLogShift ?? 0) * MIN);
+  const band: DisruptionForecast["band"] = { level: iv?.level ?? 0.8, low: Math.round(low), high: Math.round(high), lowLabel: label(round5(low, "floor"), now), highLabel: label(round5(high, "ceil"), now), method: iv ? "conformal" : "quantiles" };
+  // the end time shown (model.json pointForecast): the announced end + the correction chosen on 2025 while that is
+  // still ahead (it beat the model median as a point on 2026), otherwise the model's median given the elapsed time
+  const pf = m.pointForecast;
+  const corrected = pf?.withAnnouncedEnd === "announced_plus_correction" && i.announcedEnd !== null ? i.announcedEnd + (pf.correctionMin ?? 0) * MIN : null;
+  const pointAt = corrected !== null && corrected > now ? corrected : medianAt;
+  const pointMethod: "announced_plus_correction" | "model_median" = corrected !== null && corrected > now ? "announced_plus_correction" : "model_median";
   const pAtAnnounced = i.announcedEnd !== null && i.announcedEnd > now ? Math.round(cond((i.announcedEnd - i.start) / MIN) * 1000) / 1000 : null;
   const optimistic = !planned && pAtAnnounced !== null && pAtAnnounced > 0.6;
-  const medianLabel = label(round5(medianAt), now);
+  const medianLabel = label(round5(pointAt), now);
   let say: string | null = null;
   if (!placeholder) {
     say = planned
       ? `This is planned work${base.announced.label ? ` announced until ${base.announced.label}` : ""}; planned works usually end as announced.`
-      : `Disruptions like this usually last until about ${medianLabel}, most likely between ${band.lowLabel} and ${band.highLabel}.`;
+      : `Disruptions like this usually last until about ${medianLabel}${band.high - band.low <= 4 * 3600_000 ? `, most likely between ${band.lowLabel} and ${band.highLabel}` : ""}.${band.high - band.low > 4 * 3600_000 ? " It could also take several hours longer." : ""}`;
     if (optimistic) say += ` The announced end at ${base.announced.label} looks optimistic.`;
     else if (base.overdue && !planned) say += ` It has already run past the announced end at ${base.announced.label}.`;
   }
-  return { ...base, horizons, median: { at: Math.round(medianAt), label: medianLabel }, band, pAtAnnounced, optimistic, say };
+  return { ...base, horizons, median: { at: Math.round(pointAt), label: medianLabel, method: pointMethod, modelMedian: Math.round(medianAt) }, band, pAtAnnounced, optimistic, say };
 }
 
 // ---------------------------------------------------------------- the live inputs
@@ -236,7 +248,7 @@ function inputs(m: DurationModel, now: number): Input[] {
   for (const a of alertsState.alerts.values()) {
     if (!ACTIVE.test(a.title)) continue;
     const period = a.activePeriods.find((p) => (p.start ?? 0) <= now && (p.end ?? Infinity) >= now) ?? a.activePeriods[0];
-    const fromText = textGroup(a.description ?? "");
+    const fromText = textGroup(`${a.title}. ${a.description ?? ""}`, m);
     const gtfsGroup = m.causeMap?.[`gtfs:${a.gtfsCause}`];
     const cause: Input["cause"] = fromText
       ? { label: fromText.label, group: fromText.group, source: "text" }
@@ -266,7 +278,7 @@ function inputs(m: DurationModel, now: number): Input[] {
     if (st.state === "resumed") continue;
     const code = sc.cause.code;
     const mapped = m.causeMap?.[code];
-    const fromText = textGroup(`due to ${causeOf(code)?.clause.en ?? sc.cause.label}.`);
+    const fromText = textGroup(`due to ${causeOf(code)?.clause.en ?? sc.cause.label}.`, m);
     const cause: Input["cause"] = mapped ? { label: sc.cause.label, group: mapped, source: "code" } : fromText ? { label: sc.cause.label, group: fromText.group, source: "text" } : { label: sc.cause.label, group: "other", source: "none" };
     const end = st.durationType === "UNKNOWN" ? null : st.until;
     out.push({
@@ -306,6 +318,8 @@ function loadShadow() {
 function saveShadow() {
   if (!shadow.dirty) return;
   shadow.dirty = false;
+  // keep the log small: the newest 2,000 disruptions
+  if (shadow.entries.size > 2000) for (const e of [...shadow.entries.values()].sort((x, y) => (x.endedAt ?? Infinity) - (y.endedAt ?? Infinity)).slice(0, shadow.entries.size - 2000)) shadow.entries.delete(e.key);
   writeFileSync(`${SHADOW_FILE}.tmp`, JSON.stringify({ since: shadow.since, entries: [...shadow.entries.values()] }));
   renameSync(`${SHADOW_FILE}.tmp`, SHADOW_FILE);
 }

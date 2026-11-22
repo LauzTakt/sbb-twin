@@ -122,7 +122,9 @@ function ForecastCard({ f, onPick }: { f: DisruptionForecast; onPick: () => void
 /** After "Service resumed": the regular trains due at its stations in the next hour, as bands with the share of such
  *  trains that really lost a stop (not the model's percentages: it under-predicts the first quarter hour). */
 export function ResumedCard({ r }: { r: Resumption }) {
+  const [all, setAll] = useState(false);
   const ends = r.endpoints.map((e) => e.name).join(" or ");
+  const shown = all ? r.trains : r.trains.slice(0, 6);
   const shares = r.bands.filter((b) => b.observed !== null);
   return (
     <section className="resume" aria-label="Trains to check after the resumption">
@@ -132,7 +134,7 @@ export function ResumedCard({ r }: { r: Resumption }) {
       <p className="sub2">Trains to check in the next hour{r.placeholder ? " (placeholder model)" : ""}</p>
       {r.trains.length ? (
         <ol>
-          {r.trains.slice(0, 12).map((t) => (
+          {shown.map((t) => (
             <li key={t.trainId} className={t.officialStatus !== "scheduled" ? "official" : undefined}>
               <time>{hm(t.plannedTime)}</time>
               <span className="who">
@@ -151,6 +153,11 @@ export function ResumedCard({ r }: { r: Resumption }) {
         </ol>
       ) : (
         <p className="none">No regular train is due at {ends} in the next hour.</p>
+      )}
+      {r.trains.length > shown.length && (
+        <button className="linklike more" onClick={() => setAll(true)}>
+          Show all {r.trains.length} trains
+        </button>
       )}
       {shares.length > 0 && (
         <p className="basis">

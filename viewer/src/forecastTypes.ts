@@ -25,7 +25,8 @@ export type DisruptionForecast = {
   inScope: boolean;
   scopeNote: string | null;
   horizons: Horizon[]; // P(still disrupted) at now + 60 / 120 / 240 min
-  median: { at: number; label: string } | null;
+  /** the end time shown: the announced end + the 2026-tested correction while that is ahead, else the model median */
+  median: { at: number; label: string; method: "announced_plus_correction" | "model_median"; modelMedian: number } | null;
   band: { level: number; low: number; high: number; lowLabel: string; highLabel: string; method: "conformal" | "quantiles" } | null;
   pAtAnnounced: number | null; // P(still disrupted at the announced end)
   optimistic: boolean; // the announcement looks optimistic (pAtAnnounced > 0.6)

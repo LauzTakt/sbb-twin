@@ -56,7 +56,9 @@ export function App() {
   const [forecasts, setForecasts] = useState<Forecast[]>([]);
   const [tab, setTab] = useState<"disruptions" | "bulletins" | "forecasts">(() => (new URLSearchParams(location.search).get("tab") === "forecasts" ? "forecasts" : "disruptions"));
   const [risk, setRisk] = useState(() => new URLSearchParams(location.search).get("risk") === "1"); // the section risk layer
-  const [riskInfo, setRiskInfo] = useState<{ placeholder: boolean; n: number; recall: Record<string, number> }>();
+  const riskRef = useRef(risk);
+  riskRef.current = risk;
+  const [riskInfo, setRiskInfo] = useState<{ placeholder: boolean; n: number; recall: Record<string, Record<string, number>> }>();
   const [segment, setSegment] = useState<RiskSegment>();
   const forecastData = useForecasts();
   const [registering, setRegistering] = useState(false);
@@ -139,7 +141,7 @@ export function App() {
     const item = pickedRef.current;
     if (!item) {
       const ln = lineRef.current;
-      if (layer.current) layer.current.focus = ln ? new Set(rowsRef.current.filter((r) => r[7] === ln).map((r) => r[0])) : undefined;
+      if (layer.current) layer.current.focus = ln ? new Set(rowsRef.current.filter((r) => r[7] === ln).map((r) => r[0])) : riskRef.current ? new Set() : undefined;
       return;
     }
     const pts = points(item.geometry);
@@ -257,10 +259,11 @@ export function App() {
         m.addLayer({ id: "risk-line", type: "line", source: "risk", layout: { "line-cap": "round", "line-join": "round" }, paint: riskPaint(themeRef.current) as never }, m.getLayer("section-picked") ? "section-picked" : undefined);
         void api<{ placeholder?: boolean; features: unknown[] }>("/forecasts/section-risk.geojson").then((fc) =>
           api<{ section_risk: { scorecard: { metrics?: { name: string; values: Record<string, number> }[] } | null } }>("/forecasts/scorecards").then((sc) => {
-            const recall: Record<string, number> = {};
+            // the out-of-time check: the share of 2026 disruptions in the top k % of sections ("recall@k")
+            const recall: Record<string, Record<string, number>> = {};
             for (const x of sc.section_risk.scorecard?.metrics ?? []) {
-              const k = x.name.match(/(\d+)\s*%/)?.[1];
-              if (k && /recall/i.test(x.name) && x.values.model !== undefined) recall[k] = x.values.model;
+              const k = x.name.match(/top\s*(\d+)\s*%/i)?.[1];
+              if (k && (/recall/i.test(x.name) || /share of .*(incidents|disruptions)/i.test(x.name)) && x.values.model !== undefined) recall[k] = x.values;
             }
             setRiskInfo({ placeholder: fc.placeholder !== false, n: fc.features.length, recall });
           }),
@@ -271,6 +274,7 @@ export function App() {
     if (mapLoaded.current) apply();
     else m.once("load", apply);
     if (!risk) setSegment(undefined);
+    refocus();
     const u = new URL(location.href);
     if (risk) u.searchParams.set("risk", "1");
     else u.searchParams.delete("risk");
@@ -365,10 +369,15 @@ export function App() {
                 <li key={st.label}>
                   <i style={{ background: `var(--risk-${st.key})`, height: st.key === "rest" ? 2 : 4 }} />
                   {st.label}
-                  {st.k && riskInfo?.recall[st.k] !== undefined && <small>{Math.round(riskInfo.recall[st.k] * 100)} % of 2026 incidents{riskInfo.placeholder ? " (placeholder)" : ""}</small>}
                 </li>
               ))}
             </ul>
+            {riskInfo?.recall["10"] && (
+              <p>
+                Ranked on 2024-25, the top 10 % drew <b>{Math.round(riskInfo.recall["10"].model * 100)} %</b> of the 2026 disruptions
+                {riskInfo.recall["10"].trains !== undefined ? ` (the busiest 10 % by trains: ${Math.round(riskInfo.recall["10"].trains * 100)} %)` : ""}.
+              </p>
+            )}
           </div>
         )}
         {segment && <SegmentCard s={segment} placeholder={riskInfo?.placeholder ?? true} onClose={() => setSegment(undefined)} />}
@@ -438,10 +447,11 @@ function SegmentCard({ s, placeholder, onClose }: { s: RiskSegment; placeholder:
       </header>
       <p className="sub">Rank {s.rank} on the risk map{s.km ? ` · ${s.km} km` : ""}{placeholder ? " · placeholder data" : ""}</p>
       <div className="facts">
-        <div><b>{Math.round(Number(s.risk) * 100)}</b><small>risk (0–100)</small></div>
-        <div><b>{s.incidentsTrain ?? "–"}</b><small>incidents 2024-25</small></div>
-        <div><b>{s.incidentsTest ?? "–"}</b><small>incidents 2026</small></div>
+        <div><b>{s.perYear !== undefined ? Number(s.perYear).toFixed(1) : Math.round(Number(s.risk) * 100)}</b><small>{s.perYear !== undefined ? "expected a year" : "risk (0–100)"}</small></div>
+        <div><b>{s.incidentsTrain ?? "–"}</b><small>disruptions 2024-25</small></div>
+        <div><b>{s.incidentsTest ?? "–"}</b><small>in 2026 (test)</small></div>
       </div>
+      {s.trainsPerDay !== undefined && <p className="sub">{s.trainsPerDay} trains a day</p>}
       {causes.length > 0 && <p className="sub">Most often: {causes.map((c) => c.replace("_", " ")).join(", ")}</p>}
     </section>
   );

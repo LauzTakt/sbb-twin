@@ -21,7 +21,10 @@ export type DurationModel = {
   coef: Record<string, number>;
   causeMap: Record<string, string>;
   horizonsMin?: number[];
-  interval?: { level: number; method: string; lowLogShift: number; highLogShift: number };
+  interval?: { level: number; method: string; lowLogShift: number; highLogShift: number; rule?: string };
+  announced?: { minMinutes?: number; maxMinutes?: number };
+  pointForecast?: { withAnnouncedEnd?: string; correctionMin?: number; withoutAnnouncedEnd?: string };
+  causeText?: Record<string, string>; // phrase (en/de/fr/it, lower case) -> cause group
   placeholder?: boolean;
 };
 export type ResumptionModel = { name: string; version: string; a: number; b: number; bands: { min: number; label: string }[]; trainedOn?: string; testedOn?: string; placeholder?: boolean };

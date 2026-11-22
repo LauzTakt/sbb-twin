@@ -4,13 +4,13 @@
 // colour alone. Validated as an ordinal ramp against both map grounds (dataviz validator).
 import type { Theme } from "./theme";
 
-export type RiskSegment = { id: string; name: string; km?: number; risk: number; rank: number; tier: string; incidentsTrain?: number; incidentsTest?: number; topCauses?: string[] | string };
+export type RiskSegment = { id: string; name: string; km?: number; risk: number; rank: number; tier: string; perYear?: number; trainsPerDay?: number; incidentsTrain?: number; incidentsTest?: number; topCauses?: string[] | string };
 export const RISK = {
   steps: [
-    { key: "top5", k: "5", label: "Top 5 % of sections" },
-    { key: "top10", k: "10", label: "Top 5-10 %" },
-    { key: "top20", k: "20", label: "Top 10-20 %" },
-    { key: "rest", k: "", label: "Other sections" },
+    { key: "top5", label: "Riskiest 5 % of sections" },
+    { key: "top10", label: "Next 5 % (top 10 %)" },
+    { key: "top20", label: "Next 10 % (top 20 %)" },
+    { key: "rest", label: "Other sections" },
   ],
   light: { top5: "#0d366b", top10: "#1c5cab", top20: "#3987e5", rest: "#86b6ef" },
   dark: { top5: "#cde2fb", top10: "#86b6ef", top20: "#3987e5", rest: "#1c5cab" },
