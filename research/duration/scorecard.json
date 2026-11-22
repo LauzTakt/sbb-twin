@@ -1,0 +1,585 @@
+{
+ "model": "duration",
+ "generatedAt": "2026-11-22T06:41:41+00:00",
+ "data": {
+  "incidentsTrain": 380,
+  "incidentsTest": 140,
+  "incidentsValidationFit2024": 187,
+  "incidentsValidation2025": 193,
+  "source": "SBB VIA liveticker export 2024-03..2026-10 (incident + incident_audit, every version); duration = first Interrupted/Limited service version -> first Service resumed / ENDED"
+ },
+ "headline": "From the first notice, the chance that a disruption is still not resumed after 2 hours is forecast with Brier 0.227 on 140 disruptions of Jan-Oct 2026, against 0.235 for SBB's own announced end, 0.224 per cause and 0.257 for the historical rate (level with them: the 95% intervals include zero).",
+ "modelType": "aft_lognormal",
+ "metrics": [
+  {
+   "name": "Brier at 60 min (P still not resumed), from the first notice",
+   "lowerIsBetter": true,
+   "n": 140,
+   "observedStillOpen": 0.8,
+   "values": {
+    "model": 0.1476,
+    "operator": 0.1635,
+    "cause": 0.1517,
+    "prior": 0.1622,
+    "operator_point": 0.3107,
+    "other_family_discrete_hazard": 0.1456
+   },
+   "ci95": {
+    "model_vs_operator": [
+     -0.0316,
+     0.0016
+    ],
+    "model_vs_cause": [
+     -0.0295,
+     0.0213
+    ],
+    "model_vs_prior": [
+     -0.0439,
+     0.0153
+    ],
+    "model_vs_operator_point": [
+     -0.2336,
+     -0.0901
+    ]
+   }
+  },
+  {
+   "name": "Brier at 120 min (P still not resumed), from the first notice",
+   "lowerIsBetter": true,
+   "n": 140,
+   "observedStillOpen": 0.5714,
+   "values": {
+    "model": 0.2266,
+    "operator": 0.2351,
+    "cause": 0.2239,
+    "prior": 0.2566,
+    "operator_point": 0.394,
+    "other_family_discrete_hazard": 0.2295
+   },
+   "ci95": {
+    "model_vs_operator": [
+     -0.0228,
+     0.0086
+    ],
+    "model_vs_cause": [
+     -0.041,
+     0.0438
+    ],
+    "model_vs_prior": [
+     -0.0645,
+     0.0049
+    ],
+    "model_vs_operator_point": [
+     -0.2298,
+     -0.0979
+    ]
+   }
+  },
+  {
+   "name": "Brier at 240 min (P still not resumed), from the first notice",
+   "lowerIsBetter": true,
+   "n": 140,
+   "observedStillOpen": 0.3,
+   "values": {
+    "model": 0.1897,
+    "operator": 0.2002,
+    "cause": 0.1976,
+    "prior": 0.2247,
+    "operator_point": 0.2345,
+    "other_family_discrete_hazard": 0.1941
+   },
+   "ci95": {
+    "model_vs_operator": [
+     -0.0224,
+     0.0025
+    ],
+    "model_vs_cause": [
+     -0.0451,
+     0.0277
+    ],
+    "model_vs_prior": [
+     -0.0642,
+     -0.0111
+    ],
+    "model_vs_operator_point": [
+     -0.0744,
+     -0.0159
+    ]
+   }
+  },
+  {
+   "name": "Mean absolute error of the predicted end (min), incidents with an announced end",
+   "lowerIsBetter": true,
+   "n": 132,
+   "values": {
+    "model": 120.5,
+    "operator": 116.7,
+    "operator_plus_median_correction": 109.0,
+    "operator_learned_residual_didac": 107.5
+   },
+   "medianAbsoluteError": {
+    "model": 56.2,
+    "operator": 59.2,
+    "operator_plus_median_correction": 53.0,
+    "operator_learned_residual_didac": 59.5
+   },
+   "ci95": {
+    "model_vs_operator": [
+     -9.4,
+     21.8
+    ],
+    "model_vs_operator_plus_median_correction": [
+     -0.7,
+     28.1
+    ],
+    "model_vs_operator_learned_residual_didac": [
+     0.2,
+     31.0
+    ]
+   },
+   "note": "model = median of S(t); operator + correction adds the training median residual (+27.5 min)"
+  },
+  {
+   "name": "Mean absolute error of the predicted end (min), point announcements only (UNTIL types)",
+   "lowerIsBetter": true,
+   "n": 103,
+   "values": {
+    "model": 110.4,
+    "operator": 110.3
+   },
+   "ci95": {
+    "model_vs_operator": [
+     -12.2,
+     18.6
+    ]
+   }
+  },
+  {
+   "name": "Mean absolute error of the predicted end (min), incidents with no announced end",
+   "lowerIsBetter": true,
+   "n": 8,
+   "values": {
+    "model": 361.5,
+    "prior_median": 363.8
+   }
+  },
+  {
+   "name": "80% interval coverage (target 0.80)",
+   "lowerIsBetter": false,
+   "target": 0.8,
+   "n": 140,
+   "values": {
+    "model_conformal": 0.7786,
+    "model_raw": 0.7429
+   },
+   "medianWidthMin": {
+    "model_conformal": 303.4,
+    "model_raw": 254.8
+   },
+   "ci95": {
+    "model_conformal": [
+     0.723,
+     0.8357
+    ]
+   },
+   "note": "conformal shifts on ln T fitted on 2025 with the model trained on 2024"
+  },
+  {
+   "name": "Brier at 60 min | still open at 30 min",
+   "lowerIsBetter": true,
+   "n": 131,
+   "observedStillOpen": 0.855,
+   "values": {
+    "model": 0.1226,
+    "operator_latest": 0.1119,
+    "cause": 0.1276,
+    "prior": 0.1248,
+    "operator_latest_point": 0.197
+   },
+   "ci95": {
+    "model_vs_operator_latest": [
+     -0.0113,
+     0.0336
+    ],
+    "model_vs_cause": [
+     -0.0283,
+     0.0171
+    ],
+    "model_vs_prior": [
+     -0.0201,
+     0.0154
+    ]
+   }
+  },
+  {
+   "name": "Brier at 120 min | still open at 30 min",
+   "lowerIsBetter": true,
+   "n": 131,
+   "observedStillOpen": 0.6107,
+   "values": {
+    "model": 0.2279,
+    "operator_latest": 0.2133,
+    "cause": 0.2279,
+    "prior": 0.2482,
+    "operator_latest_point": 0.3605
+   },
+   "ci95": {
+    "model_vs_operator_latest": [
+     -0.0179,
+     0.0491
+    ],
+    "model_vs_cause": [
+     -0.0446,
+     0.0427
+    ],
+    "model_vs_prior": [
+     -0.0536,
+     0.0102
+    ]
+   }
+  },
+  {
+   "name": "Brier at 240 min | still open at 30 min",
+   "lowerIsBetter": true,
+   "n": 131,
+   "observedStillOpen": 0.3206,
+   "values": {
+    "model": 0.1992,
+    "operator_latest": 0.1782,
+    "cause": 0.2093,
+    "prior": 0.2332,
+    "operator_latest_point": 0.2321
+   },
+   "ci95": {
+    "model_vs_operator_latest": [
+     -0.0019,
+     0.0449
+    ],
+    "model_vs_cause": [
+     -0.0485,
+     0.028
+    ],
+    "model_vs_prior": [
+     -0.0644,
+     -0.0092
+    ]
+   }
+  },
+  {
+   "name": "Brier at 120 min | still open at 60 min",
+   "lowerIsBetter": true,
+   "n": 112,
+   "observedStillOpen": 0.7143,
+   "values": {
+    "model": 0.2072,
+    "operator_latest": 0.17,
+    "cause": 0.2295,
+    "prior": 0.2139,
+    "operator_latest_point": 0.2897
+   },
+   "ci95": {
+    "model_vs_operator_latest": [
+     0.0006,
+     0.0729
+    ],
+    "model_vs_cause": [
+     -0.0573,
+     0.0119
+    ],
+    "model_vs_prior": [
+     -0.0336,
+     0.0221
+    ]
+   }
+  },
+  {
+   "name": "Brier at 240 min | still open at 60 min",
+   "lowerIsBetter": true,
+   "n": 112,
+   "observedStillOpen": 0.375,
+   "values": {
+    "model": 0.2214,
+    "operator_latest": 0.1968,
+    "cause": 0.2444,
+    "prior": 0.2532,
+    "operator_latest_point": 0.2562
+   },
+   "ci95": {
+    "model_vs_operator_latest": [
+     -0.0138,
+     0.0621
+    ],
+    "model_vs_cause": [
+     -0.066,
+     0.0197
+    ],
+    "model_vs_prior": [
+     -0.0638,
+     -0.0048
+    ]
+   }
+  }
+ ],
+ "calibration": [
+  {
+   "bin": "0-10%",
+   "predicted": 0.0553,
+   "observed": 0.3333,
+   "n": 6
+  },
+  {
+   "bin": "10-20%",
+   "predicted": 0.1418,
+   "observed": 0.1429,
+   "n": 7
+  },
+  {
+   "bin": "20-30%",
+   "predicted": 0.2492,
+   "observed": 0.4118,
+   "n": 17
+  },
+  {
+   "bin": "30-40%",
+   "predicted": 0.3599,
+   "observed": 0.4828,
+   "n": 29
+  },
+  {
+   "bin": "40-50%",
+   "predicted": 0.4421,
+   "observed": 0.5,
+   "n": 26
+  },
+  {
+   "bin": "50-60%",
+   "predicted": 0.5457,
+   "observed": 0.75,
+   "n": 20
+  },
+  {
+   "bin": "60-70%",
+   "predicted": 0.6488,
+   "observed": 0.7895,
+   "n": 19
+  },
+  {
+   "bin": "70-80%",
+   "predicted": 0.7517,
+   "observed": 0.6667,
+   "n": 6
+  },
+  {
+   "bin": "80-90%",
+   "predicted": 0.8406,
+   "observed": 1.0,
+   "n": 3
+  },
+  {
+   "bin": "90-100%",
+   "predicted": 0.9537,
+   "observed": 0.8571,
+   "n": 7
+  }
+ ],
+ "examples": [
+  {
+   "id": "2195005194729",
+   "title": "Limited service: Mendrisio - Balerna",
+   "cause": "EG_006 Damage to the track (infrastructure)",
+   "start": "24.09.2026 11:28",
+   "announced": "none",
+   "predicted": "median 24.09.2026 12:38 (+1 h 10 min), 80% 24.09.2026 11:51..24.09.2026 15:15, P(still closed at 2 h) 25%",
+   "actual": "resumed 24.09.2026 14:47 (+3 h 19 min)"
+  },
+  {
+   "id": "2195005158095",
+   "title": "Interrupted service: Ecublens-Rue - Moudon",
+   "cause": "EG_014 Technical difficulty with the engine (rolling_stock)",
+   "start": "13.08.2026 09:10",
+   "announced": "until 13.08.2026 10:00 (+49 min)",
+   "predicted": "median 13.08.2026 10:03 (+53 min), 80% 13.08.2026 09:27..13.08.2026 12:04, P(still closed at 2 h) 16%",
+   "actual": "resumed 13.08.2026 10:58 (+1 h 48 min)"
+  },
+  {
+   "id": "2195005195846",
+   "title": "Interrupted service: Zürich Stadelhofen - Stettbach",
+   "cause": "EG_047 Accident involving a person (person)",
+   "start": "25.09.2026 15:57",
+   "announced": "until 25.09.2026 19:00 (+3 h 02 min)",
+   "predicted": "median 25.09.2026 19:10 (+3 h 13 min), 80% 25.09.2026 16:59..26.09.2026 02:24, P(still closed at 2 h) 72%",
+   "actual": "resumed 25.09.2026 20:30 (+4 h 33 min)"
+  },
+  {
+   "id": "2195005208035",
+   "title": "Limited service: Cossonay-Penthalaz - Chavornay",
+   "cause": "EG_052 Vandalism (external)",
+   "start": "10.10.2026 03:24",
+   "announced": "until 11.10.2026 06:00 (+26 h 35 min)",
+   "predicted": "median 10.10.2026 16:10 (+12 h 46 min), 80% 10.10.2026 07:31..11.10.2026 20:55, P(still closed at 2 h) 99%",
+   "actual": "resumed 11.10.2026 04:57 (+25 h 33 min)"
+  },
+  {
+   "id": "2195005206582",
+   "title": "Interrupted service: Genève - Annemasse",
+   "cause": "EG_158 Unscheduled construction work (planned)",
+   "start": "08.10.2026 06:12",
+   "announced": "until 08.10.2026 06:30 (+17 min)",
+   "predicted": "median 08.10.2026 06:59 (+46 min), 80% 08.10.2026 06:27..08.10.2026 08:42, P(still closed at 2 h) 12%",
+   "actual": "resumed 08.10.2026 08:00 (+1 h 48 min)"
+  },
+  {
+   "id": "2195005204918",
+   "title": "Limited service: Como S. Giovanni - Chiasso",
+   "cause": "EG_168 Incident in Italy (other)",
+   "start": "06.10.2026 10:09",
+   "announced": "none",
+   "predicted": "median 06.10.2026 11:03 (+55 min), 80% 06.10.2026 10:26..06.10.2026 13:07, P(still closed at 2 h) 17%",
+   "actual": "resumed 06.10.2026 10:46 (+37 min)"
+  }
+ ],
+ "notes": [
+  "Brier = mean squared error of the probability that the disruption is still not resumed at the horizon; ci95 entries are 95% paired bootstrap intervals (2000 resamples of whole test weeks) of model minus baseline, so a negative interval means the model is better.",
+  "Model selected on 2025 (fitted on 2024): aft_lognormal, ridge 1; it was then refitted on 2024-03..2025-12 and evaluated once on 2026. The other family is reported as other_family_* (its best ridge on 2025).",
+  "Labels are administrative: \"Service resumed\" (or VIA ENDED) in the liveticker, not the first train through; the clock starts at the first published Interrupted/Limited version, not at the physical event.",
+  "Incidents without an end (withdrawn or never closed: 30) are excluded, not censored.",
+  "operator = the first announced end turned into a probability by a logistic fit on the training years (ln announced/horizon, no-end flag, at-least flag); operator_point = 1 if the announced end is after the horizon (historical rate when none); cause = per EG code survival shrunk to the prior (2 pseudo-incidents); prior = Kaplan-Meier of the training durations.",
+  "The conditional rows compare S(t)/S(e) (start features only, as in the contract) with the latest announced end known at e (calibrated on training incidents still open at e).",
+  "Small sample: about 140 test incidents; differences of 0.01 Brier are within noise unless the interval says otherwise."
+ ],
+ "validation": {
+  "selection": [
+   {
+    "family": "aft_lognormal",
+    "ridge": 0.1,
+    "brier60": 0.178,
+    "brier120": 0.2051,
+    "brier240": 0.1183,
+    "mean": 0.1672
+   },
+   {
+    "family": "aft_lognormal",
+    "ridge": 1,
+    "brier60": 0.1743,
+    "brier120": 0.2051,
+    "brier240": 0.1203,
+    "mean": 0.1666
+   },
+   {
+    "family": "aft_lognormal",
+    "ridge": 3,
+    "brier60": 0.1719,
+    "brier120": 0.2076,
+    "brier240": 0.1235,
+    "mean": 0.1677
+   },
+   {
+    "family": "aft_lognormal",
+    "ridge": 10,
+    "brier60": 0.1694,
+    "brier120": 0.2125,
+    "brier240": 0.1273,
+    "mean": 0.1698
+   },
+   {
+    "family": "aft_lognormal",
+    "ridge": 30,
+    "brier60": 0.1664,
+    "brier120": 0.2186,
+    "brier240": 0.1283,
+    "mean": 0.1711
+   },
+   {
+    "family": "aft_lognormal",
+    "ridge": 100,
+    "brier60": 0.1639,
+    "brier120": 0.2278,
+    "brier240": 0.1302,
+    "mean": 0.174
+   },
+   {
+    "family": "discrete_hazard",
+    "ridge": 0.1,
+    "brier60": 0.1782,
+    "brier120": 0.2144,
+    "brier240": 0.115,
+    "mean": 0.1692
+   },
+   {
+    "family": "discrete_hazard",
+    "ridge": 0.3,
+    "brier60": 0.1748,
+    "brier120": 0.2131,
+    "brier240": 0.1161,
+    "mean": 0.168
+   },
+   {
+    "family": "discrete_hazard",
+    "ridge": 1,
+    "brier60": 0.1713,
+    "brier120": 0.2146,
+    "brier240": 0.1201,
+    "mean": 0.1686
+   },
+   {
+    "family": "discrete_hazard",
+    "ridge": 3,
+    "brier60": 0.1685,
+    "brier120": 0.2188,
+    "brier240": 0.124,
+    "mean": 0.1704
+   },
+   {
+    "family": "discrete_hazard",
+    "ridge": 10,
+    "brier60": 0.1663,
+    "brier120": 0.2258,
+    "brier240": 0.1265,
+    "mean": 0.1729
+   },
+   {
+    "family": "discrete_hazard",
+    "ridge": 30,
+    "brier60": 0.1656,
+    "brier120": 0.2336,
+    "brier240": 0.1295,
+    "mean": 0.1763
+   }
+  ],
+  "chosen": {
+   "family": "aft_lognormal",
+   "ridge": 1,
+   "brier60": 0.1743,
+   "brier120": 0.2051,
+   "brier240": 0.1203,
+   "mean": 0.1666
+  },
+  "causePseudoCount": 2,
+  "conformal": {
+   "lowLogShift": -0.0968,
+   "highLogShift": 0.1442
+  }
+ },
+ "planned": {
+  "definition": "cause group planned (EG_004 engineering work, EG_158 unscheduled construction work) or duration type FROM_TO (scheduled window)",
+  "nTrain": 17,
+  "nTest": 7,
+  "testWithAnnouncedEnd": 7,
+  "maeOperatorMin": 108.5,
+  "maeModelMin": 76.4,
+  "shareEndedWithin30MinOfAnnounced": 0.1429,
+  "medianDurationMin": 156.0,
+  "brier120": {
+   "model": 0.155,
+   "operator": 0.2153
+  },
+  "train": {
+   "maeOperatorMin": 136.2,
+   "shareEndedWithin30MinOfAnnounced": 0.2941
+  },
+  "unplannedTestComparison": {
+   "maeOperatorMin": 117.2,
+   "shareEndedWithin30MinOfAnnounced": 0.336
+  }
+ }
+}
