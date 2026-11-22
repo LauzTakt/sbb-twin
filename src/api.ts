@@ -13,7 +13,7 @@ import { clear, publish } from "./mqtt.ts";
 import { releaseAll, releaseTrain } from "./god.ts";
 import { alertsState } from "./alerts.ts";
 import { brief } from "./brief.ts";
-import { journeyGeometry, plan, sectionGeometry, situation, trainGeometry } from "./planner.ts";
+import { journeyGeometry, plan, sectionGeometry, situation, trainGeometry, journeyDetail } from "./planner.ts";
 
 const trainLookup = (id: string) => {
   const tr = byTrainId.get(id);
@@ -278,6 +278,11 @@ export function api() {
   app.get("/geometry/section", (c) => {
     const r = sectionGeometry(c.req.query("from") ?? "", c.req.query("to") ?? "");
     return r ? c.json(r) : c.json({ error: "Unknown stations" }, 404);
+  });
+  // one journey stop by stop, with live times and the stops that are not served (itineraries, printed reports)
+  app.get("/journeys/:id", (c) => {
+    const r = journeyDetail(c.req.param("id"));
+    return r ? c.json(r) : c.json({ error: "Unknown or expired journey (plan again)" }, 404);
   });
   app.get("/geometry/journey/:id", (c) => {
     const r = journeyGeometry(c.req.param("id"));

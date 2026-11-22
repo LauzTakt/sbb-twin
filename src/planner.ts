@@ -42,6 +42,7 @@ export type Journey = {
   legs: Leg[];
   kind?: "best" | "via" | "wait"; // via: through the requested hub; wait: through the interrupted section after it reopens
   uncertain?: boolean; // relies on a reopening that is not confirmed (UNTIL_AT_LEAST or UNKNOWN)
+  fastest?: boolean; // the pick to recommend: the earliest arrival that does not rely on an unconfirmed reopening
   nextServiceDay?: boolean; // the first services of the next morning
   corridor?: string[]; // the stations where it changes
   dominated?: boolean; // another option is better on every count, kept because it uses another corridor
@@ -408,7 +409,10 @@ export function plan(fromQ: string, toQ: string, after = Date.now(), limit = 4, 
     kept.push(j);
   }
   const main = kept.filter((j) => j.kind !== "wait").slice(0, limit);
-  const out = [...main, ...kept.filter((j) => j.kind === "wait")];
+  // earliest arrival first, waiting for the reopening included: the fastest way there is the first certain one
+  const out = [...main, ...kept.filter((j) => j.kind === "wait")].sort((a, b) => a.arrival - b.arrival || a.transfers - b.transfers);
+  const pick = out.find((j) => !j.uncertain) ?? out[0];
+  for (const j of out) if (j === pick) j.fastest = true; else delete j.fastest;
   return {
     from: place(from),
     to: place(to),
@@ -432,6 +436,33 @@ export function tripGeometry(trip: Trip, i: number, j: number) {
   }
   return { type: "LineString" as const, coordinates: coords };
 }
+/** A planned journey with every stop of every leg (planned and live times, and whether the train still serves it), for
+ *  step-by-step itineraries and printed reports. */
+export function journeyDetail(id: string) {
+  const hit = journeys.get(id);
+  if (!hit) return undefined;
+  const t = Date.now();
+  const legs = hit.journey.legs.map((leg, k) => {
+    const { trip, i, j } = hit.parts[k];
+    const lt = liveTimes(trip, t);
+    const calls = [];
+    for (let s = i; s <= j; s++) {
+      const served = !lt.cancelled && !lt.skipped[s] && s >= lt.firstServed && s <= lt.lastServed;
+      calls.push({
+        id: stops[trip.stops[s]].id,
+        name: stops[trip.stops[s]].name,
+        plannedArr: s === i ? null : trip.arr[s],
+        expectedArr: s === i ? null : Math.round(lt.arr[s]),
+        plannedDep: s === j ? null : trip.dep[s],
+        expectedDep: s === j ? null : Math.round(lt.dep[s]),
+        served,
+      });
+    }
+    return { ...leg, calls };
+  });
+  return { ...hit.journey, generatedAt: t, legs };
+}
+
 export function journeyGeometry(id: string) {
   const hit = journeys.get(id);
   if (!hit) return null;
