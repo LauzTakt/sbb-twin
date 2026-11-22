@@ -1,0 +1,749 @@
+{
+ "model": "section_risk",
+ "generatedAt": "2026-11-22T06:46:35+00:00",
+ "data": {
+  "incidentsTrain": 391,
+  "incidentsTest": 140,
+  "segments": 1954,
+  "source": "VIA liveticker export 2024-03..2026-10-12 (incident + incident_audit); BAV track graph and GTFS timetable of sbb-twin"
+ },
+ "headline": "The 10% of segments ranked riskiest on 2024-03..2025-12 drew 53% of the 140 disruptions of Jan-Oct 2026, against 20% when ranking by trains per day and 20% by track length; it beats track length, trains per day, train-km at every cut-off; it is level with raw training counts (interval includes zero).",
+ "metrics": [
+  {
+   "name": "Share of 2026 incidents in the top 5% of segments",
+   "lowerIsBetter": false,
+   "values": {
+    "model": 0.331,
+    "km": 0.1,
+    "trains": 0.11,
+    "train_km": 0.138,
+    "history": 0.37
+   },
+   "ci95": {
+    "model": [
+     0.267,
+     0.4
+    ],
+    "model_vs_km": [
+     0.166,
+     0.302
+    ],
+    "model_vs_trains": [
+     0.128,
+     0.314
+    ],
+    "model_vs_train_km": [
+     0.112,
+     0.276
+    ],
+    "model_vs_history": [
+     -0.076,
+     0.001
+    ],
+    "model_vs_km_weekblock": [
+     0.167,
+     0.299
+    ],
+    "model_vs_trains_weekblock": [
+     0.133,
+     0.307
+    ],
+    "model_vs_train_km_weekblock": [
+     0.131,
+     0.256
+    ],
+    "model_vs_history_weekblock": [
+     -0.077,
+     -0.001
+    ]
+   }
+  },
+  {
+   "name": "Share of 2026 incidents in the top 10% of segments",
+   "lowerIsBetter": false,
+   "values": {
+    "model": 0.534,
+    "km": 0.197,
+    "trains": 0.198,
+    "train_km": 0.226,
+    "history": 0.522
+   },
+   "ci95": {
+    "model": [
+     0.461,
+     0.61
+    ],
+    "model_vs_km": [
+     0.269,
+     0.41
+    ],
+    "model_vs_trains": [
+     0.232,
+     0.444
+    ],
+    "model_vs_train_km": [
+     0.22,
+     0.392
+    ],
+    "model_vs_history": [
+     -0.026,
+     0.053
+    ],
+    "model_vs_km_weekblock": [
+     0.268,
+     0.407
+    ],
+    "model_vs_trains_weekblock": [
+     0.245,
+     0.425
+    ],
+    "model_vs_train_km_weekblock": [
+     0.233,
+     0.381
+    ],
+    "model_vs_history_weekblock": [
+     -0.02,
+     0.046
+    ]
+   }
+  },
+  {
+   "name": "Share of 2026 incidents in the top 20% of segments",
+   "lowerIsBetter": false,
+   "values": {
+    "model": 0.75,
+    "km": 0.351,
+    "trains": 0.458,
+    "train_km": 0.392,
+    "history": 0.713
+   },
+   "ci95": {
+    "model": [
+     0.684,
+     0.811
+    ],
+    "model_vs_km": [
+     0.326,
+     0.47
+    ],
+    "model_vs_trains": [
+     0.181,
+     0.394
+    ],
+    "model_vs_train_km": [
+     0.275,
+     0.442
+    ],
+    "model_vs_history": [
+     0.001,
+     0.075
+    ],
+    "model_vs_km_weekblock": [
+     0.325,
+     0.476
+    ],
+    "model_vs_trains_weekblock": [
+     0.169,
+     0.42
+    ],
+    "model_vs_train_km_weekblock": [
+     0.262,
+     0.454
+    ],
+    "model_vs_history_weekblock": [
+     -0.001,
+     0.075
+    ]
+   }
+  },
+  {
+   "name": "Share of network km in the top 5% of segments",
+   "lowerIsBetter": true,
+   "values": {
+    "model": 0.082,
+    "km": 0.196,
+    "trains": 0.027,
+    "train_km": 0.13,
+    "history": 0.074
+   }
+  },
+  {
+   "name": "Share of network km in the top 10% of segments",
+   "lowerIsBetter": true,
+   "values": {
+    "model": 0.149,
+    "km": 0.302,
+    "trains": 0.058,
+    "train_km": 0.216,
+    "history": 0.131
+   }
+  },
+  {
+   "name": "Share of network km in the top 20% of segments",
+   "lowerIsBetter": true,
+   "values": {
+    "model": 0.267,
+    "km": 0.466,
+    "trains": 0.168,
+    "train_km": 0.371,
+    "history": 0.238
+   }
+  },
+  {
+   "name": "Validation 2025 (fit 2024-03..12): mean share in the top 5/10/20% of segments",
+   "lowerIsBetter": false,
+   "values": {
+    "model": 0.508,
+    "km": 0.236,
+    "trains": 0.233,
+    "train_km": 0.269,
+    "history": 0.48
+   }
+  }
+ ],
+ "calibration": [
+  {
+   "bin": "segments ranked top 5%",
+   "predicted": 61.6,
+   "observed": 45.6,
+   "n": 97
+  },
+  {
+   "bin": "segments ranked 5-10%",
+   "predicted": 25.1,
+   "observed": 29.2,
+   "n": 98
+  },
+  {
+   "bin": "segments ranked 10-20%",
+   "predicted": 25.7,
+   "observed": 30.1,
+   "n": 195
+  },
+  {
+   "bin": "segments ranked 20-50%",
+   "predicted": 34.9,
+   "observed": 19.3,
+   "n": 587
+  },
+  {
+   "bin": "segments ranked 50-100%",
+   "predicted": 19.0,
+   "observed": 15.8,
+   "n": 977
+  }
+ ],
+ "examples": [
+  {
+   "id": "8504132-8504133",
+   "title": "Estavayer-le-Lac - Cugy FR",
+   "announced": "5.6 km, 76 trains per day",
+   "predicted": "3.18 disruptions per year (rank 1)",
+   "actual": "17 in 2024-03..2025-12, 5 in 2026-01..10"
+  },
+  {
+   "id": "8504134-8504133",
+   "title": "Payerne - Cugy FR",
+   "announced": "4.2 km, 76 trains per day",
+   "predicted": "3.16 disruptions per year (rank 2)",
+   "actual": "18 in 2024-03..2025-12, 5 in 2026-01..10"
+  },
+  {
+   "id": "8504023-8504021",
+   "title": "Romont FR - Vauderens",
+   "announced": "9.5 km, 156 trains per day",
+   "predicted": "2.46 disruptions per year (rank 3)",
+   "actual": "6 in 2024-03..2025-12, 1 in 2026-01..10"
+  },
+  {
+   "id": "8504017-8504018",
+   "title": "Châtillens - Ecublens-Rue",
+   "announced": "4.7 km, 77 trains per day",
+   "predicted": "2.31 disruptions per year (rank 4)",
+   "actual": "10 in 2024-03..2025-12, 1 in 2026-01..10"
+  },
+  {
+   "id": "8501031-8501030",
+   "title": "Gland - Nyon",
+   "announced": "4.7 km, 242 trains per day",
+   "predicted": "2.04 disruptions per year (rank 5)",
+   "actual": "9 in 2024-03..2025-12, 3 in 2026-01..10"
+  },
+  {
+   "id": "8500105-8500159",
+   "title": "Moutier - Grenchen Nord",
+   "announced": "10.7 km, 76 trains per day",
+   "predicted": "1.56 disruptions per year (rank 6)",
+   "actual": "6 in 2024-03..2025-12, 3 in 2026-01..10"
+  },
+  {
+   "id": "8504126-8504127",
+   "title": "Avenches - Faoug",
+   "announced": "3.7 km, 99 trains per day",
+   "predicted": "1.55 disruptions per year (rank 7)",
+   "actual": "8 in 2024-03..2025-12, 2 in 2026-01..10"
+  },
+  {
+   "id": "8504120-8504018",
+   "title": "Moudon - Ecublens-Rue",
+   "announced": "7.4 km, 77 trains per day",
+   "predicted": "1.48 disruptions per year (rank 8)",
+   "actual": "6 in 2024-03..2025-12, 2 in 2026-01..10"
+  }
+ ],
+ "notes": [
+  "Units: 1954 ranked segments (4933 km of the BAV graph's 5866 km): the track between two consecutive served stations (or a station and a junction) with trains in the twin's timetable, plus any segment a training incident touched.",
+  "Incidents: 543 VIA incidents with an active version (7 withdrawn ones left out); 531 placed on the network (458 sections, 9 cross-border sections by their Swiss part, 64 at one station), 12 not placed (stations abroad). Training 391 (2024-03..2025-12), test 140 (2026-01-01..2026-10-12, the export date); 0.0% of the test weight fell on segments outside the ranked set and counts as a miss for every ranking.",
+  "Each incident counts once, spread evenly over the segments of its section (a one-station incident over the segments at that station); the top sets are by number of segments, the km rows show how much track each is.",
+  "Model: Poisson regression of the training counts on log km (0.66), log(1 + trains per day) (0.15), single-track share (-0.62) and log past incidents within ~20 km, leaving the segment itself out (1.06), then empirical-Bayes shrinkage of each segment's own count (gamma shape 0.30). Bandwidth and shrinkage chosen on 2024-03..12 -> 2025; rates only from the training period.",
+  "Intervals: paired bootstrap over test incidents (2000 resamples); '_weekblock' resamples whole ISO weeks (storms that hit several segments at once).",
+  "Exposure is the twin's November 2026 timetable (a Monday; the busiest other day for lines without trains that Monday) applied to the whole period; a train passing without stopping counts too.",
+  "The liveticker holds about 200 published, service-interrupting incidents a year, not every SBB disruption, and 70% of them were first written in French (western Switzerland): the map ranks where such published incidents happen; exposure explains little of it, the place's own history explains most.",
+  "Not better than: raw training counts. Said plainly: the raw count of past incidents per segment is as good a ranking as the model at these cut-offs."
+ ],
+ "fit": {
+  "type": "poisson_regression_empirical_bayes",
+  "bandwidthKm": 20,
+  "gammaShape": 0.3,
+  "coef": {
+   "intercept": -6.6169,
+   "log_km": 0.6631,
+   "log1p_trains_per_day": 0.1455,
+   "single_track_share": -0.6173,
+   "log_region": 1.0634
+  }
+ },
+ "validationGrid": [
+  {
+   "bandwidthKm": 20,
+   "gammaShape": 0.3,
+   "gammaShapeUsed": 0.3,
+   "recall": [
+    0.347,
+    0.509,
+    0.669
+   ],
+   "mean": 0.5083422430572689
+  },
+  {
+   "bandwidthKm": 10,
+   "gammaShape": 0.3,
+   "gammaShapeUsed": 0.3,
+   "recall": [
+    0.337,
+    0.504,
+    0.679
+   ],
+   "mean": 0.50707569153165
+  },
+  {
+   "bandwidthKm": 5,
+   "gammaShape": 0.3,
+   "gammaShapeUsed": 0.3,
+   "recall": [
+    0.321,
+    0.492,
+    0.698
+   ],
+   "mean": 0.5035734846615675
+  },
+  {
+   "bandwidthKm": 10,
+   "gammaShape": 0.1,
+   "gammaShapeUsed": 0.1,
+   "recall": [
+    0.319,
+    0.495,
+    0.69
+   ],
+   "mean": 0.5013549634015955
+  },
+  {
+   "bandwidthKm": 10,
+   "gammaShape": 1.0,
+   "gammaShapeUsed": 1.0,
+   "recall": [
+    0.311,
+    0.485,
+    0.706
+   ],
+   "mean": 0.5005948954135483
+  },
+  {
+   "bandwidthKm": 5,
+   "gammaShape": 0.1,
+   "gammaShapeUsed": 0.1,
+   "recall": [
+    0.314,
+    0.486,
+    0.692
+   ],
+   "mean": 0.4974785481262165
+  },
+  {
+   "bandwidthKm": 40,
+   "gammaShape": 0.1,
+   "gammaShapeUsed": 0.1,
+   "recall": [
+    0.328,
+    0.494,
+    0.666
+   ],
+   "mean": 0.49612427008800064
+  },
+  {
+   "bandwidthKm": 40,
+   "gammaShape": 0.3,
+   "gammaShapeUsed": 0.3,
+   "recall": [
+    0.319,
+    0.497,
+    0.668
+   ],
+   "mean": 0.49475148723853385
+  },
+  {
+   "bandwidthKm": 20,
+   "gammaShape": 0.1,
+   "gammaShapeUsed": 0.1,
+   "recall": [
+    0.325,
+    0.492,
+    0.667
+   ],
+   "mean": 0.4945917975710721
+  },
+  {
+   "bandwidthKm": 20,
+   "gammaShape": 0.03,
+   "gammaShapeUsed": 0.03,
+   "recall": [
+    0.323,
+    0.489,
+    0.66
+   ],
+   "mean": 0.4908551964251446
+  },
+  {
+   "bandwidthKm": 10,
+   "gammaShape": 0.03,
+   "gammaShapeUsed": 0.03,
+   "recall": [
+    0.311,
+    0.486,
+    0.663
+   ],
+   "mean": 0.4866977821641035
+  },
+  {
+   "bandwidthKm": 5,
+   "gammaShape": 1.0,
+   "gammaShapeUsed": 1.0,
+   "recall": [
+    0.309,
+    0.449,
+    0.688
+   ],
+   "mean": 0.4820784329851688
+  },
+  {
+   "bandwidthKm": 40,
+   "gammaShape": 0.03,
+   "gammaShapeUsed": 0.03,
+   "recall": [
+    0.311,
+    0.474,
+    0.659
+   ],
+   "mean": 0.4816315760616279
+  },
+  {
+   "bandwidthKm": 10,
+   "gammaShape": 3.0,
+   "gammaShapeUsed": 3.0,
+   "recall": [
+    0.285,
+    0.452,
+    0.699
+   ],
+   "mean": 0.4785316774954081
+  },
+  {
+   "bandwidthKm": null,
+   "gammaShape": 0.03,
+   "gammaShapeUsed": 0.03,
+   "recall": [
+    0.287,
+    0.502,
+    0.641
+   ],
+   "mean": 0.47647627271979615
+  },
+  {
+   "bandwidthKm": 5,
+   "gammaShape": 0.03,
+   "gammaShapeUsed": 0.03,
+   "recall": [
+    0.314,
+    0.467,
+    0.647
+   ],
+   "mean": 0.4757593826246677
+  },
+  {
+   "bandwidthKm": null,
+   "gammaShape": 0.1,
+   "gammaShapeUsed": 0.1,
+   "recall": [
+    0.292,
+    0.49,
+    0.643
+   ],
+   "mean": 0.47470597911012424
+  },
+  {
+   "bandwidthKm": 20,
+   "gammaShape": 1.0,
+   "gammaShapeUsed": 1.0,
+   "recall": [
+    0.317,
+    0.448,
+    0.652
+   ],
+   "mean": 0.4723373632700058
+  },
+  {
+   "bandwidthKm": null,
+   "gammaShape": 0.3,
+   "gammaShapeUsed": 0.3,
+   "recall": [
+    0.293,
+    0.463,
+    0.657
+   ],
+   "mean": 0.47096115360364066
+  },
+  {
+   "bandwidthKm": 40,
+   "gammaShape": 1.0,
+   "gammaShapeUsed": 1.0,
+   "recall": [
+    0.291,
+    0.459,
+    0.625
+   ],
+   "mean": 0.45843134029662536
+  },
+  {
+   "bandwidthKm": 5,
+   "gammaShape": 3.0,
+   "gammaShapeUsed": 3.0,
+   "recall": [
+    0.281,
+    0.421,
+    0.651
+   ],
+   "mean": 0.4508745236724511
+  },
+  {
+   "bandwidthKm": 20,
+   "gammaShape": 3.0,
+   "gammaShapeUsed": 3.0,
+   "recall": [
+    0.278,
+    0.425,
+    0.635
+   ],
+   "mean": 0.4461071360035091
+  },
+  {
+   "bandwidthKm": 10,
+   "gammaShape": "ML",
+   "gammaShapeUsed": 2980.94,
+   "recall": [
+    0.246,
+    0.393,
+    0.686
+   ],
+   "mean": 0.44160018641883925
+  },
+  {
+   "bandwidthKm": 10,
+   "gammaShape": "prior only",
+   "gammaShapeUsed": null,
+   "recall": [
+    0.246,
+    0.393,
+    0.686
+   ],
+   "mean": 0.44160018641883925
+  },
+  {
+   "bandwidthKm": 5,
+   "gammaShape": "ML",
+   "gammaShapeUsed": 2980.941,
+   "recall": [
+    0.232,
+    0.391,
+    0.639
+   ],
+   "mean": 0.42083778819530115
+  },
+  {
+   "bandwidthKm": 5,
+   "gammaShape": "prior only",
+   "gammaShapeUsed": null,
+   "recall": [
+    0.232,
+    0.391,
+    0.639
+   ],
+   "mean": 0.42083778819530115
+  },
+  {
+   "bandwidthKm": 20,
+   "gammaShape": "ML",
+   "gammaShapeUsed": 2980.946,
+   "recall": [
+    0.223,
+    0.415,
+    0.594
+   ],
+   "mean": 0.41085272911697784
+  },
+  {
+   "bandwidthKm": 20,
+   "gammaShape": "prior only",
+   "gammaShapeUsed": null,
+   "recall": [
+    0.223,
+    0.415,
+    0.594
+   ],
+   "mean": 0.41085272911697784
+  },
+  {
+   "bandwidthKm": 40,
+   "gammaShape": 3.0,
+   "gammaShapeUsed": 3.0,
+   "recall": [
+    0.241,
+    0.378,
+    0.603
+   ],
+   "mean": 0.4072490884667051
+  },
+  {
+   "bandwidthKm": null,
+   "gammaShape": 1.0,
+   "gammaShapeUsed": 1.0,
+   "recall": [
+    0.263,
+    0.366,
+    0.571
+   ],
+   "mean": 0.3999691586479152
+  },
+  {
+   "bandwidthKm": 40,
+   "gammaShape": "ML",
+   "gammaShapeUsed": 33.426,
+   "recall": [
+    0.184,
+    0.352,
+    0.57
+   ],
+   "mean": 0.3689578364448831
+  },
+  {
+   "bandwidthKm": 40,
+   "gammaShape": "prior only",
+   "gammaShapeUsed": null,
+   "recall": [
+    0.184,
+    0.352,
+    0.567
+   ],
+   "mean": 0.3679503522767771
+  },
+  {
+   "bandwidthKm": null,
+   "gammaShape": 3.0,
+   "gammaShapeUsed": 3.0,
+   "recall": [
+    0.205,
+    0.334,
+    0.49
+   ],
+   "mean": 0.34288729884584807
+  },
+  {
+   "bandwidthKm": null,
+   "gammaShape": "ML",
+   "gammaShapeUsed": 7.392,
+   "recall": [
+    0.162,
+    0.307,
+    0.458
+   ],
+   "mean": 0.30911396222277054
+  },
+  {
+   "bandwidthKm": null,
+   "gammaShape": "prior only",
+   "gammaShapeUsed": null,
+   "recall": [
+    0.155,
+    0.262,
+    0.403
+   ],
+   "mean": 0.2732077747621789
+  }
+ ],
+ "unplaced": [
+  [
+   "Brig - Domodossola (I)",
+   2
+  ],
+  [
+   "Bellegarde-sur-Valserine - Bourg-en-Bresse",
+   1
+  ],
+  [
+   "Domodossola (I) - Iselle di Trasquera",
+   1
+  ],
+  [
+   "Konstanz",
+   1
+  ],
+  [
+   "Bellegarde-sur-Valserine",
+   1
+  ],
+  [
+   "Delle - Meroux (TGV)",
+   1
+  ],
+  [
+   "Thonon-les-Bains - Evian-les-Bains",
+   1
+  ],
+  [
+   "Varese - Malpensa Aeroporto T2",
+   1
+  ],
+  [
+   "Annemasse",
+   1
+  ],
+  [
+   "Como S. Giovanni - Seregno",
+   1
+  ],
+  [
+   "Busto Arsizio - Malpensa Aeroporto T2",
+   1
+  ]
+ ]
+}
