@@ -278,6 +278,61 @@ stay behind it, so delays spread to the trains behind. Switched off, a
 driver only sees a stopped train 500 m ahead and emergency-brakes; without enough distance it is a **rear-end
 collision** at the remaining speed (a `train.collision` event, both trains immobilised until released).
 
+## Journeys (HTTP)
+
+The journey planner runs on the twin's **effective timetable**: the planned timetable, the live predictions, and the
+twin's measures (closed sections in time, holds until a reopening, short turns, cancelled lines, replacement buses).
+Passenger rules come from the official GTFS (`data/days/route-YYYY-MM-DD.json.gz`, next to each day file): the quay
+of every call, pickup/drop-off types, the published minimum transfer times between quays (120 s inside one stop when
+none is published), the walking links between a rail station and its bus stops, trip-to-trip rules (e.g. Spiez 120 s)
+and stay-seated continuations. With no twin measure it reproduces the official timetable's journeys; with measures,
+every journey is feasible and optimal on the effective timetable.
+
+| Request | Answer |
+|---|---|
+| `GET /plan?from=&to=&after=&limit=&maxTransfers=&via=&includeWait=` | journeys from `after` (epoch ms, default now): station id or name (exact id, then exact name, then the best match); `maxTransfers` 0 to 4 (0 = direct only, default 3); `via` a hub the journey goes through (staying aboard counts); `includeWait=true` adds the journeys through an interrupted section after it reopens |
+| `GET /journeys/{id}` | one journey (ids live 30 min) with every call of every ride: planned/expected times **on the journey's snapshot**, `served`, `platform` |
+| `GET /geometry/journey/{id}` | the track of each leg (a straight line for a walk) |
+| `GET /brief?from=&to=` | what a passenger should know, with the next 3 journeys (the same planner) |
+
+```jsonc
+{ "from": {...}, "to": {...}, "generatedAt": 1795287000000,
+  "snapshotId": "s-3df2b347fe3d",              // the immutable timetable version every journey was computed and checked on
+  "snapshot": { "feed": ["20261118"], "serviceDates": [...], "rtFeedTime": null, "measureRevision": 3, "trips": 36903, "connections": 339591 },
+  "journeys": [ {
+    "id": "j-af8e205943", "departure": 1795340100000, "arrival": 1795343700000,   // leaving the origin / at the destination, walks included
+    "plannedDeparture": ..., "plannedArrival": ..., "durationMin": 60, "transfers": 1,  // changes of vehicle (walks and stay-seated are not changes)
+    "fastest": true, "kind": "best", "warnings": ["Replacement bus (EV) from Cadenazzo, Stazione to Locarno, Stazione"],
+    "legs": [
+      { "type": "ride", "trainId": "20261122_ojp-91-80.1.TA.1166.j26", "line": "RE80", "category": "RE", "headsign": "Cadenazzo",
+        "from": { "id": "8505300", "name": "Lugano", "plannedDep": ..., "expectedDep": ..., "platform": "4" },
+        "to": { "id": "8505404", "name": "Cadenazzo", "plannedArr": ..., "expectedArr": ..., "platform": "2" },
+        "stopsBetween": 1, "delaySec": 0, "status": "on time", "incidents": [] },
+      { "type": "walk", "from": { "id": "8505404", "name": "Cadenazzo", "plannedDep": ..., "expectedDep": ... },
+        "to": { "id": "8580788", "name": "Cadenazzo, Stazione", "plannedArr": ..., "expectedArr": ... }, "durationSec": 180 },
+      { "type": "ride", "line": "EV1", "category": "EV", ... },
+      { "type": "walk", ..., "durationSec": 180 } ] } ],
+  "validation": { "checked": 3, "rejected": 0 }, "searches": 3, "ms": 11.3 }
+```
+
+- **Legs**: rides (`type: "ride"`, unchanged fields, plus `platform`, `staySeated` on a stay-seated continuation and
+  `note` on a ride relying on a reopening) and walks (`type: "walk"`, `from`, `to`, `durationSec`; they also carry
+  `line: "Walk"`, `category: "WALK"`, `trainId: null` so code reading every leg as a ride keeps working). A journey
+  can start or end with a walk: `from`/`to` of the answer are the requested stations, the legs show the actual stops.
+- **Ranking**: by arrival, then changes, then the latest departure, to the second. The list is the departure/arrival/
+  changes profile (an option another one beats on every count is dropped, unless it uses another corridor: then it
+  stays, flagged `dominated`); an option with fewer changes is offered when it arrives within 90 min of the best.
+- **Twin measures**: a ride never runs on a section while it is closed (every leg is checked on its tracks and its
+  time, expresses that pass without stopping included), never boards or alights where the vehicle does not stop or
+  where pickup/drop-off forbids it, and a held train leaves at its release. `UNTIL` gives a confirmed reopening (the
+  journey is `waitsForReopening`); `UNTIL_AT_LEAST` is a lower bound only: crossing after it is conditional
+  (`uncertain`, `kind: "wait"`, only with `includeWait`, never `fastest`); `UNKNOWN` gives no crossing. Buses being
+  sought create no trips; announced ones are trips like any other. `allConditional: true` says when every journey found
+  relies on an unconfirmed reopening.
+- **Validation**: before it is returned, every journey is replayed on its snapshot (endpoints, permissions, served
+  calls, every leg against the closures, transfer and walking times, changes, via). An invalid one is never returned
+  (`validation.rejected` counts them; `unavailable` says when nothing passed).
+
 ## Run it
 
 ```sh
@@ -299,8 +354,9 @@ npm run dev                      # page + API on :8787 (Vite dev); MQTT on the t
 Docker: `docker compose up --build` (see `compose.yaml`; set `OTD_GTFS_RT_KEY` in `.env`). It publishes no port on the host: put a reverse proxy (or a tunnel) in front, which reaches the container on `:8787`.
 
 Data preparation (only to regenerate `data/`): `tools/prepare_network.py` (BAV track graph and the track path of every
-station pair), `tools/extract_abroad_rails.mjs` (railways outside Switzerland for the map) and the day timetables
-(`day-YYYY-MM-DD.json.gz`) from the official GTFS.
+station pair), `tools/extract_abroad_rails.mjs` (railways outside Switzerland for the map), the day timetables
+(`day-YYYY-MM-DD.json.gz`) from the official GTFS, and `tools/prepare_routing.py` (the passenger-routing file of each day:
+quays, pickup/drop-off types, transfer rules and walking links, from the same GTFS ZIP, about 0.5 MB a day).
 
 ## Data sources
 
