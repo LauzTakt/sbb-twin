@@ -1,8 +1,8 @@
 // Where sbb-twin publishes.
 // - MQTT_URL set (the team broker): every message goes there. The viewer reads it through a read-only WebSocket
 //   proxy at /mqtt that adds the credentials on the server, so the browser never holds them.
-// - otherwise an embedded broker (Aedes): TCP on MQTT_PORT and MQTT over WebSocket at /mqtt.
-import { createServer, connect as tcpConnect } from "node:net";
+// - otherwise an embedded broker (Aedes), reachable only over WebSocket at /mqtt (no TCP port is opened).
+import { connect as tcpConnect } from "node:net";
 import type { Server as HttpServer } from "node:http";
 import { Aedes } from "aedes";
 import mqtt, { type MqttClient } from "mqtt";
@@ -37,8 +37,6 @@ export async function startBroker(http: HttpServer) {
   broker.on("client", () => (brokerStats.clients = broker!.connectedClients));
   broker.on("clientDisconnect", () => (brokerStats.clients = broker!.connectedClients));
   brokerStats.connected = true;
-  const tcp = createServer((socket) => broker!.handle(socket));
-  await new Promise<void>((ok) => tcp.listen(config.mqttPort, config.host === "127.0.0.1" ? "127.0.0.1" : "0.0.0.0", ok));
   http.on("upgrade", (req, socket, head) => {
     if (!req.url?.startsWith("/mqtt")) return; // other upgrades (e.g. Vite HMR) handle themselves
     wss.handleUpgrade(req, socket, head, (ws) => broker!.handle(createWebSocketStream(ws), req));

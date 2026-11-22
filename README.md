@@ -30,7 +30,7 @@ not in this public repository. Without `MQTT_URL` it runs its own broker (local 
 |---|---|---|
 | Team broker, MQTT over TCP | `mqtt://<team-broker>:1883` | team user and password |
 | Team broker through sbb-twin, MQTT over WebSocket | `wss://<public-host>/mqtt` (the page's *Connect* tab shows it) | none: a **read-only** proxy limited to `sbb-twin/v1/#` |
-| Own broker (no `MQTT_URL`) | `mqtt://127.0.0.1:1883` and `ws://127.0.0.1:8787/mqtt` | none (anonymous, read-only) |
+| Own broker (no `MQTT_URL`) | `ws://127.0.0.1:8787/mqtt` (no TCP port is opened) | none (anonymous, read-only) |
 
 MQTT 3.1.1 or 5. Publish only under `sbb-twin/v1/detections/{team}/…` and `sbb-twin/v1/ext/{team}/…` (the own broker
 enforces it; on the team broker it is the rule). Use a unique client id and a clean session. Retained messages survive
@@ -279,7 +279,7 @@ collision** at the remaining speed (a `train.collision` event, both trains immob
 ```sh
 npm install
 npm run dev                      # page + API on :8787 (Vite dev); MQTT on the team broker if MQTT_URL is set,
-                                 # else its own broker on tcp :1883 and ws :8787/mqtt
+                                 # else its own broker on ws :8787/mqtt
 ```
 
 | Variable | Default | |
@@ -288,7 +288,7 @@ npm run dev                      # page + API on :8787 (Vite dev); MQTT on the t
 | `OTD_GTFS_SA_KEY` | — | opentransportdata.swiss API key for the GTFS-RT service alerts (real SBB alerts on `alerts/+`) |
 | `MQTT_URL`, `MQTT_USERNAME`, `MQTT_PASSWORD` | — | publish to this broker (e.g. `mqtt://<team-broker>:1883`) instead of the own one |
 | `TOPIC_ROOT` | `sbb-twin/v1` | change it for a test instance so it never overwrites the live twin's topics |
-| `PORT`, `MQTT_PORT`, `HOST` | `8787`, `1883`, `127.0.0.1` | use `HOST=0.0.0.0` in a container |
+| `PORT`, `HOST` | `8787`, `127.0.0.1` | use `HOST=0.0.0.0` in a container |
 | `RAIL_STATE_FILE` | `data/state.json` | where provoked changes are saved across restarts |
 | `RAIL_DATA_DIR`, `RAIL_DAYS_DIR` | `data/`, `data/days/` | prepared geometry and one timetable file per service day |
 

@@ -27,10 +27,6 @@ servers:
     host: 127.0.0.1:8787
     pathname: /mqtt
     protocol: ws
-  local-tcp:
-    host: 127.0.0.1:1883
-    protocol: mqtt
-    description: sbb-twin's own broker, used when MQTT_URL is not set (also served over WebSocket as local-ws).
 channels:
   status:
     address: sbb-twin/v1/status
