@@ -20,6 +20,7 @@ import { publish } from "./mqtt.ts";
 import { alertsState, pollAlerts } from "./alerts.ts";
 import { bulletins } from "./feed.ts";
 import { scenarioTick } from "./scenario.ts";
+import { forecastTick } from "./forecast.ts";
 import { recordRemoved, replayTick, startReplay } from "./replay.ts";
 import { warmPlanner } from "./planner.ts";
 
@@ -87,6 +88,7 @@ function loop() {
   try {
     replayTick(t); // a scripted replay's decisions at their real times
     scenarioTick(t); // decisions taking effect, the effective timetable, buses and bulletins
+    forecastTick(t); // a disruption that just resumed: the trains to check in the next hour
     const { removed } = tick(t);
     recordRemoved(removed);
     publishTick(t, removed);

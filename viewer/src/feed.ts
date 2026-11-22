@@ -9,6 +9,11 @@ export type Disruption = {
   cause?: { code: string; label: string }; durationType?: string; until?: number | null; endsAt?: number | null; lines?: string[]; lifecycle?: string;
   measures?: { id?: string; type: string; label?: string; at?: string; state?: string }[]; bulletinVersion?: number;
 };
+/** After a twin disruption resumed: the regular trains due at its stations in the next hour (GET /api/forecasts/post-resumption). */
+export type Forecast = {
+  disruptionId: string; where: string; resumedAt: number; expiresAt: number; endpoints: { id: string; name: string }[];
+  trains: { trainId: string; line: string; category: string; headsign: string; station: { id: string; name: string }; plannedTime: number; leadMinutes: number; risk: number; riskPercent: number; band: "check first" | "check" | "low"; officialStatus: "scheduled" | "cancelled" | "skipped" }[];
+};
 /** A disruption on the railway: a real SBB alert, or an incident the twin detected itself. */
 export type Item = { id: string; title: string; where: string; severity: "info" | "minor" | "major" | "critical"; note: string; trains: number; geometry: Geometry; source: "sbb" | "auto"; trainIds?: string[]; description?: string };
 
@@ -19,6 +24,7 @@ type Handlers = {
   tick: (rows: SnapshotRow[], status: Status) => void;
   items: (list: Item[]) => void;
   disruptions: (list: Disruption[]) => void;
+  forecasts?: (list: Forecast[]) => void;
 };
 type TrainUpdate = (position: Record<string, unknown> | null, info: Record<string, unknown> | null) => void;
 export type Live = { watch: (trainId: string, cb: TrainUpdate) => () => void; close: () => void };
@@ -57,6 +63,7 @@ export function connectLive(h: Handlers): Live {
         push();
       } else if (m.type === "state") {
         h.disruptions(m.disruptions as Disruption[]);
+        h.forecasts?.((m.forecasts ?? []) as Forecast[]);
         incidents = (m.incidents as Incident[])
           .filter((i) => i.geometry && !i.disruptionId)
           .map((i) => ({ id: i.id, title: i.title, where: i.where, severity: i.severity, note: `since ${hm(i.createdAt)}`, trains: i.trainIds?.length ?? 0, trainIds: i.trainIds, geometry: i.geometry, source: "auto" as const }));

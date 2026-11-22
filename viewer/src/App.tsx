@@ -3,7 +3,7 @@ import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import type { GeoJSONSource, Map as LibreMap } from "maplibre-gl";
 import { CircleDot, Crosshair, Monitor, Moon, Plus, RefreshCcw, Sun, TrainFront, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { api, connectLive, send, type Disruption, type Item, type Live, type SnapshotRow, type Status } from "./feed";
+import { api, connectLive, send, type Disruption, type Forecast, type Item, type Live, type SnapshotRow, type Status } from "./feed";
 import { Control } from "./Control";
 import { baseStyle, OWN, setMapTheme } from "./map";
 import { applyPageTheme, onSystemThemeChange, readPref, resolveTheme, savePref, shownTheme, switchMs, systemTheme, type Pref, type Theme } from "./theme";
@@ -51,6 +51,7 @@ export function App() {
   const [status, setStatus] = useState<Status>();
   const [alertItems, setItems] = useState<Item[]>([]);
   const [disruptions, setDisruptions] = useState<Disruption[]>([]);
+  const [forecasts, setForecasts] = useState<Forecast[]>([]);
   const [tab, setTab] = useState<"disruptions" | "bulletins">("disruptions");
   const [registering, setRegistering] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -66,7 +67,11 @@ export function App() {
   const [theme, setTheme] = useState<Theme>(shownTheme);
   const themeRef = useRef(theme);
   const mapLoaded = useRef(false);
-  const own: Item[] = disruptions.filter((d) => d.status === "active" && d.geometry).map((d) => ({ id: d.id, title: d.summary ?? d.label ?? "Disruption", where: d.where, severity: d.effect === "limited" ? "minor" : "major", note: d.cause?.label ?? "registered in the twin", trains: 0, geometry: d.geometry, description: d.description, source: "auto" as const }));
+  // registered disruptions, and the resumed ones while their trains to check are due (src/forecast.ts)
+  const resumed = new Map(forecasts.map((f) => [f.disruptionId, f]));
+  const own: Item[] = disruptions
+    .filter((d) => (d.status === "active" || resumed.has(d.id)) && d.geometry)
+    .map((d) => ({ id: d.id, title: d.summary ?? d.label ?? "Disruption", where: d.where, severity: d.status !== "active" ? "info" : d.effect === "limited" ? "minor" : "major", note: d.status !== "active" ? "service resumed · trains to check" : d.cause?.label ?? "registered in the twin", trains: 0, geometry: d.geometry, description: d.description, source: "auto" as const }));
   const items = [...own, ...alertItems];
   itemsRef.current = items;
 
@@ -110,6 +115,7 @@ export function App() {
         },
         items: setItems,
         disruptions: setDisruptions,
+        forecasts: setForecasts,
       });
     })();
     return () => {
@@ -339,6 +345,7 @@ export function App() {
                   {i.where && <span>{i.where}</span>}
                   <small>{[i.note, i.trains ? `${i.trains} train${i.trains > 1 ? "s" : ""}` : ""].filter(Boolean).join(" · ")}</small>
                 </button>
+                {picked === i.id && resumed.has(i.id) && <ResumeCard forecast={resumed.get(i.id)!} />}
               </li>
             ))}
           </ul>
@@ -357,6 +364,41 @@ export function App() {
   );
 }
 const rank = (i: Item) => (i.severity === "critical" || i.severity === "major" ? 0 : i.severity === "minor" ? 1 : 2);
+
+/** After "Service resumed": the trains due at the section's stations in the next hour, as historical risk bands. An
+ *  official cancellation or skipped stop is shown as such (it wins over the forecast). */
+function ResumeCard({ forecast: f }: { forecast: Forecast }) {
+  const ends = f.endpoints.map((e) => e.name).join(" or ");
+  return (
+    <section className="resume" aria-label="Trains to check after the resumption">
+      <h4>Service resumed at {hm(f.resumedAt)} · Trains to check</h4>
+      {f.trains.length ? (
+        <ol>
+          {f.trains.map((t) => (
+            <li key={t.trainId} className={t.officialStatus !== "scheduled" ? "official" : undefined}>
+              <time>{hm(t.plannedTime)}</time>
+              <span className="who">
+                <span className="name"><strong>{t.line}</strong> {t.headsign}</span>
+                <small>at {t.station.name}</small>
+              </span>
+              {t.officialStatus !== "scheduled" ? (
+                <em className="band off">{t.officialStatus === "cancelled" ? "cancelled" : "no stop"}</em>
+              ) : (
+                <em className={`band ${t.band === "check first" ? "first" : t.band}`} title={`${t.riskPercent}% of such trains lost a stop historically`}>
+                  {t.band}
+                  <i>{t.riskPercent}%</i>
+                </em>
+              )}
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p className="none">No regular train is due at {ends} in the next hour.</p>
+      )}
+      <p className="basis">Based on 1,800+ train runs after past SBB resumptions; an official cancellation always wins.</p>
+    </section>
+  );
+}
 
 function TrainCard({ id, live, following, onFollow, onClose }: { id: string; live: Live; following: boolean; onFollow: () => void; onClose: () => void }) {
   const [pos, setPos] = useState<Pos>();

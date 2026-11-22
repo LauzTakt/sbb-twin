@@ -2,6 +2,7 @@
 // the twin's state only (no model call). The voice assistant preloads it when a passenger mentions a place.
 //   GET /api/brief?station=<id|name>      disruptions touching the station, its next departures
 //   GET /api/brief?from=<>&to=<>          the same for both ends and the way between, plus the next 3 journeys
+// Both include `forecasts`: after a resumption at one of those stations, the trains to check (src/forecast.ts).
 import { stationBoard, dayTrips } from "./engine.ts";
 import { stationIndex, stops, type Trip } from "./timetable.ts";
 import { disruptions, tripChanges, type Disruption, type Scenario } from "./disruptions.ts";
@@ -9,6 +10,7 @@ import { alertsState } from "./alerts.ts";
 import { plan, resolveStation } from "./planner.ts";
 import { expectedEnd, isScenario, latestBulletin, stateAt } from "./scenario.ts";
 import { MEASURES } from "./catalogue.ts";
+import { forecastsAt } from "./forecast.ts";
 
 type S = Disruption & { scenario: Scenario };
 const place = (k: number) => ({ id: stops[k].id, name: stops[k].name });
@@ -145,7 +147,7 @@ export function brief(q: { station?: string; from?: string; to?: string; lat?: s
     const to = stationPart(b, t);
     for (const r of [...from.departures]) if (r.trainId) trips.add(byId.get(r.trainId) ?? "");
     const hits = touching(ids, t, trips);
-    return { generatedAt: t, from: from.station, to: to.station, ...hits, journeys, departures: from.departures, ms: Math.round(performance.now() - t0) };
+    return { generatedAt: t, from: from.station, to: to.station, ...hits, forecasts: forecastsAt(ids), journeys, departures: from.departures, ms: Math.round(performance.now() - t0) };
   }
   const k = resolveStation(q.station);
   if (k === undefined) return { error: q.station ? `Unknown station: ${q.station}` : "station, or from and to, are required" };
@@ -153,5 +155,5 @@ export function brief(q: { station?: string; from?: string; to?: string; lat?: s
   const byId = tripKeys();
   const trips = new Set(part.departures.map((r) => (r.trainId ? byId.get(r.trainId) ?? "" : "")));
   const hits = touching(new Set([stops[k].id]), t, trips);
-  return { generatedAt: t, station: part.station, ...hits, departures: part.departures, ms: Math.round(performance.now() - t0) };
+  return { generatedAt: t, station: part.station, ...hits, forecasts: forecastsAt(new Set([stops[k].id])), departures: part.departures, ms: Math.round(performance.now() - t0) };
 }

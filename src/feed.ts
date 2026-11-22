@@ -11,6 +11,7 @@ import { disruptions, incidents, tripChanges, type Disruption, type Incident } f
 import { live } from "./realtime.ts";
 import { aiStats } from "./bulletinAI.ts";
 import { forget, isScenario, latestBulletin, scenarioFields } from "./scenario.ts";
+import { forecastList } from "./forecast.ts";
 
 export const VERSION = "1.0.0";
 export const startedAt = Date.now();
@@ -148,6 +149,7 @@ export function controlState() {
     disruptions: [...disruptions.values()].map(disruptionPayload),
     incidents: [...incidents.values()].map(incidentPayload),
     bulletins: bulletins(),
+    forecasts: forecastList(),
     simulated: [...trains.values()].filter((tr) => tr.mode === "sim").map((tr) => ({ trainId: tr.trip.trainId, causes: [...tr.causes] })),
   };
 }

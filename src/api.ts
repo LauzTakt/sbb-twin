@@ -13,6 +13,7 @@ import { clear, publish } from "./mqtt.ts";
 import { releaseAll, releaseTrain } from "./god.ts";
 import { alertsState } from "./alerts.ts";
 import { brief } from "./brief.ts";
+import { dropAllForecasts, dropForecast, forecastList, forecastOf, forecastTick } from "./forecast.ts";
 import { journeyGeometry, plan, sectionGeometry, situation, trainGeometry, journeyDetail } from "./planner.ts";
 
 const trainLookup = (id: string) => {
@@ -74,6 +75,7 @@ export function api() {
     await next();
     if (c.req.method !== "GET") {
       scenarioTick(Date.now(), true); // bulletins and the effective timetable follow at once
+      forecastTick(Date.now()); // a resumption is scored at once
       pushState();
     }
   });
@@ -257,9 +259,18 @@ export function api() {
     const d = endDisruption(c.req.param("id"));
     if (!d) return c.json({ error: "Unknown disruption" }, 404);
     removeDisruption(d.id);
+    dropForecast(d.id); // withdrawn, not resumed
     return c.json({ removed: d.id });
   });
   app.get("/bulletins", (c) => c.json(bulletins()));
+  // after "Service resumed": the regular trains due at the section's stations in the next hour and their historical
+  // risk of still losing a stop (src/forecast.ts). Advice only: the effective timetable and the planner ignore it.
+  app.get("/forecasts/post-resumption", (c) => {
+    const id = c.req.query("disruptionId");
+    if (!id) return c.json(forecastList());
+    const f = forecastOf(id);
+    return f ? c.json(f) : c.json({ error: "No forecast for this disruption (it has not resumed, or its hour is over)" }, 404);
+  });
   app.get("/replays", (c) => c.json(replayStatus()));
   app.get("/replays/outcome", (c) => c.json(replayOutcome()));
   app.post("/replays/:name/start", (c) => c.json(startReplay(c.req.param("name")), 201));
@@ -344,6 +355,7 @@ export function api() {
       removed++;
     }
     forgetAll(); // replacement buses and every timetable change
+    dropAllForecasts();
     const synced = sync();
     event("sync", { type: "reset", removed, trainIds: synced });
     return c.json({ removed, synced: synced.length });
