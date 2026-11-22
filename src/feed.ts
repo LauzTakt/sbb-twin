@@ -9,6 +9,7 @@ import { byTrainId, collisions, delayOf, edgeName, expectedArrival, liveTimes, n
 import { stops } from "./timetable.ts";
 import { disruptions, incidents, tripChanges, type Disruption, type Incident } from "./disruptions.ts";
 import { live } from "./realtime.ts";
+import { aiStats } from "./bulletinAI.ts";
 import { forget, isScenario, latestBulletin, scenarioFields } from "./scenario.ts";
 
 export const VERSION = "1.0.0";
@@ -264,6 +265,7 @@ export function statusPayload(t = Date.now()) {
     broker: { mode: brokerStats.mode, connected: brokerStats.connected, webSocketClients: brokerStats.clients },
     alerts: { enabled: Boolean(config.gtfsSaKey), active: alertsState.alerts.size, feedAgeSec: alertsState.fetchedAt ? Math.round((t - alertsState.fetchedAt) / 1000) : null, error: alertsState.error ?? null },
     controlPages: channel.pageCount(),
+    bulletinAI: aiStats(),
   };
 }
 export const trainById = (id: string) => byTrainId.get(id);

@@ -21,6 +21,7 @@ import { alertsState, pollAlerts } from "./alerts.ts";
 import { bulletins } from "./feed.ts";
 import { scenarioTick } from "./scenario.ts";
 import { recordRemoved, replayTick, startReplay } from "./replay.ts";
+import { warmPlanner } from "./planner.ts";
 
 process.on("unhandledRejection", (e) => console.error("[sbb-twin] unhandled:", (e as Error)?.message ?? e));
 
@@ -84,6 +85,7 @@ function loop() {
 loop();
 console.log(`[sbb-twin] ${trains.size} trains in service`);
 
+setInterval(warmPlanner, 4000).unref(); // journeys and briefs answer from a ready connection list
 setInterval(async () => {
   if (await pollRealtime()) applyRealtime();
 }, config.rtIntervalMs).unref();

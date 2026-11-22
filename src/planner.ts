@@ -5,7 +5,7 @@
 import { createHash } from "node:crypto";
 import { dayTrips, liveTimes, servedStations, stationBoard, byTrainId } from "./engine.ts";
 import { searchStations, stationIndex, stops, type Trip } from "./timetable.ts";
-import { disruptions, incidents, type Incident } from "./disruptions.ts";
+import { disruptions, effective, incidents, type Incident } from "./disruptions.ts";
 import { edgesGeometry, sectionEdges, travelPath } from "./geometry.ts";
 import { alertsState } from "./alerts.ts";
 
@@ -76,7 +76,21 @@ function closures() {
   return { blocked, stations };
 }
 
+// the connections of the effective timetable, shared by requests for a few seconds (until it is rebuilt)
+let connCache: { gen: number; at: number; after: number; value: ReturnType<typeof buildConnections> } | undefined;
 function connections(t: number, after: number) {
+  const a = Math.floor(after / 30_000) * 30_000;
+  if (connCache && connCache.gen === effective.generation && t - connCache.at < 5000 && connCache.after === a) return connCache.value;
+  const value = buildConnections(t, a);
+  connCache = { gen: effective.generation, at: t, after: a, value };
+  return value;
+}
+/** Keep the shared connections fresh so a journey request (and /api/brief) never waits for the build. */
+export function warmPlanner() {
+  const t = Date.now();
+  connections(t, t);
+}
+function buildConnections(t: number, after: number) {
   const until = after + HORIZON_MS;
   const trips = dayTrips();
   const lives: (Live | undefined)[] = new Array(trips.length);

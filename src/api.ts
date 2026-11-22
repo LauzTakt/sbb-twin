@@ -6,12 +6,13 @@ import { searchStations, stationIndex } from "./timetable.ts";
 import { abroadGeoJson, networkGeoJson } from "./geometry.ts";
 import { bulletins, controlState, disruptionPayload, event, incidentPayload, infoPayload, positionPayload, pushState, removeDisruption, statusPayload } from "./feed.ts";
 import { CAUSES, MEASURES } from "./catalogue.ts";
-import { acceptProposal, addMeasure, createScenario, forgetAll, isScenario, latestBulletin, resume, scenarioTick, setState, withdrawMeasure, type ScenarioInput } from "./scenario.ts";
+import { acceptProposal, addMeasure, bulletinIn, createScenario, forgetAll, isScenario, latestBulletin, resume, scenarioTick, setState, withdrawMeasure, type ScenarioInput } from "./scenario.ts";
 import { stops } from "./timetable.ts";
 import { replayOutcome, replayStatus, startReplay } from "./replay.ts";
 import { clear, publish } from "./mqtt.ts";
 import { releaseAll, releaseTrain } from "./god.ts";
 import { alertsState } from "./alerts.ts";
+import { brief } from "./brief.ts";
 import { journeyGeometry, plan, sectionGeometry, situation, trainGeometry } from "./planner.ts";
 
 const trainLookup = (id: string) => {
@@ -137,7 +138,7 @@ export function api() {
       const d = createScenario(b as ScenarioInput);
       publish(`truth/disruptions/${d.id}`, disruptionPayload(d), { retain: true, qos: 1 });
       event("disruption", { type: "disruption.started", id: d.id, label: d.label, where: d.where });
-      return c.json({ disruption: disruptionPayload(d), bulletin: latestBulletin(d), proposal: d.scenario.proposal }, 201);
+      return c.json({ disruption: disruptionPayload(d), bulletin: latestBulletin(d), proposal: d.scenario.proposal, warnings: d.scenario.warnings ?? [] }, 201);
     }
     const d = createDisruption(b as Parameters<typeof createDisruption>[0], trainLookup);
     publish(`truth/disruptions/${d.id}`, disruptionPayload(d), { retain: true, qos: 1 });
@@ -148,7 +149,7 @@ export function api() {
       : undefined;
     return c.json({ disruption: disruptionPayload(d), incident: incident ? incidentPayload(incident) : null, linked: linked ? disruptionPayload(linked) : null, bulletin: linked ? latestBulletin(linked) : null }, 201);
   });
-  const answer = (d: Parameters<typeof disruptionPayload>[0] & { scenario?: unknown }) => ({ disruption: disruptionPayload(d), bulletin: isScenario(d) ? latestBulletin(d) : null });
+  const answer = (d: Parameters<typeof disruptionPayload>[0] & { scenario?: unknown }) => ({ disruption: disruptionPayload(d), bulletin: isScenario(d) ? latestBulletin(d) : null, warnings: isScenario(d) ? (d.scenario.warnings ?? []) : [] });
   app.post("/disruptions/:id/measures", async (c) => {
     const d = scenarioOf(c.req.param("id"));
     if (!d) return c.json({ error: "Unknown disruption" }, 404);
@@ -200,9 +201,14 @@ export function api() {
   app.get("/replays", (c) => c.json(replayStatus()));
   app.get("/replays/outcome", (c) => c.json(replayOutcome()));
   app.post("/replays/:name/start", (c) => c.json(startReplay(c.req.param("name")), 201));
-  app.get("/bulletins/:id", (c) => {
+  app.get("/bulletins/:id", async (c) => {
     const d = disruptions.get(c.req.param("id"));
     if (!d || !isScenario(d)) return c.json({ error: "Unknown disruption" }, 404);
+    const lang = (c.req.query("lang") ?? "en").toLowerCase();
+    if (lang !== "en") {
+      if (!["de", "fr", "it"].includes(lang)) throw new InputError("lang is en, de, fr or it");
+      return c.json({ latest: await bulletinIn(d, lang as "de" | "fr" | "it"), versions: d.scenario.bulletins });
+    }
     return c.json({ latest: latestBulletin(d), versions: d.scenario.bulletins });
   });
 
@@ -232,6 +238,10 @@ export function api() {
     const after = Number(c.req.query("after") ?? Date.now()) || Date.now();
     const limit = Math.max(1, Math.min(6, Number(c.req.query("limit") ?? 4) || 4));
     const r = plan(from, to, after, limit);
+    return "error" in r ? c.json({ error: r.error }, 404) : c.json(r);
+  });
+  app.get("/brief", (c) => {
+    const r = brief({ station: c.req.query("station"), from: c.req.query("from"), to: c.req.query("to") });
     return "error" in r ? c.json({ error: r.error }, 404) : c.json(r);
   });
   app.get("/situation", (c) => {

@@ -60,7 +60,19 @@ export type Measure = {
   withdrawnAnnouncedAt?: number;
 };
 export type BulletinMessage = { ts: number; title: string; text: string };
-export type Bulletin = { id: string; version: number; ts: number; lang: "en"; lifecycle: "INFO" | "ENDED"; title: string; description: string; lines: string[]; messages: BulletinMessage[] };
+export type Bulletin = {
+  id: string;
+  version: number;
+  ts: number;
+  lang: "en" | "de" | "fr" | "it";
+  lifecycle: "INFO" | "ENDED";
+  title: string;
+  description: string;
+  lines: string[];
+  messages: BulletinMessage[];
+  source: "template" | "ai"; // ai: Claude Haiku's wording of the same facts, validated (src/bulletinAI.ts)
+  template?: string; // the deterministic text it was written from
+};
 export type Scenario = {
   cause: { code: string; label: string };
   initial: EffectState;
@@ -78,6 +90,7 @@ export type Scenario = {
   bulletins: Bulletin[]; // every version, oldest first
   proposal: Proposal;
   linkedTrain?: string; // created by a train breakdown: ends when the train is released
+  warnings?: string[]; // e.g. a section too long for a replacement bus
   resumedAt?: number;
 };
 
@@ -92,6 +105,8 @@ export type TripChange = {
   committed?: boolean; // the train has reached its cut (set by the engine)
 };
 export const tripChanges = new Map<string, TripChange>();
+/** Bumped whenever the effective timetable is rebuilt (readers can cache until it changes). */
+export const effective = { generation: 0 };
 export type GeoJsonGeometry = { type: "MultiLineString"; coordinates: number[][][] } | { type: "Point"; coordinates: number[] } | { type: "LineString"; coordinates: number[][] } | { type: "Polygon"; coordinates: number[][][] };
 
 export type Incident = {

@@ -9,11 +9,13 @@
 //   - the public bulletin (a new version on every change) and the public incident.
 import { createHash, randomUUID } from "node:crypto";
 import { CAUSES, causeOf, MEASURES, proposal, type DurationType, type EffectState, type MeasureType } from "./catalogue.ts";
-import { disruptions, incidents, InputError, tripChanges, type Bulletin, type BulletinMessage, type Disruption, type Incident, type Measure, type Scenario, type TripChange } from "./disruptions.ts";
+import { disruptions, effective, incidents, InputError, tripChanges, type Bulletin, type BulletinMessage, type Disruption, type Incident, type Measure, type Scenario, type TripChange } from "./disruptions.ts";
 import { dayTrips, liveTimes, removeExtraTrips, setExtraTrips, timetableDate, trains } from "./engine.ts";
 import { stationIndex, stops, type Trip } from "./timetable.ts";
 import { edgeSpans, edgesGeometry, edgesWithin, metres, pathBetween, sectionEdges } from "./geometry.ts";
 import { clear, publish } from "./mqtt.ts";
+import { aiEnabled, writeBulletin, type BulletinFacts, type Lang } from "./bulletinAI.ts";
+import { config } from "./config.ts";
 import { serviceOrigin, zurich } from "./time.ts";
 
 const HOLD_MAX_MIN = 20;
@@ -186,6 +188,7 @@ function candidates(d: Disruption & { scenario: Scenario }, trips: Trip[]) {
 export function recompute(t = Date.now()) {
   const t0 = performance.now();
   lastRecompute = t;
+  effective.generation++;
   tripChanges.clear();
   const all = scenarios();
   for (const d of all) {
@@ -246,10 +249,17 @@ export function recompute(t = Date.now()) {
 
 // ---------------------------------------------------------------- replacement buses
 function busTimes(seq: number[]) {
-  // straight distance x 1.35 for the road, 40 km/h average, at least 2 minutes per hop, 1 minute at each stop
-  const hop = seq.slice(1).map((s, k) => Math.max(2, Math.round((metres(stops[seq[k]].lon, stops[seq[k]].lat, stops[s].lon, stops[s].lat) * 1.35) / (40 / 3.6) / 60)) * 60_000);
-  return hop;
+  // road distance = straight line x 1.3, at 50 km/h on average (at least 1 minute per hop); 1 minute at each stop
+  return seq.slice(1).map((s, k) => Math.max(60, Math.round((metres(stops[seq[k]].lon, stops[seq[k]].lat, stops[s].lon, stops[s].lat) * 1.3) / (50 / 3.6) / 30) * 30) * 1000);
 }
+/** Straight distance between the section ends, km. */
+export const sectionKm = (sc: Scenario) => {
+  const a = stops[stationIndex(sc.a) ?? -1];
+  const b = stops[stationIndex(sc.b ?? "") ?? -1];
+  return a && b ? metres(a.lon, a.lat, b.lon, b.lat) / 1000 : 0;
+};
+const BUS_MAX_KM = 40; // real replacement buses bridge short gaps between neighbouring stations
+const busWarning = (km: number) => `Section of ${Math.round(km)} km: a replacement bus would not cover this in real operations`;
 function departures(m: Measure, side: "A" | "B", from: number, until: number) {
   const out: number[] = [];
   const pattern = (side === "A" ? m.params.minutesA : m.params.minutesB) as number[] | undefined;
@@ -296,7 +306,7 @@ function refreshBuses(d: Disruption & { scenario: Scenario }, t: number) {
   if (!d.endedAt && seq.length >= 2) {
     const end = expectedEnd(d, t);
     for (const m of announced(d, "replacement_bus", t)) {
-      if (m.params.sought) continue; // still being organised: no departures yet
+      if (m.params.sought || m.params.blocked) continue; // still being organised, or a section too long for a bus
       const until = Math.min(m.withdrawAt ?? Infinity, end ?? t + BUS_HORIZON_MS, t + 6 * 3600_000);
       for (const side of ["A", "B"] as const) {
         const route = side === "A" ? seq : [...seq].reverse();
@@ -314,9 +324,12 @@ function refreshBuses(d: Disruption & { scenario: Scenario }, t: number) {
   setExtraTrips(d.id, next);
 }
 /** First departures of a bus decision from each end (for the bulletin). */
-function firstBuses(d: Disruption & { scenario: Scenario }, m: Measure, t: number) {
-  const until = Math.min(m.withdrawAt ?? Infinity, expectedEnd(d, t) ?? Infinity, m.at + 6 * 3600_000);
-  return { A: departures(m, "A", m.at, until).slice(0, 2), B: departures(m, "B", m.at, until).slice(0, 2) };
+/** First departures of a bus decision from each end, as they are in the effective timetable (for the bulletin). */
+function firstBuses(d: Disruption & { scenario: Scenario }, m: Measure) {
+  const tag = `-${m.id.slice(2)}-`;
+  const mine = (busTrips.get(d.id) ?? []).filter((trip) => trip.key.includes(tag));
+  const from = (id: string) => mine.filter((trip) => stops[trip.stops[0]].id === id).map((trip) => trip.dep[0]).sort((x, y) => x - y);
+  return { A: from(d.scenario.a), B: from(d.scenario.b ?? "") };
 }
 
 // ---------------------------------------------------------------- bulletins
@@ -351,14 +364,15 @@ function messages(d: Disruption & { scenario: Scenario }, t: number): BulletinMe
     if (m.type === "replacement_bus" && m.params.sought) {
       out.push({ ts: m.announcedAt, title: "Replacement bus", text: `Replacement buses (EV) are being organized ${where}. Long waiting times are to be expected.` });
     } else if (m.type === "replacement_bus") {
-      const f = firstBuses(d, m, t);
-      const pattern = Array.isArray(m.params.minutesA) || Array.isArray(m.params.minutesB);
+      if (m.params.blocked) continue; // never announced: no bus runs
+      const f = firstBuses(d, m);
+      const pattern = (Array.isArray(m.params.minutesA) || Array.isArray(m.params.minutesB)) && f.A.length > 0;
       const mins = (xs: unknown) => joinAnd(((xs as number[]) ?? []).map((x) => `:${String(x).padStart(2, "0")}`));
       const via = sc.busStops.slice(1, -1).map(name);
       const route = `Replacement buses (EV) run ${where}${via.length ? `, calling at ${joinAnd(via)}` : ""}.`;
       const times = pattern
         ? `Departures from ${A} at ${mins(m.params.minutesA)} and from ${B} at ${mins(m.params.minutesB)} past each hour.`
-        : f.A.length
+        : f.A.length && f.B.length
           ? `First departures from ${A} at ${hhmm(f.A[0])} and from ${B} at ${hhmm(f.B[0])}, then every ${Number(m.params.everyMin ?? 15)} minutes.`
           : "";
       out.push({ ts: m.announcedAt, title: "Replacement bus", text: [route, times, "Please allow for longer travel times."].filter(Boolean).join(" ") });
@@ -399,7 +413,7 @@ function linesCut(d: Disruption & { scenario: Scenario }) {
   return [...out].filter((l) => d.scenario.lines.includes(l)).sort(byLine);
 }
 /** The public bulletin as it reads at time t (deterministic: the same record gives the same text). */
-export function render(d: Disruption & { scenario: Scenario }, t: number): Omit<Bulletin, "version" | "ts"> {
+export function render(d: Disruption & { scenario: Scenario }, t: number): Omit<Bulletin, "version" | "ts" | "source"> {
   const sc = d.scenario;
   const A = name(sc.a);
   const B = sc.b ? name(sc.b) : undefined;
@@ -427,7 +441,7 @@ export function render(d: Disruption & { scenario: Scenario }, t: number): Omit<
 
 /** Replacement buses now: running (or decided, first departure within 30 min), still being organised, or none. */
 function busState(d: Disruption & { scenario: Scenario }, t: number): "running" | "sought" | null {
-  const live = announced(d, "replacement_bus", t).filter((m) => m.at <= t + 30 * 60_000 && (m.withdrawAt === undefined || m.withdrawAt > t));
+  const live = announced(d, "replacement_bus", t).filter((m) => !m.params.blocked && m.at <= t + 30 * 60_000 && (m.withdrawAt === undefined || m.withdrawAt > t));
   return live.some((m) => !m.params.sought) ? "running" : live.length ? "sought" : null;
 }
 export const latestBulletin = (d: Disruption & { scenario: Scenario }) => d.scenario.bulletins.at(-1) ?? null;
@@ -468,16 +482,66 @@ function publicIncident(d: Disruption & { scenario: Scenario }, b: Bulletin, t: 
 function bulletin(d: Disruption & { scenario: Scenario }, t: number) {
   const r = render(d, t);
   const last = latestBulletin(d);
-  const same = last && last.title === r.title && last.description === r.description && last.lifecycle === r.lifecycle && JSON.stringify(last.messages) === JSON.stringify(r.messages) && last.lines.join() === r.lines.join();
+  const same = last && last.title === r.title && (last.template ?? last.description) === r.description && last.lifecycle === r.lifecycle && JSON.stringify(last.messages) === JSON.stringify(r.messages) && last.lines.join() === r.lines.join();
   if (same) return undefined;
-  const b: Bulletin = { ...r, version: (last?.version ?? 0) + 1, ts: t };
+  const b: Bulletin = { ...r, version: (last?.version ?? 0) + 1, ts: t, source: "template", template: r.description };
+  publishVersion(d, b, t);
+  if (aiEnabled()) void reword(d, b, facts(d, t, b));
+  return b;
+}
+/** The facts a bulletin states (what the model may say, and must say). */
+export function facts(d: Disruption & { scenario: Scenario }, t: number, b: Bulletin): BulletinFacts {
+  const sc = d.scenario;
+  const st = stateAt(d, t, t);
+  const bus = busState(d, t);
+  return {
+    state: st.state,
+    section: { a: name(sc.a), b: sc.b ? name(sc.b) : null },
+    cause: causeOf(sc.cause.code)?.clause.en ?? sc.cause.label.toLowerCase(),
+    durationType: st.durationType,
+    until: st.until === null ? null : hhmm(st.until),
+    lines: st.state === "resumed" ? [] : b.lines,
+    noTrains: st.state === "interrupted",
+    oneTrackKmh: st.state === "limited" && announced(d, "one_track_open", t).some((m) => m.at <= t) ? st.kmh : null,
+    replacementBus: bus,
+    busStops: sc.busStops.map(name),
+  };
+}
+/** Haiku's wording of the same facts, published as the next version once it passed validation (never blocks). */
+async function reword(d: Disruption & { scenario: Scenario }, b: Bulletin, f: BulletinFacts) {
+  // the translations are prepared at the same time, so a request in DE/FR/IT is answered from the cache
+  for (const lang of ["de", "fr", "it"] as const) void writeBulletin(f, b.description, lang, config.bulletinBackgroundMs);
+  const r = await writeBulletin(f, b.description, "en", config.bulletinBackgroundMs);
+  if (r.source !== "ai" || r.text === b.description) return;
+  if (latestBulletin(d) !== b || !disruptions.has(d.id)) return; // something changed meanwhile: that version gets its own
+  const t = Date.now();
+  publishVersion(d, { ...b, version: b.version + 1, ts: t, description: r.text, source: "ai" }, t);
+}
+/** Translated bulletin (DE/FR/IT) or Haiku's EN, waited for up to the timeout; the template when it fails. */
+export async function bulletinIn(d: Disruption & { scenario: Scenario }, lang: Lang) {
+  const b = latestBulletin(d);
+  if (!b) return null;
+  const template = b.template ?? b.description;
+  if (lang === "en") return b;
+  const sc = d.scenario;
+  const place = sc.b ? `${name(sc.a)} - ${name(sc.b)}` : name(sc.a);
+  const st = stateAt(d, Date.now(), Date.now());
+  const r = await writeBulletin(facts(d, Date.now(), b), template, lang);
+  if (r.source !== "ai") return { ...b, requestedLang: lang, translationError: r.errors[0] ?? null };
+  return { ...b, lang, title: TITLES[lang](st.state, place), description: r.text, source: "ai" as const, messages: b.messages };
+}
+const TITLES: Record<Exclude<Lang, "en">, (s: StateAt["state"], place: string) => string> = {
+  de: (s, p) => (s === "resumed" ? `Aufgehoben: Unterbruch ${p}` : s === "interrupted" ? `Unterbruch ${p}` : `Einschränkung ${p}`),
+  fr: (s, p) => (s === "resumed" ? `Trafic rétabli: ${p}` : s === "interrupted" ? `Interruption ${p}` : `Restriction ${p}`),
+  it: (s, p) => (s === "resumed" ? `Circolazione ripristinata: ${p}` : s === "interrupted" ? `Interruzione ${p}` : `Limitazioni ${p}`),
+};
+function publishVersion(d: Disruption & { scenario: Scenario }, b: Bulletin, t: number) {
   d.scenario.bulletins.push(b);
   if (d.scenario.bulletins.length > 60) d.scenario.bulletins.splice(0, d.scenario.bulletins.length - 60);
   publish(`bulletins/${d.id}`, { v: 1, ...b }, { retain: true, qos: 1 });
   const inc = publicIncident(d, b, t);
   incidents.set(inc.id, inc);
   publish(`incidents/${inc.id}`, { v: 1, ...inc, status: d.endedAt ? "ended" : "active" }, { retain: true, qos: 1 });
-  return b;
 }
 
 // ---------------------------------------------------------------- the per-second update
@@ -568,6 +632,10 @@ function measureFrom(d: Disruption & { scenario: Scenario }, input: MeasureInput
   const at = input.inMin !== undefined ? now + Number(input.inMin) * 60_000 : parseTime(when, now);
   const announcedAt = parseTime(ann, now);
   if (type === "replacement_bus" && !d.scenario.b) throw new InputError("A replacement bus needs a section (from, to)");
+  if (type === "replacement_bus" && !params.sought && params.force !== true && sectionKm(d.scenario) > BUS_MAX_KM) {
+    params.blocked = true; // registered, but no bus is generated (POST it again with force: true to run one anyway)
+    d.scenario.warnings = [...new Set([...(d.scenario.warnings ?? []), busWarning(sectionKm(d.scenario))])];
+  }
   if (type === "cancel_lines") {
     const lines = Array.isArray(params.lines) ? params.lines.map(String) : typeof params.lines === "string" ? params.lines.split(/[\s,]+/).filter(Boolean) : [];
     if (!lines.length) throw new InputError("cancel_lines needs lines, e.g. [\"S2\", \"S25\"]");
@@ -659,6 +727,11 @@ export function createScenario(input: ScenarioInput, now = Date.now()) {
   };
   sc.lines = linesThrough(d);
   sc.proposal = proposal(cause, effect, until === null ? null : (until - now) / 60_000);
+  const km = sectionKm(sc);
+  if (km > BUS_MAX_KM) {
+    sc.warnings = [busWarning(km)];
+    sc.proposal.measures = sc.proposal.measures.filter((m) => m.type !== "replacement_bus");
+  }
   if (Array.isArray(input.measures)) for (const m of input.measures) sc.measures.push(measureFrom(d, m as MeasureInput, now));
   if (input.applyProposal === true) for (const p of sc.proposal.measures) sc.measures.push(measureFrom(d, p, now));
   disruptions.set(d.id, d);
@@ -738,5 +811,6 @@ export function scenarioFields(d: Disruption & { scenario: Scenario }, t = Date.
     description: b?.description ?? "",
     impact: { tripsCut: cut, tripsStartingAfter: late, tripsHeld: held, buses: busTrips.get(d.id)?.length ?? 0 },
     linkedTrain: sc.linkedTrain ?? null,
+    warnings: sc.warnings ?? [],
   };
 }

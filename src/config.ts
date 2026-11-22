@@ -24,11 +24,16 @@ export const config = {
   daysDir: process.env.RAIL_DAYS_DIR ?? (existsSync(here("../data/days/")) ? here("../data/days/") : "/workspace/sbb/gtfs/"),
   gtfsRtKey: process.env.OTD_GTFS_RT_KEY ?? "",
   gtfsRtUrl: process.env.OTD_GTFS_RT_URL ?? "https://api.opentransportdata.swiss/la/gtfs-rt",
-  rtIntervalMs: Number(process.env.RT_INTERVAL_MS ?? 13_000), // the API allows 5 calls a minute: one every 13 s keeps a small margin,
+  rtIntervalMs: Number(process.env.RT_INTERVAL_MS ?? 30_000),
   // real service alerts (a separate opentransportdata.swiss key)
   gtfsSaKey: process.env.OTD_GTFS_SA_KEY ?? "",
   gtfsSaUrl: process.env.OTD_GTFS_SA_URL ?? "https://api.opentransportdata.swiss/la/gtfs-sa",
   saIntervalMs: Number(process.env.SA_INTERVAL_MS ?? 180_000),
+  // bulletin wording by Claude Haiku (src/bulletinAI.ts); without a key the template text is published
+  anthropicKey: process.env.ANTHROPIC_API_KEY ?? "",
+  bulletinModel: process.env.BULLETIN_MODEL ?? "claude-haiku-5-5",
+  bulletinTimeoutMs: Number(process.env.BULLETIN_TIMEOUT_MS ?? 2000), // when a caller waits (a translation on request)
+  bulletinBackgroundMs: Number(process.env.BULLETIN_BACKGROUND_MS ?? 8000), // nobody waits: published as a new version when ready
   topicRoot: process.env.TOPIC_ROOT ?? "sbb-twin/v1",
   production: process.env.NODE_ENV === "production",
   viewerDir: here("../viewer/"),
