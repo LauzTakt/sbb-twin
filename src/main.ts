@@ -37,13 +37,26 @@ const handleApi = getRequestListener(api().fetch);
 type Vite = { middlewares: (req: IncomingMessage, res: ServerResponse) => void };
 let vite: Vite | undefined;
 const dist = join(config.viewerDir, "dist");
-const types: Record<string, string> = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png", ".woff2": "font/woff2" };
+// module workers (MapLibre's .mjs worker) only run when served as JavaScript
+const types: Record<string, string> = {
+  ".html": "text/html", ".js": "text/javascript", ".mjs": "text/javascript", ".css": "text/css", ".json": "application/json", ".map": "application/json",
+  ".geojson": "application/geo+json", ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp", ".ico": "image/x-icon",
+  ".woff2": "font/woff2", ".wasm": "application/wasm", ".txt": "text/plain",
+};
 async function serveViewer(req: IncomingMessage, res: ServerResponse) {
   const path = normalize(decodeURIComponent((req.url ?? "/").split("?")[0])).replace(/^(\.\.[/\\])+/, "");
   let file = join(dist, path);
   if (!file.startsWith(dist) || !existsSync(file) || path.endsWith("/")) file = join(dist, "index.html");
-  res.setHeader("content-type", types[extname(file)] ?? "application/octet-stream");
-  res.end(await readFile(file));
+  try {
+    const body = await readFile(file);
+    res.setHeader("content-type", types[extname(file)] ?? "application/octet-stream");
+    res.end(body);
+  } catch {
+    // no built viewer (viewer/dist): answer instead of crashing the process
+    res.statusCode = 404;
+    res.setHeader("content-type", "text/plain");
+    res.end("Viewer not built: run npm run build");
+  }
 }
 const server = createServer((req, res) => {
   if (req.url?.startsWith("/api/")) return handleApi(req, res);
