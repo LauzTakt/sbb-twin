@@ -134,7 +134,7 @@ A row's position is valid at `ts`. A train missing from a newer `fleet` message 
 | `motion` | `moving` or `stopped` (observable facts only) |
 | `atStop` | the station the train stands at, else `null`. `stopped` with `atStop: null` = stopped on the open line |
 | `delaySec` | delay in seconds (+ late) at the next stop: departure delay at intermediate stops, arrival delay at the terminus |
-| `edgeId`, `track` | BAV track segment id; `track: "approx"` = no BAV match (mostly abroad or replacement buses): straight line between stops |
+| `edgeId`, `track` | BAV track segment id; `track: "approx"` = no BAV match: abroad (a straight line between stops) or a replacement bus (`category: "EV"`, on the road between bus stops) |
 | `continuity` | increases when the train jumps (e.g. synced back to the real data): **do not interpolate across a change** |
 | `streamId`, `tick` | `streamId` changes when sbb-twin restarts; `tick` increases by one per second within a stream |
 
@@ -233,6 +233,7 @@ The viewer drives these; scripts can too. Base `http(s)://<host>/api`.
 | `GET /disruption-types` | the provokable types (below) |
 | `POST /disruptions` `{type, scope, minutes?, params?, mark?}` | provoke; `mark: true` also marks a public incident |
 | `POST /disruptions/{id}/end`, `DELETE /disruptions/{id}` | end it (trains resume, still late) / end and forget |
+| `POST /disruptions/{id}/buses/request` · `POST /disruptions/{id}/buses/confirm` `{firstAt, everyMin? \| buses?, firstAtB?}` · `POST /disruptions/{id}/buses/withdraw` `{at?}` · `GET /disruptions/{id}/buses` | **replacement buses** of a section disruption: order them (no trip runs), confirm them with the operator's times (`firstAt` `"HH:MM"` or epoch ms; every N minutes, or N buses), withdraw them; their state (below) |
 | `POST /incidents` `{title, severity?, description?, scope?}` · `DELETE /incidents/{id}` | mark / unmark |
 | `POST /sync` `{trainIds?}` | trains read the real data again (all trains if omitted) |
 | `POST /trains/{trainId}/release` | end every change on that train (it moves on, still late until synced) |
@@ -262,6 +263,26 @@ The viewer drives these; scripts can too. Base `http(s)://<host>/api`.
 | `cancellation` | EG_063 | train | ends its run at the next stop and leaves service |
 
 A provoked train keeps its own behaviour (it stays late) after the disruption ends, until it is **synced**.
+
+**Replacement buses (EV)** follow the control centre's real lifecycle (research: [research/buses](research/buses/README.md),
+from the SBB control-centre liveticker and the official GTFS): ordering buses starts a search, and in real incidents the
+first bus runs a median 87 minutes after the start (middle half 60-140 min, 182 incidents; none within 15 minutes).
+
+| State | What the twin does |
+|---|---|
+| `requested` (`POST …/buses/request`, or a `replacement_bus` measure without times, or `sought: true`) | **no trip**, so nothing pretends to know times. Bulletin: "Replacement buses (EV) are being organized between A and B." The disruption payload (`buses`) and `GET /brief` (`replacementBus`) carry `expectedFirstBus`: the middle half of the real incidents that had no bus yet after the same elapsed time (`fromMin`, `toMin`, clock times `from`/`to`, `n`, `say`) |
+| `confirmed` (`POST …/buses/confirm {firstAt, everyMin}` or `{firstAt, buses}`) | exact EV trips both ways between A and B, calling at the stations between, from `firstAt` (both ends; one bus: B once it got there). With `buses`, the headway is what they can run: a round trip on the road with 5 min turnaround at each end, shared by the buses (`cycleMin`); with both, too few buses for the headway gives a warning and the feasible headway. Bulletin: "Passengers travelling between A and B should use the replacement bus service (EV). First departures from A at 09:00 and from B at 09:00, then every 15 minutes." |
+| `running` | the first bus left: a bulletin message says so; the buses are vehicles like trains (`fleet`, `trains/{id}/position` and `/info`, boards, `/api/trains`, the journey planner), with category `EV` and `track: "approx"` |
+| `withdrawn` (`POST …/buses/withdraw`) | buses that left finish their trip; a bus waiting for a later departure never leaves |
+
+A bus drives the **road** between the stations' real bus stops (the GTFS stop serving each station, e.g. "Olten, Bahnhof"):
+the route between two consecutive bus stops is asked once per stop pair from OSRM (router.project-osrm.org, when the
+buses are ordered or confirmed, cached next to the state file; `RAIL_OSRM_URL=` empty switches it off), else a straight
+line. Its timetable uses the scheduled speed of the real EV buses for a hop that long (32 km/h median by road: 27 km/h
+for hops up to 2 km, 53 km/h beyond 20 km), so position, timetable and planner agree. EV calls in `trains/{id}/info`
+carry `busStop` (`name`, `lat`, `lon`, `walkMin` from the station: the official GTFS transfer time where there is one),
+and board rows carry `busStop` and `walkMin`. The older one-shot form (`replacement_bus` with `firstInMin`/`everyMin` or
+`minutesA`/`minutesB`) is confirmed at once.
 
 **Weather consequences** (automatic, inside the changed area, official SBB reason codes): ≥ 35 °C → *Heat: track
 buckling risk* (80 km/h, EG_006); ≤ −15 °C → *Frost: icing* (60 km/h, EG_016); gusts ≥ 100 km/h → *Storm: lines closed*

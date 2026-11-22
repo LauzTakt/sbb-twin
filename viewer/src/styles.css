@@ -294,3 +294,35 @@ main { flex: 1; min-height: 0; position: relative; display: flex; }
 .risk-legend p { margin: 2px 0 0; font-size: 12px; line-height: 1.4; color: var(--metal); }
 .risk-legend p b { color: var(--charcoal); }
 @media (max-width: 760px) { .risk-toggle { right: 12px; } .risk-legend { bottom: 12px; width: 220px; } }
+
+/* replacement buses (Control: the lifecycle of a disruption's buses) */
+.buses { border-top: 1px solid var(--cloud); margin-top: 6px; padding-top: 8px; display: grid; gap: 6px; }
+.bus-state { display: flex; align-items: flex-start; gap: 6px; margin: 0; font-size: 13px; color: var(--iron); line-height: 1.35; }
+.bus-state svg { flex: none; margin-top: 1px; color: var(--metal); }
+.bus-state b { color: var(--charcoal); font-weight: 700; }
+.buses.requested .bus-state svg { color: var(--orange-text); }
+.buses.confirmed .bus-state svg { color: var(--sky); }
+.buses.running .bus-state svg { color: var(--green); }
+.buses.withdrawn .bus-state svg, .buses.none .bus-state svg { color: var(--smoke); }
+.bus-stops, .bus-preview { font-size: 12px; color: var(--metal); }
+.bus-form { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 8px; align-items: end; }
+.bus-form .field { margin-bottom: 0; }
+.bus-form .field input { height: 36px; font-size: 14px; }
+.bus-form .seg.mini { display: inline-flex; gap: 0; margin: 0; border: 1px solid var(--cloud); border-radius: 6px; overflow: hidden; width: max-content; }
+.bus-form .seg.mini button { border: 0; background: var(--white); color: var(--metal); font-size: 12px; padding: 2px 8px; border-radius: 0; }
+.bus-form .seg.mini button[aria-pressed="true"] { background: var(--charcoal); color: var(--white); }
+.bus-actions { grid-column: 1 / -1; display: flex; gap: 8px; }
+.bus-actions button { height: 34px; padding: 0 14px; font-size: 13.5px; display: inline-flex; align-items: center; gap: 6px; }
+.bus-form > small { grid-column: 1 / -1; margin: 0; }
+.items li .buses { margin: 0 12px 10px; }
+.legend i.bus { width: 9px; height: 12px; border-radius: 3px; background: var(--green); box-shadow: inset 0 2px 0 0 rgba(255, 255, 255, 0.85); }
+/* the bus panel inside a sidebar item: its buttons are controls, not the item's own full-width button */
+.items li .buses button { width: auto; display: inline-flex; align-items: center; justify-content: center; text-align: center; gap: 6px; box-shadow: none; }
+.items li .buses .chips button { border: 1px solid var(--cloud); background: var(--white); border-radius: 999px; padding: 5px 10px; font-size: 12.5px; color: var(--charcoal); }
+.items li .buses .chips button:hover { background: var(--milk); }
+.items li .buses .chips button.strong { background: var(--green); border-color: var(--green); color: #fff; }
+.items li .buses .bus-actions .primary { border: 0; background: var(--red); color: #fff; border-radius: 999px; padding: 0 14px; }
+.items li .buses .bus-actions .ghost { border: 1px solid var(--charcoal); background: transparent; color: var(--charcoal); border-radius: 999px; padding: 0 14px; }
+.items li .buses .seg.mini button { border: 0; border-radius: 0; padding: 2px 8px; background: var(--white); color: var(--metal); }
+.items li .buses .seg.mini button[aria-pressed="true"] { background: var(--charcoal); color: var(--white); }
+.bus-from { color: var(--metal); font-size: 12px; }

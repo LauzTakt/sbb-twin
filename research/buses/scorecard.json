@@ -1,0 +1,183 @@
+{
+ "model": "buses",
+ "generatedAt": "2026-11-22T07:47:14Z",
+ "data": {
+  "incidents": 550,
+  "interrupted": 480,
+  "messageVersionsPublished": 7662,
+  "incidentsWithRunningBus": 182,
+  "fitIncidents": 109,
+  "testIncidents": 73,
+  "splitAt": "2025-08-10T15:28:59.479000+00:00",
+  "evRoutes": 330,
+  "evTrips": 72902,
+  "evHops": 6447,
+  "stopTimesRows": 42579086,
+  "source": "liveticker export 2026-10-12; gtfs_fp2026_20261118.zip"
+ },
+ "headline": "In 182 real incidents the first replacement bus ran a median 87 min after the incident started (0% within 15 min, 25% within 1 h), and timetabled EV buses make 32 km/h by road; these learned speeds cut the hop-time error on held-out routes from 2.70 to 2.19 min vs the old flat 50 km/h.",
+ "metrics": [
+  {
+   "name": "Hop time MAE (min), held-out EV routes",
+   "lowerIsBetter": true,
+   "values": {
+    "model": 2.19,
+    "learnedOverallSpeed": 2.54,
+    "old_flat_50kmh_x1.3": 2.7
+   },
+   "n": 2084,
+   "detail": {
+    "trainRoutes": 218,
+    "testRoutes": 112,
+    "trainHops": 4363,
+    "testHops": 2084,
+    "maeMin": {
+     "learnedByBand": 2.19,
+     "learnedOverall": 2.54,
+     "flat50kmh": 2.7
+    },
+    "biasMin": {
+     "learnedByBand": -0.44,
+     "learnedOverall": 0.14,
+     "flat50kmh": -2.27
+    },
+    "meanScheduledMin": 7.48,
+    "byBand": [
+     {
+      "maxKm": 2,
+      "n": 754,
+      "learned": 1.54,
+      "flat50kmh": 2.04
+     },
+     {
+      "maxKm": 5,
+      "n": 1024,
+      "learned": 2.28,
+      "flat50kmh": 2.96
+     },
+     {
+      "maxKm": 10,
+      "n": 225,
+      "learned": 2.74,
+      "flat50kmh": 2.77
+     },
+     {
+      "maxKm": 20,
+      "n": 65,
+      "learned": 3.79,
+      "flat50kmh": 3.99
+     },
+     {
+      "maxKm": null,
+      "n": 16,
+      "learned": 12.12,
+      "flat50kmh": 11.88
+     }
+    ]
+   }
+  },
+  {
+   "name": "Share of incidents with a running bus within N min of the start",
+   "lowerIsBetter": false,
+   "values": {
+    "15": 0.0,
+    "30": 0.011,
+    "60": 0.253,
+    "120": 0.681
+   },
+   "n": 182,
+   "note": "the twin used to assume a first bus 15 min after the decision"
+  },
+  {
+   "name": "Road factor (OSRM driving / straight distance)",
+   "lowerIsBetter": null,
+   "values": {
+    "median": 1.23,
+    "p25": 1.11,
+    "p75": 1.385
+   },
+   "n": 120
+  },
+  {
+   "name": "Bus sentence in the bulletin, interrupted incidents",
+   "lowerIsBetter": null,
+   "values": {
+    "firstVersion": 0.31,
+    "anyVersion": 0.72
+   },
+   "n": 480
+  }
+ ],
+ "calibration": [
+  {
+   "bin": "first bus running, fitted p25-p75 window (55-132 min)",
+   "predicted": 0.5,
+   "observed": 0.562,
+   "n": 73
+  },
+  {
+   "bin": "first bus running, fitted p10-p90 window (42-291 min)",
+   "predicted": 0.8,
+   "observed": 0.808,
+   "n": 73
+  },
+  {
+   "bin": "first search message, fitted p25-p75 window (24-57 min)",
+   "predicted": 0.5,
+   "observed": 0.557,
+   "n": 70
+  },
+  {
+   "bin": "first search message, fitted p10-p90 window (19-77 min)",
+   "predicted": 0.8,
+   "observed": 0.729,
+   "n": 70
+  }
+ ],
+ "examples": [
+  {
+   "id": "2195005155592",
+   "title": "Interrupted service: Granges-Marnand - Moudon",
+   "announced": "bus search at +27 min (Bus de remplacement)",
+   "predicted": "empirical first-bus window p25-p75 60-142 min",
+   "actual": "first bus running at +89 min (Bus de remplacement)",
+   "start": "2026-08-10T14:04:26.156000+00:00"
+  },
+  {
+   "id": "2195005173551",
+   "title": "Interrupted service: Payerne - Granges-Marnand and Estavayer-le-Lac",
+   "announced": "bus search at +53 min (INFO )",
+   "predicted": "empirical first-bus window p25-p75 60-142 min",
+   "actual": "first bus running at +106 min (Bus de remplacement )",
+   "start": "2026-08-31T06:36:09.304000+00:00"
+  },
+  {
+   "id": "2195005178697",
+   "title": "Interrupted service: Chavornay - Ependes VD",
+   "announced": "bus search at +137 min (Bus de remplacement)",
+   "predicted": "empirical first-bus window p25-p75 60-142 min",
+   "actual": "first bus running at +149 min (Bus de remplacement)",
+   "start": "2026-09-06T01:44:38.023000+00:00"
+  },
+  {
+   "id": "2195005207537",
+   "title": "Interrupted service: Cossonay-Penthalaz - Chavornay",
+   "announced": "bus search at +142 min (bus de remplacement)",
+   "predicted": "empirical first-bus window p25-p75 60-142 min",
+   "actual": "first bus running at +335 min (bus de remplacement )",
+   "start": "2026-10-09T01:02:28.301000+00:00"
+  }
+ ],
+ "notes": [
+  "Interrupted = some version of the incident has summary 'Interrupted service' / 'Unterbruch' (480 of 550).",
+  "The bus sentence (de 'Ersatzbus', fr 'bus de remplacement', it 'autobus sostitutiv', en 'replacement bus' in summary or description) is in the FIRST version of 148/480 interrupted incidents (31%); 347/480 (72%) carry it in SOME version (median 52.8 min after the start). The 347/480 = 72% of the earlier hand count is the any-version count.",
+  "Message classes use title + text; with titles only (the earlier hand count) search n=33 (median 44.2 min), running n=35 (median 90.0 min). Title + text gives more incidents and similar quartiles; 'running' ignores sentences in the future tense ('les bus circuleront', 'der erste Bus soll').",
+  "Dropped as < 0 or > 24 h: {'firstSearch': 1, 'firstConfirmed': 0, 'firstShortage': 0, 'firstRunning': 2}. Search -> running: 3 incidents whose first search message came at or after the first running bus (looking for more buses) are excluded.",
+  "Shortage = 'only one bus', 'no replacement buses (yet / available)', 'not enough buses', 'Engpässe bei Ersatzbussen' etc.: 11 incidents (the earlier hand count found 5 on titles only).",
+  "Out-of-time check: quantiles fitted on the earliest 60% of incidents by start date (109), coverage on the later 73.",
+  "The liveticker shows what the control centre published, not when buses physically left; publication lags reality.",
+  "Speed: EV routes = route_short_name EV/EVn or route_desc EV (341 routes; types {'700': 339, '109': 1, '106': 1}); routes whose stops are mostly rail platforms are dropped (['91-EV-C-j26-1', '92-6-Y-j26-1', '92-A00-J-j26-1', '92-A00-S-j26-1', '92-A01-B-j26-1', '92-A01-D-j26-1', '92-A07-Q-j26-1', '92-R-Y-j26-1', '92-U-Y-j26-1']). Hops dropped: {'zeroMinutes': 67, 'straightUnder300m': 129, 'speedOutside5to100': 66}. Scheduled times are rounded to whole minutes, so short hops are noisy.",
+  "Speeds come from the planned (timetabled) EV trips of the 2026 timetable (construction closures), not from ad-hoc emergency buses, which have no timetable.",
+  "stationStops: 1592 of 1736 Swiss rail stations (DIDOK 85xxxxx parents served by route types 2/100-117) mapped ({'ev': 1306, 'transfer': 1481, 'bus': 286, 'none': 144, 'estimate': 111, 'stations': 1736}); walkMin from transfers.txt footpaths when present, else ceil(walkM / 80 m/min)."
+ ]
+}

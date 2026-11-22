@@ -9,6 +9,21 @@ export type Disruption = {
   id: string; label?: string; summary?: string; description?: string; where: string; status: "active" | "ended"; effect: string; geometry: Geometry;
   cause?: { code: string; label: string }; durationType?: string; until?: number | null; endsAt?: number | null; lines?: string[]; lifecycle?: string;
   measures?: { id?: string; type: string; label?: string; at?: string; state?: string }[]; bulletinVersion?: number;
+  section?: { a: { id: string; name: string }; b: { id: string; name: string } | null }; start?: number; buses?: BusInfo;
+};
+/** A disruption's replacement buses (src/scenario.ts busInfo): requested (being organised, no times), confirmed,
+ *  running, withdrawn, or none (state null). */
+export type BusDeparture = { trainId: string; departure: number; arrival: number; to: string };
+export type BusInfo = {
+  state: "requested" | "confirmed" | "running" | "withdrawn" | null;
+  measureId: string | null; requestedAt: number | null; confirmedAt: number | null; withdrawAt: number | null;
+  expectedFirstBus: { fromMin: number | null; toMin: number | null; from: number | null; to: number | null; medianMin: number | null; n: number; of: number; late: boolean; say: string } | null;
+  firstDeparture: { A: number; B: number } | null; everyMin: number | null; buses: number | null; busesGiven: boolean;
+  runMin: { A: number; B: number } | null; cycleMin: number | null; layoverMin: number | null;
+  stops: { id: string; name: string; busStop: { name: string; walkMin: number } | null }[];
+  road: { source: "osrm" | "mixed" | "straight"; km: number } | null; trips: number; vehicles: number;
+  next: { A: BusDeparture[]; B: BusDeparture[] } | null;
+  evidence?: { firstBusMin: { n: number; p25: number; median: number; p75: number } | null; speedKmh: { median: number; n: number } };
 };
 /** After a disruption resumed: the regular trains due at its stations in the next hour (src/resumption.ts). */
 export type Forecast = Resumption;

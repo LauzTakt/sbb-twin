@@ -18,8 +18,10 @@ export type BulletinFacts = {
   lines: string[];
   noTrains: boolean;
   oneTrackKmh: number | null;
-  replacementBus: "running" | "sought" | null;
+  replacementBus: "running" | "sought" | null; // running: confirmed (the times are known), sought: being organised
   busStops: string[];
+  busTimes?: string[]; // HH:MM: the confirmed first departures the text states
+  busEveryMin?: number | null; // and the minutes between departures
 };
 type Examples = Record<"interrupted" | "interrupted_bus" | "limited" | "resumed", Record<Lang, string>[]>;
 const examples = JSON.parse(readFileSync(new URL("./bulletin-examples.json", import.meta.url), "utf8")) as Examples;
@@ -45,7 +47,10 @@ export function validate(text: string, facts: BulletinFacts, template: string): 
   const stations = [facts.section.a, facts.section.b, ...(facts.replacementBus === "running" ? facts.busStops : [])].filter(Boolean) as string[];
   for (const s of [facts.section.a, facts.section.b].filter(Boolean) as string[]) if (!t.includes(fold(s))) errors.push(`missing station ${s}`);
   if (facts.until && facts.durationType !== "UNKNOWN" && facts.state !== "resumed" && !t.includes(facts.until)) errors.push(`missing time ${facts.until}`);
-  for (const m of t.match(/\b\d{1,2}[:.]\d{2}\b/g) ?? []) if (m.replace(".", ":") !== facts.until) errors.push(`invented time ${m}`);
+  for (const b of facts.busTimes ?? []) if (!t.includes(b)) errors.push(`missing bus time ${b}`);
+  if (facts.busEveryMin && !new RegExp(`(^|\\D)${facts.busEveryMin}(\\D|$)`).test(t)) errors.push(`missing bus headway ${facts.busEveryMin}`);
+  const times = new Set([facts.until, ...(facts.busTimes ?? [])].filter(Boolean));
+  for (const m of t.match(/\b\d{1,2}[:.]\d{2}\b/g) ?? []) if (!times.has(m.replace(".", ":").padStart(5, "0"))) errors.push(`invented time ${m}`);
   for (const m of t.match(LINE_RE) ?? []) {
     const l = m.replace(/\s/g, "");
     if (!facts.lines.includes(l)) errors.push(`invented line ${m}`);

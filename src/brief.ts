@@ -9,7 +9,8 @@ import { stationIndex, stops, type Trip } from "./timetable.ts";
 import { disruptions, tripChanges, type Disruption, type Scenario } from "./disruptions.ts";
 import { alertsState } from "./alerts.ts";
 import { plan, resolveStation } from "./planner.ts";
-import { expectedEnd, isScenario, latestBulletin, stateAt } from "./scenario.ts";
+import { busInfo, expectedEnd, isScenario, latestBulletin, stateAt } from "./scenario.ts";
+import { busStopOf } from "./buses.ts";
 import { MEASURES } from "./catalogue.ts";
 import { briefForecast } from "./forecast.ts";
 import { resumptionsAt } from "./resumption.ts";
@@ -41,7 +42,8 @@ function disruptionBrief(d: S, t: number, at: Set<string>) {
       const i = Array.from(trip.stops).findIndex((k) => ends.includes(stops[k].id));
       if (i < 0 || i === trip.stops.length - 1 || trip.dep[i] < t) return [];
       const last = trip.stops.length - 1;
-      return [{ trainId: trip.trainId, from: stops[trip.stops[i]].name, to: stops[trip.stops[last]].name, departure: trip.dep[i], arrival: trip.arr[last] }];
+      const stop = busStopOf(stops[trip.stops[i]].id);
+      return [{ trainId: trip.trainId, from: stops[trip.stops[i]].name, to: stops[trip.stops[last]].name, departure: trip.dep[i], arrival: trip.arr[last], ...(stop ? { busStop: stop.name, walkMin: stop.walkMin } : {}) }];
     })
     .sort((x, y) => x.departure - y.departure)
     .slice(0, 4);
@@ -64,12 +66,32 @@ function disruptionBrief(d: S, t: number, at: Set<string>) {
     expectedEnd: d.endedAt ? null : expectedEnd(d, t),
     lines: b ? b.lines : st.state === "interrupted" ? sc.lines : [],
     measures: sc.measures.filter((m) => m.announcedAt <= t).map((m) => ({ type: m.type, label: MEASURES.find((x) => x.type === m.type)?.label ?? m.type, at: m.at, withdrawAt: m.withdrawAt ?? null })),
-    replacementBus: buses.length ? { route: sc.busStops.map(nameOf), next } : null,
+    replacementBus: busBrief(d, t, next),
     trainsCut: cut,
     trainsHeld: held,
     messages: b?.messages ?? [],
     forecast: d.endedAt ? null : briefForecast(d.id),
   };
+}
+
+/** Replacement buses for the assistant: requested (being organised: when the first bus usually runs in real
+ *  incidents, never invented times), confirmed or running (the exact times), withdrawn; null when none was ordered. */
+function busBrief(d: S, t: number, next: { departure: number; from: string; busStop?: string; walkMin?: number }[]) {
+  const info = busInfo(d, t);
+  if (!info.state) return null;
+  const sc = d.scenario;
+  const where = `between ${nameOf(sc.a)} and ${sc.b ? nameOf(sc.b) : ""}`;
+  const hm = (ms: number) => new Date(ms).toLocaleTimeString("de-CH", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Zurich" });
+  const n = next[0];
+  const from = n ? `${n.from}${n.busStop ? ` (bus stop ${n.busStop}, ${n.walkMin} min walk)` : ""}` : "";
+  const every = info.everyMin ? ` every ${info.everyMin} minutes` : "";
+  const say =
+    info.state === "requested"
+      ? `Replacement buses ${where} are being organised. ${info.expectedFirstBus?.say ?? ""}`.trim()
+      : info.state === "withdrawn"
+        ? `The replacement buses ${where} have been withdrawn${info.withdrawAt ? ` (no departures from ${hm(info.withdrawAt)})` : ""}.`
+        : `Replacement buses run ${where}${every}${n ? `; the next one leaves ${from} at ${hm(n.departure)}` : ""}.`;
+  return { state: info.state, route: sc.busStops.map(nameOf), next, everyMin: info.everyMin, firstDeparture: info.firstDeparture, expectedFirstBus: info.expectedFirstBus, stops: info.stops, say };
 }
 
 function alertBrief(a: (typeof alertsState.alerts extends Map<string, infer V> ? V : never)) {

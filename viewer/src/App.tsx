@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, connectLive, send, type Disruption, type Forecast, type Item, type Live, type SnapshotRow, type Status } from "./feed";
 import { ForecastsPanel, ResumedCard, useForecasts } from "./Forecasts";
 import { RISK, riskPaint, type RiskSegment } from "./risk";
-import { Control } from "./Control";
+import { Buses, Control } from "./Control";
 import { baseStyle, OWN, setMapTheme } from "./map";
 import { applyPageTheme, onSystemThemeChange, readPref, resolveTheme, savePref, shownTheme, switchMs, systemTheme, type Pref, type Theme } from "./theme";
 import { TrainCanvas } from "./trains";
@@ -16,9 +16,9 @@ import { Search } from "./Search";
 
 type FC = { type: "FeatureCollection"; features: { type: "Feature"; properties: Record<string, unknown>; geometry: { type: string; coordinates: unknown } }[] };
 type Pos = { speedKmh: number; motion: string; delaySec: number; line: string; category: string; headsign: string; atStop: { name: string } | null; nextStop: { name: string } | null };
-type Call = { name: string; plannedArr: number | null; plannedDep: number | null; expectedArr: number | null; expectedDep: number | null; skipped: boolean };
+type Call = { name: string; plannedArr: number | null; plannedDep: number | null; expectedArr: number | null; expectedDep: number | null; skipped: boolean; busStop?: { name: string; walkMin: number } | null };
 type Info = { number: string | null; operator: string | null; status: string; origin: { name: string }; destination: { name: string }; calls: Call[] };
-type BoardRow = { trainId: string | null; line: string; headsign: string; planned: number; expected: number; delayMin: number; cancelled: boolean };
+type BoardRow = { trainId: string | null; line: string; category?: string; headsign: string; planned: number; expected: number; delayMin: number; cancelled: boolean; busStop?: string; walkMin?: number };
 
 const hm = (ms?: number | null) => (ms ? new Date(ms).toLocaleTimeString("de-CH", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Zurich" }) : "");
 const COLOUR = { critical: "#eb0000", major: "#eb0000", minor: "#f27e00", info: "#0079c7" } as const;
@@ -79,7 +79,7 @@ export function App() {
   const resumed = new Map(forecasts.map((f) => [f.disruptionId, f]));
   const own: Item[] = disruptions
     .filter((d) => (d.status === "active" || resumed.has(d.id)) && d.geometry)
-    .map((d) => ({ id: d.id, title: d.summary ?? d.label ?? "Disruption", where: d.where, severity: d.status !== "active" ? "info" : d.effect === "limited" ? "minor" : "major", note: d.status !== "active" ? "service resumed · trains to check" : d.cause?.label ?? "registered in the twin", trains: 0, geometry: d.geometry, description: d.description, source: "auto" as const }));
+    .map((d) => ({ id: d.id, title: d.summary ?? d.label ?? "Disruption", where: d.where, severity: d.status !== "active" ? "info" : d.effect === "limited" ? "minor" : "major", note: d.status !== "active" ? "service resumed · trains to check" : [d.cause?.label ?? "registered in the twin", BUS_NOTE[d.buses?.state ?? ""]].filter(Boolean).join(" · "), trains: 0, geometry: d.geometry, description: d.description, source: "auto" as const }));
   const items = [...own, ...alertItems];
   itemsRef.current = items;
 
@@ -146,8 +146,13 @@ export function App() {
     }
     const pts = points(item.geometry);
     const ids = new Set(item.trainIds ?? []);
+    const buses = `_EV-${item.id.slice(2)}-`; // its replacement buses, wherever their road goes
     for (const r of rowsRef.current) {
       if (ids.has(r[0])) continue;
+      if (r[0].includes(buses)) {
+        ids.add(r[0]);
+        continue;
+      }
       for (const p of pts) {
         const dx = (r[2] - p[0]) * 76;
         const dy = (r[1] - p[1]) * 111;
@@ -415,6 +420,10 @@ export function App() {
                   <small>{[i.note, i.trains ? `${i.trains} train${i.trains > 1 ? "s" : ""}` : ""].filter(Boolean).join(" · ")}</small>
                 </button>
                 {picked === i.id && resumed.has(i.id) && <ResumedCard r={resumed.get(i.id)!} />}
+                {picked === i.id && (() => {
+                  const d = disruptions.find((x) => x.id === i.id && x.status === "active");
+                  return d?.buses ? <Buses d={d} act={(path, body, method = "POST") => send(method, path, body).catch(() => undefined)} /> : null;
+                })()}
               </li>
             ))}
           </ul>
@@ -424,6 +433,7 @@ export function App() {
             <span><i style={{ background: "#f27e00" }} />Late 3 min or more</span>
             <span><i style={{ background: "var(--train-station)" }} />At a station</span>
             <span><i style={{ background: "#eb0000" }} />Stopped on the line</span>
+            <span><i className="bus" />Replacement bus</span>
             <span><i className="line" style={{ background: "#eb0000" }} />Interrupted</span>
             <span><i className="line" style={{ background: "#f27e00" }} />Limited</span>
           </div>}
@@ -432,6 +442,7 @@ export function App() {
     </div>
   );
 }
+const BUS_NOTE: Record<string, string> = { requested: "buses being organised", confirmed: "buses confirmed", running: "buses running", withdrawn: "buses withdrawn" };
 const rank = (i: Item) => (i.severity === "critical" || i.severity === "major" ? 0 : i.severity === "minor" ? 1 : 2);
 
 /** A section of the risk map: its rank and the disruptions it had. */
@@ -480,7 +491,7 @@ function TrainCard({ id, live, following, onFollow, onClose }: { id: string; liv
           <X size={18} />
         </button>
       </header>
-      <p className="sub">{[info?.operator, info?.number ? `train ${info.number}` : null, info ? `${info.origin.name} → ${info.destination.name}` : null].filter(Boolean).join(" · ")}</p>
+      <p className="sub">{[pos?.category === "EV" ? "Replacement bus" : null, info?.operator, info?.number ? `train ${info.number}` : null, info ? `${info.origin.name} → ${info.destination.name}` : null].filter(Boolean).join(" · ")}</p>
       {pos && (
         <div className="facts">
           <div><b>{Math.round(pos.speedKmh)}</b><small>km/h</small></div>
@@ -492,7 +503,7 @@ function TrainCard({ id, live, following, onFollow, onClose }: { id: string; liv
         {ahead.map((c) => (
           <li key={`${c.name}-${c.plannedArr}`} className={c.skipped ? "skipped" : ""}>
             <time>{hm(c.expectedArr ?? c.expectedDep)}</time>
-            <span>{c.name}</span>
+            <span>{c.busStop?.name ?? c.name}</span>
             {c.skipped ? <em>no stop</em> : (c.expectedArr ?? 0) - (c.plannedArr ?? 0) >= 60_000 ? <em className="late">+{Math.round(((c.expectedArr ?? 0) - (c.plannedArr ?? 0)) / 60_000)}′</em> : <em />}
           </li>
         ))}
@@ -529,7 +540,7 @@ function StationCard({ station, onTrain, onClose }: { station: { id: string; nam
         {board?.map((r) => (
           <li key={`${r.line}-${r.planned}-${r.headsign}`} className={r.cancelled ? "skipped" : ""}>
             <time>{hm(r.planned)}</time>
-            <span>{r.trainId ? <button className="linklike" onClick={() => onTrain(r.trainId!)}><b>{r.line}</b> {r.headsign}</button> : <><b>{r.line}</b> {r.headsign}</>}</span>
+            <span>{r.trainId ? <button className="linklike" onClick={() => onTrain(r.trainId!)}><b>{r.line}</b> {r.headsign}</button> : <><b>{r.line}</b> {r.headsign}</>}{r.busStop && <small className="bus-from"> · from {r.busStop}, {r.walkMin}′ walk</small>}</span>
             {r.cancelled ? <em className="late">cancelled</em> : r.delayMin > 0 ? <em className="late">+{r.delayMin}′</em> : <em />}
           </li>
         ))}
