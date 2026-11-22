@@ -1616,7 +1616,7 @@ export function plan(fromQ: string, toQ: string, after = Date.now(), limit = 4, 
     if (!done && kind !== "wait") cut = true;
     return mine;
   };
-  const main = profile(base, via !== undefined ? "via" : "best", limit, opts.quick ? limit + 2 : limit * 3, 110);
+  const main = profile(base, via !== undefined ? "via" : "best", limit, opts.quick ? limit + 2 : limit * 3, 85);
   let conditionalOnly = false;
   let wait: Journey[] = [];
   const reopening = s.closures.length > 0;
@@ -1624,11 +1624,11 @@ export function plan(fromQ: string, toQ: string, after = Date.now(), limit = 4, 
   if (lowerBound) {
     // the conditional class (crossing at a lower-bound reopening): its journeys that beat every confirmed one
     const bestCertain = main.reduce((m, j) => Math.min(m, j.uncertain ? Infinity : j.arrival), Infinity);
-    const cond = profile({ ...base, certain: false }, "wait", 2, 4, 130).filter((j) => j.uncertain && j.arrival < bestCertain);
+    const cond = profile({ ...base, certain: false }, "wait", 2, 2, 110).filter((j) => j.uncertain && j.arrival < bestCertain);
     wait.push(...cond);
     conditionalOnly = !main.some((j) => !j.uncertain) && cond.length > 0;
   }
-  if (opts.includeWait && reopening && via === undefined) for (const j of profile({ ...base, mode: 2, certain: false }, "wait", 2, 3, 130)) if (!wait.some((k) => k.id === j.id)) wait.push(j);
+  if (opts.includeWait && reopening && via === undefined) for (const j of profile({ ...base, mode: 2, certain: false }, "wait", 1, 1, 120)) if (!wait.some((k) => k.id === j.id)) wait.push(j);
   for (const j of wait) j.kind = "wait";
   for (const [id, v] of journeys) if (t - v.at > 30 * 60_000) journeys.delete(id);
   // keep the real choices: an option another one beats on every count goes, unless it uses a corridor no better
