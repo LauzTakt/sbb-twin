@@ -57,3 +57,13 @@ Conditional on still being open after `e` elapsed minutes: S(t | e) = S(t) / S(e
 }
 ```
 Numbers in a scorecard must come from a script in the same folder that anyone can re-run on the local data.
+
+## 4. Section risk map (prevention): `research/section_risk/segments.geojson` and `scorecard.json`
+
+Which stretches of the network concentrate disruptions, ranked, and whether last period's ranking predicts the next.
+`segments.geojson`: a FeatureCollection of LineStrings along the track (BAV network, the same geometry as the twin), each
+`properties: { id, name: "A - B", km, risk (0..1, the model's expected incidents per year, normalised), rank,
+incidentsTrain, incidentsTest, topCauses: ["infrastructure", …], hazards?: { …imagery features, optional… } }`.
+`scorecard.json` (format of section 3) must show the out-of-time check: rank on the training period, then the share of
+test-period incidents that fall in the top 5 % / 10 % / 20 % of segments (recall@k), against a baseline that ranks by
+track length or by train traffic, with a bootstrap interval.
