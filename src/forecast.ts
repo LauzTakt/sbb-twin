@@ -6,6 +6,7 @@
 //  - the section risk map (research/section_risk/segments.geojson), served as is.
 // A shadow log keeps each disruption's first prediction and scores it when the disruption ends, so the dashboard shows
 // how the model does live. Forecasts are advice: they never change the effective timetable or the planner.
+import type { DisruptionForecast, ForecastsResponse, ScorecardsResponse, ShadowEntry, ShadowResponse } from "./contracts/forecasts.ts";
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { disruptions } from "./disruptions.ts";
 import { alertsState, type RealAlert } from "./alerts.ts";
@@ -17,39 +18,10 @@ import { offsetMinutes, zurich } from "./time.ts";
 import { loaded, modelInfo, modelsGeneration, refreshModels, type DurationModel } from "./forecastModels.ts";
 import { resumed, resumptionTick, resumptions } from "./resumption.ts";
 
-type Qualifier = "until" | "at_least" | "none";
-type Horizon = { minutes: number; at: number; label: string; p: number };
-export type DisruptionForecast = {
-  id: string;
-  key: string; // the shadow log's key: the section of a real alert keeps it when "Interrupted" becomes "Limited"
-  kind: "sbb" | "twin";
-  title: string;
-  where: string;
-  cause: { label: string; group: string; source: "gtfs" | "text" | "code" | "none" };
-  effect: "interrupted" | "limited";
-  scope: "station" | "section";
-  start: number;
-  startLabel: string;
-  startSource: "activePeriod" | "firstSeen" | "registered";
-  elapsedMin: number;
-  announced: { end: number | null; label: string | null; qualifier: Qualifier; source: "activePeriod" | "description" | "twin" | "none" };
-  planned: boolean;
-  inScope: boolean;
-  scopeNote: string | null;
-  horizons: Horizon[];
-  median: { at: number; label: string; method: "announced_plus_correction" | "model_median"; modelMedian: number } | null; // the end time shown
-  band: { level: number; low: number; high: number; lowLabel: string; highLabel: string; method: "conformal" | "quantiles" } | null;
-  pAtAnnounced: number | null;
-  optimistic: boolean;
-  overdue: boolean;
-  say: string | null;
-  placeholder: boolean;
-  modelVersion: string;
-};
+type Qualifier = DisruptionForecast["announced"]["qualifier"];
 
 // ---------------------------------------------------------------- time labels (Swiss local)
 const MIN = 60_000;
-const hhmm = (ms: number) => zurich(ms).time.slice(0, 5);
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 /** "15:40", or "23 Nov 05:00" on another day. */
 export function label(ms: number, now = Date.now()) {
@@ -292,22 +264,15 @@ function inputs(m: DurationModel, now: number): Input[] {
 }
 
 // ---------------------------------------------------------------- shadow log
-type ShadowEntry = {
-  id: string; key: string; kind: "sbb" | "twin"; title: string; where: string; causeGroup: string; ends: string[];
-  firstSeenAt: number; predictedAt: number | null; start: number; announcedEnd: number | null; qualifier: Qualifier; planned: boolean;
-  prediction: { horizons: { minutes: number; at: number; p: number }[]; median: number | null; low: number | null; high: number | null } | null;
-  modelVersion: string; placeholder: boolean;
-  lastSeenAt: number; endedAt: number | null; endSource: "resumed" | "disappeared" | "offline" | null;
-  score: { brier: Record<string, number>; operatorBrier: Record<string, number> | null; inBand: boolean | null; errorMin: number | null; operatorErrorMin: number | null } | null;
-};
+type StoredShadowEntry = ShadowEntry & { ends: string[] };
 const SHADOW_FILE = `${STATE_FILE.replace(/\.json$/, "")}.forecast-shadow.json`;
 const OFFLINE_GAP = 15 * MIN; // an alert gone after a longer gap in the polls ended while the twin was not looking
-const shadow = { since: null as number | null, entries: new Map<string, ShadowEntry>(), dirty: false };
+const shadow = { since: null as number | null, entries: new Map<string, StoredShadowEntry>(), dirty: false };
 
 function loadShadow() {
   if (!existsSync(SHADOW_FILE)) return;
   try {
-    const s = JSON.parse(readFileSync(SHADOW_FILE, "utf8")) as { since: number | null; entries: ShadowEntry[] };
+    const s = JSON.parse(readFileSync(SHADOW_FILE, "utf8")) as { since: number | null; entries: StoredShadowEntry[] };
     shadow.since = s.since;
     for (const e of s.entries) shadow.entries.set(e.key, e);
     console.log(`[forecast] shadow log: ${shadow.entries.size} disruptions from ${SHADOW_FILE}`);
@@ -403,7 +368,7 @@ function closeEnded(seen: Set<string>, now: number) {
   if (fresh) lastAlertsAt = alertsState.fetchedAt;
 }
 
-export function shadowReport() {
+export function shadowReport(): ShadowResponse {
   const all = [...shadow.entries.values()].sort((x, y) => (y.endedAt ?? y.firstSeenAt) - (x.endedAt ?? x.firstSeenAt));
   // the headline score: real SBB disruptions, predicted by a real model (twin tests and placeholders are listed, not counted)
   const scored = all.filter((e) => e.score && e.kind === "sbb" && !e.placeholder);
@@ -425,13 +390,13 @@ export function shadowReport() {
           n: scored.length,
           brier: Object.fromEntries(hs.map((h) => [h, mean(scored.map((e) => e.score!.brier[h]).filter((x) => x !== undefined))!])),
           operatorN: withOp.length,
-          operatorBrier: withOp.length ? Object.fromEntries(hs.map((h) => [h, mean(withOp.map((e) => e.score!.operatorBrier![h]).filter((x) => x !== undefined))!])) : null,
+          operatorBrier: withOp.length ? Object.fromEntries(hs.map((h) => [h, mean(withOp.map((e) => e.score!.operatorBrier![h]).filter((x) => x !== undefined))])) : null,
           coverage: banded.length ? mean(banded.map((e) => (e.score!.inBand ? 1 : 0))) : null,
           medianAbsErrorMin: median(scored.map((e) => e.score!.errorMin).filter((x): x is number => x !== null)),
           operatorMedianAbsErrorMin: median(withOp.map((e) => e.score!.operatorErrorMin).filter((x): x is number => x !== null)),
         }
       : null,
-    entries: all.slice(0, 60).map(({ ends, predictedAt, ...e }) => ({ ...e, predictedAt })),
+    entries: all.slice(0, 60).map(({ ends, ...entry }) => entry),
   };
 }
 
@@ -439,14 +404,13 @@ export function shadowReport() {
 let current: DisruptionForecast[] = [];
 let currentAt = 0;
 let lastSig = "";
-let lastGen = -1;
 const NOTE = "Advice only: forecasts never change the effective timetable or the planner. Times are Swiss local.";
 function status() {
   const s = [loaded("duration").source, loaded("resumption").source, loaded("segments").source];
   return s.every((x) => x === "real") ? "real" : s.every((x) => x !== "real") ? "placeholder" : "partial";
 }
-export function forecastsPayload(now = Date.now()) {
-  return { v: 1 as const, generatedAt: currentAt || now, status: status(), models: modelInfo(), disruptions: current, resumed: resumptions(), note: NOTE };
+export function forecastsPayload(now = Date.now()): ForecastsResponse {
+  return { v: 1, generatedAt: currentAt || now, status: status(), models: modelInfo(), disruptions: current, resumed: resumptions(), note: NOTE };
 }
 
 let lastModelCheck = 0;
@@ -474,9 +438,8 @@ export function forecastTick(now = Date.now()) {
   currentAt = now;
   // retained on MQTT whenever a number someone would read changed (not every elapsed minute)
   const sig = JSON.stringify([modelsGeneration.n, list.map((f) => [f.id, f.effect, f.announced.end, f.median?.label, f.band?.lowLabel, f.band?.highLabel, f.horizons.map((h) => Math.round(h.p * 100)), f.optimistic, f.overdue, f.inScope])]);
-  if (sig !== lastSig || lastGen !== modelsGeneration.n) {
+  if (sig !== lastSig) {
     lastSig = sig;
-    lastGen = modelsGeneration.n;
     publish("forecasts/disruptions", forecastsPayload(now), { retain: true, qos: 1 });
   }
 }
@@ -501,7 +464,7 @@ export function briefForecast(id: string) {
   };
 }
 
-export function scorecards() {
+export function scorecards(): ScorecardsResponse {
   const one = (model: "durationCard" | "resumptionCard" | "segmentsCard") => {
     const c = loaded(model);
     return { source: c.source, file: c.file, scorecard: c.data };

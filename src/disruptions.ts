@@ -5,23 +5,11 @@ import { stationIndex, stops } from "./timetable.ts";
 import type { DurationType, EffectState, MeasureType, Proposal } from "./catalogue.ts";
 
 export type Effect = "section_closure" | "speed_restriction" | "signal_failure" | "station_closure" | "train_breakdown" | "train_delay" | "cancellation" | "train_speed" | "skip_stop" | "target_speed" | "obstacle";
-export type ScopeKind = "section" | "station" | "train";
-export type DisruptionType = {
-  id: string;
-  label: string;
-  reasonCode: string; // SBB public reason code (extern-liveticker lookup)
-  effect: Effect;
-  scope: ScopeKind;
-  defaultMinutes: number | null;
-  params?: { maxKmh?: number; holdMinutes?: number; kmh?: number; brakeMs2?: number; distanceM?: number };
-  behaviour: string;
-};
-
-// Recognised SBB incident types (codes from the public live-ticker reason lookup), each mapped to what it does to trains.
-export const TYPES: DisruptionType[] = [
+// Train actions exposed by GET /api/train-actions. Section and station disruptions use the scenario catalogue.
+export const TRAIN_ACTIONS = [
   { id: "breakdown", label: "Train breakdown", reasonCode: "EG_014", effect: "train_breakdown", scope: "train", defaultMinutes: null, behaviour: "The train stops where it is. Its section becomes an interrupted disruption (train blocking the line), with a bulletin; both end when the train is released." },
   { id: "cancellation", label: "Train cancelled", reasonCode: "EG_063", effect: "cancellation", scope: "train", defaultMinutes: null, behaviour: "The train ends its run at the next station and leaves service." },
-];
+] as const;
 const ALIASES: Record<string, string> = { rolling_stock_failure: "breakdown", emergency_brake: "breakdown" };
 
 export type Scope =
@@ -140,7 +128,7 @@ export const disruptions = new Map<string, Disruption>();
 export const incidents = new Map<string, Incident>();
 
 const stationName = (id: string) => stops[stationIndex(id) ?? -1]?.name ?? id;
-export function describeScope(scope: Scope): string {
+function describeScope(scope: Scope): string {
   if (scope.kind === "section") return `${stationName(scope.from)} – ${stationName(scope.to)}`;
   if (scope.kind === "station") return stationName(scope.station);
   if (scope.kind === "area") return `${scope.radiusKm} km around ${scope.lat.toFixed(3)}, ${scope.lon.toFixed(3)}`;
@@ -180,54 +168,36 @@ function circle(lat: number, lon: number, radiusKm: number): GeoJsonGeometry {
 
 export class InputError extends Error {}
 
-export type TrainLookup = (id: string) => { label: string; nextStation?: number; obstacleAt?: (distanceM: number) => { leg: number; s: number } | undefined } | undefined;
-export function createDisruption(input: { type: string; scope: Scope; minutes?: number | null; params?: Disruption["params"]; note?: string }, train?: TrainLookup): Disruption {
-  const type = TYPES.find((t) => t.id === (ALIASES[input.type] ?? input.type));
-  if (!type) throw new InputError(`Unknown disruption type "${input.type}"`);
+type TrainActionInput = { type: string; scope: Scope; minutes?: number | null; params?: Disruption["params"]; note?: string };
+
+export function createTrainDisruption(input: TrainActionInput, trainLabel: (id: string) => string | undefined) {
+  const action = TRAIN_ACTIONS.find((a) => a.id === (ALIASES[input.type] ?? input.type));
+  if (!action) throw new InputError(`Unknown disruption type "${input.type}"`);
   const scope = input.scope;
-  if (!scope || scope.kind !== type.scope) throw new InputError(`"${type.id}" needs a ${type.scope} scope`);
-  let edges = new Set<number>();
-  let station: number | undefined;
-  if (scope.kind === "section") {
-    const a = stationIndex(scope.from);
-    const b = stationIndex(scope.to);
-    if (a === undefined || b === undefined || a === b) throw new InputError("A section needs two different known stations");
-    edges = sectionEdges(stops[a], stops[b]);
-    if (!edges.size) throw new InputError("No track found between these stations");
-  } else if (scope.kind === "station") {
-    station = stationIndex(scope.station);
-    if (station === undefined) throw new InputError("Unknown station");
-  } else {
-    const t = train?.(scope.trainId);
-    if (!t) throw new InputError("That train is not in service now");
-    if (type.effect === "skip_stop") station = t.nextStation;
-    if (type.effect === "obstacle") {
-      const at = t.obstacleAt?.(Math.max(30, Number(input.params?.distanceM ?? type.params?.distanceM ?? 400)));
-      if (!at) throw new InputError("No track ahead of this train");
-      input = { ...input, params: { ...input.params, atLeg: at.leg, atS: at.s } };
-    }
-  }
-  const minutes = input.minutes === undefined ? type.defaultMinutes : input.minutes;
+  if (scope?.kind !== action.scope) throw new InputError(`"${action.id}" needs a ${action.scope} scope`);
+  const where = trainLabel(scope.trainId);
+  if (where === undefined) throw new InputError("That train is not in service now");
+
   const now = Date.now();
-  const d: Disruption = {
+  const minutes = input.minutes === undefined ? action.defaultMinutes : input.minutes;
+  const disruption = {
     id: `d-${randomUUID().slice(0, 8)}`,
-    type: type.id,
-    label: type.label,
-    reasonCode: type.reasonCode,
-    effect: type.effect,
+    type: action.id,
+    label: action.label,
+    reasonCode: action.reasonCode,
+    effect: action.effect,
     scope,
-    where: scope.kind === "train" ? `${train?.(scope.trainId)?.label ?? scope.trainId}${type.effect === "skip_stop" && station !== undefined ? ` (skips ${stops[station].name})` : ""}` : describeScope(scope),
-    params: { ...type.params, ...input.params },
+    where,
+    params: { ...input.params },
     startedAt: now,
     endsAt: minutes ? now + minutes * 60_000 : null,
     note: input.note,
-    edges,
-    station,
-    geometry: scope.kind === "section" ? edgesGeometry(edges) : scope.kind === "station" && station !== undefined ? { type: "Point", coordinates: [stops[station].lon, stops[station].lat] } : null,
-    affected: new Set(),
-  };
-  disruptions.set(d.id, d);
-  return d;
+    edges: new Set<number>(),
+    geometry: null,
+    affected: new Set<string>(),
+  } satisfies Disruption;
+  disruptions.set(disruption.id, disruption);
+  return disruption;
 }
 
 function scopeGeometry(scope: Incident["scope"]): GeoJsonGeometry | null {
@@ -263,4 +233,24 @@ export function createIncident(input: Partial<Incident> & { title: string }): In
   };
   incidents.set(inc.id, inc);
   return inc;
+}
+
+/** Ends everything we did to one train (stops, holds, speeds, obstacles): it moves on, still late until synced. */
+export function releaseTrain(trainId: string) {
+  const ended: string[] = [];
+  for (const d of disruptions.values())
+    if (!d.endedAt && ((d.scope.kind === "train" && d.scope.trainId === trainId) || d.scenario?.linkedTrain === trainId)) {
+      d.endedAt = Date.now();
+      ended.push(d.id);
+    }
+  return ended;
+}
+/** Ends every disruption. */
+export function releaseAll() {
+  let n = 0;
+  for (const d of disruptions.values()) if (!d.endedAt) {
+    d.endedAt = Date.now();
+    n++;
+  }
+  return n;
 }

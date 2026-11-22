@@ -5,14 +5,9 @@ A live digital twin of every Swiss train, published on MQTT.
 - **Trains**: every train in service (≈ 900–1,900 depending on the hour), one precise position per second. Positions are
   computed from the official timetable (GTFS) and the official real-time predictions (GTFS-RT delays, cancellations,
   skipped stops), along the **real track geometry** of the federal rail network (BAV), with realistic acceleration and braking.
-- **Weather**: live MeteoSwiss measurements at ~470 stations (temperature, precipitation, wind speed and direction,
-  gusts, humidity, dew point, pressure, sunshine, radiation, foehn, snow), a **temperature map** of Switzerland corrected
-  for altitude and a **precipitation map** (rain or snow).
-- **Control** (our team): change the world and watch it react. Provoke network disruptions (closures, speed
-  restrictions, signal failures, station closures), drive or stop any single train (target speed, service or emergency
-  braking, obstacles and collisions), change the weather over an area (heatwaves, cold snaps, storms, heavy rain: the
-  railway reacts with speed restrictions and closures), switch train protection off (rear-end collisions become
-  possible), mark/unmark incidents, and **sync** trains back to the real data.
+- **Control** lets staff register a disruption at a station or on a section of track, publish a bulletin and apply
+  measures such as a replacement bus or a short turn. Staff can also simulate a breakdown or cancellation on a
+  train in service and see the effect on departures and journey plans.
 
 Other teams consume the MQTT feed (e.g. incident detection from positions, passenger or station UIs).
 The control page at `/` is the twin's own console: it reads the twin directly (WebSocket `/live`, the whole state
@@ -29,7 +24,7 @@ not in this public repository. Without `MQTT_URL` it runs its own broker (local 
 | | Address | Credentials |
 |---|---|---|
 | Team broker, MQTT over TCP | `mqtt://<team-broker>:1883` | team user and password |
-| Team broker through sbb-twin, MQTT over WebSocket | `wss://<public-host>/mqtt` (the page's *Connect* tab shows it) | none: a **read-only** proxy limited to `sbb-twin/v1/#` |
+| Team broker through sbb-twin, MQTT over WebSocket | `wss://<public-host>/mqtt` | none: a **read-only** proxy limited to `sbb-twin/v1/#` |
 | Own broker (no `MQTT_URL`) | `ws://127.0.0.1:8787/mqtt` (no TCP port is opened) | none (anonymous, read-only) |
 
 MQTT 3.1.1 or 5. Publish only under `sbb-twin/v1/detections/{team}/…` and `sbb-twin/v1/ext/{team}/…` (the own broker
@@ -67,24 +62,19 @@ tombstone**: the entity was removed.
 
 | Topic | Retained | QoS | When | Content |
 |---|---|---|---|---|
-| `status` | yes | 1 | every 10 s | heartbeat: `streamId`, `tick`, trains active, age of the real-time data, weather age. No update for 30 s = offline |
+| `status` | yes | 1 | every 10 s | heartbeat: `streamId`, `tick`, trains active, age of the real-time train and alert feeds. No update for 30 s = offline |
 | `fleet` | no | 0 | every second | **all trains in one message** (compact rows, see below). Best for maps and detectors |
 | `trains/{trainId}/position` | no | 0 | every second | one train: position, speed, motion, delay, stops |
 | `trains/{trainId}/info` | yes | 1 | on start, on change, tombstone at the end | line, number, operator, origin/destination, every stop with planned/expected/actual times, status (`active` / `cancelled`) |
 | `incidents/{incidentId}` | yes | 1 | on mark, tombstone on unmark | public incidents: marked by staff, or opened and closed by the twin itself (`source: "auto"`): a collision (critical), a train stopped on the open line for 2 min (major), a train 10 min late or more, or 4 min late and losing time (2 min lost within 3 min) (minor, until under 4 min), a cancelled train (minor) |
 | `alerts/{alertId}` | yes | 1 | every 3 min when changed, tombstone when withdrawn | **real SBB service alerts that touch the railway** (opentransportdata.swiss GTFS-RT service alerts): title, description, cause, `severity` (`major` = interrupted, `minor` = limited, `info`), active periods, stations, affected `trainIds`, track geometry |
+| `bulletins/{id}` | yes | 1 | on revision | latest control-centre bulletin for a scenario, including its version, title and description |
 | `forecasts/disruptions` | yes | 1 | when a forecast changes (checked every 5 s) | **live duration forecasts** for every active disruption (real SBB alerts and twin disruptions): `horizons` (P still disrupted at +60/+120/+240 min), the end to show (`median`: announced end + 27.5 min while ahead, else the model median) with its 80 % `band`, the `announced` end, `optimistic` (P still on at the announced end > 0.6), `planned`, `say` (a sentence for the assistant), the model versions and whether each is `real` or `placeholder`. Advice only. Models: [research/duration](research/duration/README.md) |
 | `forecasts/post-resumption/{disruptionId}` | yes | 1 | when a disruption resumes (a twin disruption, or a real SBB alert withdrawn), on an official status change, tombstone after the last train | **trains to check after "Service resumed"**: the regular trains due at the section's stations in the next hour, each with its historical risk of still losing a stop (`risk`, `band`: `check first` ≥ 25%, `check` 12-25%, `low` < 12%) and its `officialStatus` (`cancelled` / `skipped` in the effective timetable, else `scheduled`). Advice only: it never changes the timetable or the planner. Model and tests: [research/post_resumption](research/post_resumption/README.md) |
 | `events/incident`, `events/train`, `events/system` | no | 0 | on occurrence | `incident.marked` / `incident.unmarked`, `train.cancelled`, `system.started` / `system.timetable` |
-| `weather/stations/{stationId}` | yes | 1 | every 10 min | one MeteoSwiss station |
-| `weather/snapshot` | yes | 1 | every 10 min | all stations in one message |
-| `weather/temperature-grid` | yes | 1 | every 10 min | **temperature map** (grid, see below) |
 | `truth/disruptions/{id}` | yes | 1 | on change | **ground truth**: disruptions we provoked, the trains they affected, geometry |
 | `truth/trains/{trainId}` | yes | 1 | while simulated | ground truth: this train is following a provoked behaviour, not the real data |
-| `weather/precipitation-grid` | yes | 1 | every 10 min | **precipitation map** (mm per 10 min, same grid as the temperature map); snow where the temperature map is ≤ 1 °C, rain above |
-| `truth/weather/{id}` | yes | 1 | on change | ground truth: weather changed from Control (area, values, `phase` rain/snow, consequences) |
-| `truth/settings` | yes | 1 | on change | ground truth: Control switches (`protection`) |
-| `truth/events` | no | 0 | on occurrence | `disruption.started` / `disruption.ended`, `train.collision` (with `impactKmh`), `weather.override`, `train.released`, `release.all`, `protection.on` / `protection.off`, `sync.trains` / `sync.all` |
+| `truth/events` | no | 0 | on occurrence | `disruption.started` / `disruption.ended`, `train.collision` (with `impactKmh`), `train.released`, `release.all`, `sync.trains` / `sync.all` |
 | `detections/{team}/{id}` | yes (yours) | 1 | yours | **reserved for the detection team**; tombstone when withdrawn |
 | `ext/{team}/…` | yours | yours | yours | free namespace for other teams |
 
@@ -99,7 +89,6 @@ tombstone**: the entity was removed.
 | a passenger app following one train | `trains/{trainId}/position` and `trains/{trainId}/info` |
 | a station screen | `trains/+/info`, keeping the calls with your `stopId` (or `GET /api/stations/{id}/board`) |
 | passenger information about incidents | `alerts/+` (real SBB alerts) and `incidents/+` (what staff marked as public) |
-| weather at a train or a station | `weather/temperature-grid` and `weather/precipitation-grid` (lookup below), `weather/stations/{id}` |
 | an evaluation of a detector | `truth/disruptions/+`, `truth/trains/+`, `truth/events` against your `detections/{team}/+` |
 
 ### `fleet` (every second)
@@ -158,60 +147,6 @@ when `continuity` or `streamId` changes. Speed and bearing allow extrapolating u
 `expected*` is set for stops still ahead, `actual*` once the twin has seen the train arrive/leave (from the moment it
 started tracking it). `skipped: true` = the train passes without stopping.
 
-### Weather and the temperature map
-
-`weather/temperature-grid`:
-
-```json
-{ "v": 1, "ts": 1795285800000, "measuredAt": 1795285200000, "unit": "°C",
-  "method": "inverse-distance weighting of MeteoSwiss stations (plus Open-Meteo model values outside Switzerland), corrected for altitude (6.5 °C/km, terrain model)",
-  "bbox": [5.4, 45.55, 11.0, 48.05], "step": 0.0125, "cols": 449, "rows": 201,
-  "order": "row-major from north-west",
-  "values": [7.1, 7.0, 6.9, …] }
-```
-
-Cell `(row, col)` is centred on `lon = bbox[0] + col·step`, `lat = bbox[3] − row·step` (≈ 0.95 km × 1.4 km).
-Each value is the expected air temperature **at the ground height of that cell**: valleys warm, mountains cold.
-It covers Switzerland and its surroundings (the viewer's map bounds); outside Switzerland it relies on Open-Meteo model values.
-
-**Temperature at a train's position** (bilinear interpolation):
-
-```python
-def temperature_at(grid, lon, lat):
-    w, s, e, n = grid["bbox"]; step, cols = grid["step"], grid["cols"]
-    x, y = (lon - w) / step, (n - lat) / step
-    c0, r0 = int(x), int(y)
-    if not (0 <= c0 < cols - 1 and 0 <= r0 < grid["rows"] - 1): return None
-    v = lambda c, r: grid["values"][r * cols + c]
-    q = [v(c0, r0), v(c0 + 1, r0), v(c0, r0 + 1), v(c0 + 1, r0 + 1)]
-    if None in q: return next((t for t in q if t is not None), None)
-    fx, fy = x - c0, y - r0
-    return (q[0] * (1 - fx) + q[1] * fx) * (1 - fy) + (q[2] * (1 - fx) + q[3] * fx) * fy
-```
-
-```js
-function temperatureAt(g, lon, lat) {
-  const x = (lon - g.bbox[0]) / g.step, y = (g.bbox[3] - lat) / g.step;
-  const c0 = Math.floor(x), r0 = Math.floor(y);
-  if (c0 < 0 || r0 < 0 || c0 + 1 >= g.cols || r0 + 1 >= g.rows) return null;
-  const v = (c, r) => g.values[r * g.cols + c];
-  const q = [v(c0, r0), v(c0 + 1, r0), v(c0, r0 + 1), v(c0 + 1, r0 + 1)];
-  if (q.includes(null)) return q.find((t) => t !== null) ?? null;
-  const fx = x - c0, fy = y - r0;
-  return (q[0] * (1 - fx) + q[1] * fx) * (1 - fy) + (q[2] * (1 - fx) + q[3] * fx) * fy;
-}
-```
-
-`weather/snapshot` (also `weather/stations/{id}` one by one): `fields` = `id, name, lat, lon, altitudeM, tempC, precipMm,
-windKmh, gustKmh, humidityPct, dewPointC, pressureHpa, sunshineMin, radiationWm2, foehn, snowCm, newSnowCm, windDirDeg,
-measuredAt`; `windDirDeg` is where the wind comes from, in degrees clockwise from north (meteorological convention);
-`units` gives each unit as MeteoSwiss publishes it. 10-minute values (precipitation and sunshine per 10 minutes), snow
-daily. `null` = not measured at that station. Weather changed from Control is published here like real weather.
-
-Rain and snow are real: precipitation measured every 10 minutes at ~290 stations, interpolated into
-`weather/precipitation-grid` (25 km reach). A cell is snow when the temperature map's cell is ≤ 1 °C, so one storm rains in
-the valleys and snows higher up. To read it at a train, use the same lookup as for the temperature.
-
 ### Incidents (`incidents/{id}`)
 
 ```json
@@ -230,61 +165,37 @@ The viewer drives these; scripts can too. Base `http(s)://<host>/api`.
 
 | Request | Effect |
 |---|---|
-| `GET /disruption-types` | the provokable types (below) |
-| `POST /disruptions` `{type, scope, minutes?, params?, mark?}` | provoke; `mark: true` also marks a public incident |
+| `GET /disruption-types` · `GET /measure-types` | scenario causes and the measures the control centre can apply |
+| `GET /train-actions` | supported actions for an individual train in service |
+| `POST /disruptions` `{cause, scope, minutes?, measures?}` | register a station or section disruption using a cause code from `/disruption-types` |
+| `POST /disruptions` `{type, scope, minutes?, params?, mark?}` | apply a train action. Set `mark` to `true` to create a public incident |
+| `POST /disruptions/{id}/measures` | apply a measure to a scenario |
+| `GET /bulletins/{id}` | read the latest bulletin and its earlier versions |
 | `POST /disruptions/{id}/end`, `DELETE /disruptions/{id}` | end it (trains resume, still late) / end and forget |
 | `POST /incidents` `{title, severity?, description?, scope?}` · `DELETE /incidents/{id}` | mark / unmark |
 | `POST /sync` `{trainIds?}` | trains read the real data again (all trains if omitted) |
 | `POST /trains/{trainId}/release` | end every change on that train (it moves on, still late until synced) |
-| `POST /weather/overrides` `{lat, lon, radiusKm, minutes?, preset? \| tempC? \| tempDeltaC?, minTempC?, precipMm?, windKmh?, gustKmh?}` · `POST /weather/overrides/{id}/end` | change the weather over an area (presets: `heatwave`, `cold`, `storm`, `rain`, `snow`, `blizzard`; `minTempC` keeps the area at least that warm) |
-| `POST /control/protection` `{on}` · `GET /control` | train protection switch; current Control state (switches, weather presets, weather changes) |
-| `GET /control/state` | everything provoked, marked or switched, in one answer (the same state the control page receives on `/live`) |
+| `GET /control/state` | disruptions, incidents, bulletins, resumption forecasts, simulated trains and status |
 | `GET /alerts` | the real SBB alerts on the railway right now (as on `alerts/+`) |
 | `GET /forecasts` · `GET /forecasts/scorecards` · `GET /forecasts/shadow` · `GET /forecasts/section-risk.geojson` | live forecasts (as on `forecasts/disruptions`, plus the trains to check after a resumption) / the three models' out-of-time scorecards / the live shadow test (each disruption's first prediction, scored when it ends) / the section risk map, each section with its `tier` (`top5`, `top10`, `top20`, `rest`). The console includes the Risk map. The evidence page is at `/forecasts`. `GET /brief` gives each disruption's `forecast` (a real model only) |
 | `GET /forecasts/post-resumption?disruptionId=` · `GET /forecasts/post-resumption` | the trains to check after a disruption resumed (as on `forecasts/post-resumption/+`) / every forecast still running. `GET /brief` includes the ones at the stations asked about (`trainsToCheck`) |
-| `POST /control/reset` | **Sync all**: back to reality. Deletes every disruption, weather change and marked incident, switches train protection back on, and snaps every train back to the real data |
+| `POST /control/reset` | clear disruptions, incidents and timetable changes, then sync trains with the live data |
 | `GET /stations/{id}/board` · `GET /stations/{id}/neighbours` · `GET /stations.geojson` | a station's next departures in the twin (live delays); stations connected by track, nearest first; every station served today |
-| `GET /trains`, `GET /trains/{trainId}`, `GET /stations?q=`, `GET /weather`, `GET /status` | read helpers |
+| `GET /trains`, `GET /trains/{trainId}`, `GET /stations?q=`, `GET /status` | read helpers |
 
-| Type | SBB reason | Scope | What trains do |
-|---|---|---|---|
-| `overhead_line_fault`, `power_failure`, `person_accident`, `obstacle_on_track` | EG_008, EG_011, EG_047, EG_100 | section `{kind:"section",from,to}` | section closed both ways: trains wait at the station before it; a train already inside brakes and stops on the line |
-| `track_damage` | EG_006 | section, `params.maxKmh` | speed restriction on the section |
-| `signal_box_failure` | EG_010 | station, `params.maxKmh`, `params.holdMinutes` | slow running around the station and a hold at it |
-| `station_fire` | EG_110 | station | station closed: trains pass without stopping |
-| `rolling_stock_failure` | EG_014 | train `{kind:"train",trainId}` | the train brakes (0.7 m/s²) and stays; followers stop behind it |
-| `emergency_brake` | EG_014 | train | the same with emergency braking (1.2 m/s²) |
-| `obstacle_collision` | EG_100 | train, `params.distanceM` | an obstacle that far ahead: emergency braking; without enough distance the train hits it at the remaining speed and is immobilised |
-| `target_speed` | — | train, `params.kmh` | the train accelerates/brakes to that speed and cruises (still stops at its stations, never leaves early; capped by category) |
-| `technical_delay` | EG_014 | train, `params.holdMinutes` | waits that long at its next stop |
-| `train_speed_limit` | — | train, `params.maxKmh` | the train runs at most at that speed |
-| `skip_next_stop` | — | train | passes its next stop |
-| `cancellation` | EG_063 | train | ends its run at the next stop and leaves service |
-
-A provoked train keeps its own behaviour (it stays late) after the disruption ends, until it is **synced**.
-
-**Weather consequences** (automatic, inside the changed area, official SBB reason codes): ≥ 35 °C → *Heat: track
-buckling risk* (80 km/h, EG_006); ≤ −15 °C → *Frost: icing* (60 km/h, EG_016); gusts ≥ 100 km/h → *Storm: lines closed*
-(EG_101); gusts ≥ 75 km/h → 60 km/h; snow (precipitation where ≤ 1 °C) → *Snow on the tracks* (60 km/h, EG_023), heavy
-snow → 40 km/h and *Avalanche risk: mountain lines closed* for track above 1,100 m (EG_022); heavy rain (≥ 4 mm/10 min,
-i.e. 24 mm/h, above 1 °C) → *Landslide risk* (40 km/h, EG_018). Storms and heavy rain also cool the air (cold front) but keep it above
-3 °C, so they rain even on a cold night; the snowfall presets set sub-zero temperatures. Rain or snow is decided once,
-when the change is placed (`phase`). The consequences end with the weather change, and the trains they held go back to
-their real timetable on their own.
-
-**Train protection** is part of the real Swiss railway (ETCS, ZUB/Integra-Signum) and is on by default: like ETCS, a
-train's movement authority ends behind the train ahead on its track, and it brakes on its service curve (0.7 m/s²) to
-stay behind it, so delays spread to the trains behind. Switched off, a
-driver only sees a stopped train 500 m ahead and emergency-brakes; without enough distance it is a **rear-end
-collision** at the remaining speed (a `train.collision` event, both trains immobilised until released).
+For a train action, send `{"kind":"train","trainId":"…"}` as the scope. A `breakdown` (EG_014) stops the
+train and registers a section disruption when the twin can identify its track. The aliases `rolling_stock_failure`
+and `emergency_brake` also select `breakdown`. A `cancellation` (EG_063) ends the run at its next stop.
 
 ## Run it
 
 ```sh
-npm install
+npm ci
 npm run dev                      # page + API on :8787 (Vite dev); MQTT on the team broker if MQTT_URL is set,
                                  # else its own broker on ws :8787/mqtt
 ```
+
+Run `npm test` for regression tests, `npm run typecheck` for the server and viewer types, and `npm run build` to build both viewer pages.
 
 | Variable | Default | |
 |---|---|---|
@@ -305,7 +216,6 @@ station pair), `tools/extract_abroad_rails.mjs` (railways outside Switzerland fo
 ## Data sources
 
 Timetable GTFS, GTFS-RT and GTFS-RT service alerts: [opentransportdata.swiss](https://opentransportdata.swiss) · Rail network: BAV
-[Schienennetz](https://data.geo.admin.ch/browser/index.html#/collections/ch.bav.schienennetz) · Weather: MeteoSwiss
-SwissMetNet open data via data.geo.admin.ch, Open-Meteo outside Switzerland · Terrain: Terrarium elevation tiles (AWS Open Data) · Base maps:
+[Schienennetz](https://data.geo.admin.ch/browser/index.html#/collections/ch.bav.schienennetz) · Base maps:
 © swisstopo · Railways outside Switzerland: © OpenStreetMap contributors (ODbL), via OpenFreeMap tiles. Formation
 details and occupancy are not modelled.

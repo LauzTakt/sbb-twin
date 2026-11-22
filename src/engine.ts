@@ -832,16 +832,6 @@ function applyEnds() {
 const disruptionsAt = (tr: Train, effect: Disruption["effect"]) =>
   [...disruptions.values()].filter((d) => !d.endedAt && (d.effect === effect || d.effect === "skip_stop") && d.station === tr.trip.stops[tr.call]).map((d) => d.id);
 
-/** Where an obstacle `metres` ahead of a train lies on its route (current leg, or the next one at a station). */
-export function obstacleAhead(tr: Train, metres: number) {
-  const n = tr.eArr.length;
-  const leg = tr.leg >= 0 ? tr.leg : tr.call < n - 1 ? tr.call : -1;
-  if (leg < 0) return undefined;
-  const len = legPath(tr.trip, leg).len;
-  const from = tr.leg >= 0 ? tr.s : 0;
-  return { leg, s: Math.min(len - 5, from + metres) };
-}
-
 /** Delay at the next stop in seconds (+ = late): departure delay at intermediate stops (what passengers see),
  * arrival delay at the terminus. */
 export function delayOf(tr: Train, t: number) {

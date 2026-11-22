@@ -6,6 +6,7 @@
 // bands and observed shares are shown, not precise percentages).
 // Advice for staff and the assistant only: it never changes the effective timetable or the planner, and an official
 // cancellation or skipped stop (the effective timetable) always wins over it.
+import type { ForecastTrain, Resumption } from "./contracts/forecasts.ts";
 import { disruptions } from "./disruptions.ts";
 import { dayTrips, liveTimes } from "./engine.ts";
 import { stationIndex, stops, type Trip } from "./timetable.ts";
@@ -19,54 +20,19 @@ const LATE_MS = 2 * 60_000; // a backdated notice: trains that left before it wa
 const GRACE_MS = 5 * 60_000; // a forecast stays this long after its last train's last named stop
 const REFRESH_MS = 10_000; // official status of the listed trains
 
-type Place = { id: string; name: string };
-export type ForecastTrain = {
-  trainId: string;
-  line: string;
-  category: string;
-  headsign: string;
-  station: Place; // its first named stop after the notice
-  plannedTime: number;
-  leadMinutes: number;
-  calls: { station: Place; plannedTime: number }[]; // every named stop of this run
-  risk: number; // the model's raw risk (0..1); shown as its band
-  band: string;
-  bandObserved: number | null; // share of trains in this band that lost a stop in the 2026 test
-  officialStatus: "scheduled" | "cancelled" | "skipped"; // the effective timetable now: an official change wins
-};
-export type Resumption = {
-  v: 1;
-  kind: "sbb" | "twin";
-  disruptionId: string;
-  where: string;
-  resumedAt: number;
-  issuedAt: number;
-  updatedAt: number;
-  expiresAt: number;
-  endpoints: Place[];
-  windowMinutes: number;
-  modelVersion: string;
-  placeholder: boolean;
-  formula: string;
-  coefficients: { a: number; b: number };
-  bands: { label: string; min: number; observed: number | null }[];
-  trains: ForecastTrain[];
-  note: string;
-};
-
 type Row = { trip: Trip; at: number[] }; // the trip and the indexes of its named stops, in time order
 const held = new Map<string, { forecast: Resumption; rows: Row[] }>();
 const scored = new Set<string>(); // disruptions already scored: once, when the resumption is received
 let lastRefresh = 0;
 const topicOf = (id: string) => `forecasts/post-resumption/${id}`;
-const place = (k: number): Place => ({ id: stops[k].id, name: stops[k].name });
+const place = (k: number) => ({ id: stops[k].id, name: stops[k].name });
 const plannedAt = (trip: Trip, i: number) => (i === 0 ? trip.dep[i] : trip.arr[i]); // planned arrival, else departure
 
 function model() {
   const m = loaded("resumption");
   if (!m.data) return undefined;
   // observed share per band in the forward test (scorecard calibrationByBand), when the scorecard has it
-  const card = loaded("resumptionCard").data as { calibrationByBand?: { bin: string; observed: number }[] } | null;
+  const card = loaded("resumptionCard").data;
   const observed = new Map((card?.calibrationByBand ?? []).map((b) => [b.bin, b.observed]));
   const bands = [...m.data.bands].sort((x, y) => y.min - x.min).map((b) => ({ label: b.label, min: b.min, observed: observed.get(b.label) ?? null }));
   return { ...m.data, bands, placeholder: m.source !== "real" };

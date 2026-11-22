@@ -20,7 +20,6 @@ export type Path = {
 let network: Network | undefined;
 let paths: Record<string, [number, string, number[]]> = {};
 const cache = new Map<string, Path>();
-export const edgeIds = () => network?.edges.map((e) => e[0]) ?? [];
 export const edgeTracks = (ref: number) => network?.edges[Math.abs(ref) - 1]?.[3] ?? 2;
 export const edgeId = (ref: number) => (ref ? network?.edges[Math.abs(ref) - 1]?.[0] : undefined);
 
@@ -186,14 +185,6 @@ export function edgesWithin(lat: number, lon: number, radiusKm: number): Set<num
     for (let k = 0; k < c.length; k += 6) if (metres(lon, lat, c[k], c[k + 1]) <= r) return void out.add(i + 1);
   });
   return out;
-}
-
-/** Middle vertex of an edge (unsigned ref), for altitude checks. */
-export function edgeMidpoint(ref: number): [number, number] | undefined {
-  const e = network?.edges[Math.abs(ref) - 1];
-  if (!e) return undefined;
-  const k = Math.floor(e[5].length / 4) * 2;
-  return [e[5][k], e[5][k + 1]];
 }
 
 /** GeoJSON geometry of a set of edges (for drawing an affected section). */

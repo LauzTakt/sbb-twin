@@ -5,6 +5,8 @@
   "description": "Live digital twin of every Swiss train: GTFS + GTFS-RT on real track geometry, published on MQTT, with provokable disruptions.",
   "scripts": {
     "dev": "tsx watch --clear-screen=false src/main.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test tests/*.test.ts",
     "build": "vite build viewer",
     "start": "NODE_ENV=production tsx src/main.ts"
   },
@@ -17,7 +19,6 @@
     "maplibre-gl": "^6.19.0",
     "mqtt": "^5.16.1",
     "mqtt-packet": "^9.0.2",
-    "pngjs": "^7.0.0",
     "protobufjs": "^8.8.1",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
@@ -26,7 +27,6 @@
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
-    "@types/pngjs": "^6.0.5",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@types/ws": "^8.18.2",

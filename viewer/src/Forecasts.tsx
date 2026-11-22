@@ -4,7 +4,7 @@
 import { ArrowUpRight, CircleAlert, Clock3, Construction, TrainFront } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api } from "./feed";
-import type { DisruptionForecast, ForecastsResponse, Resumption } from "./forecastTypes";
+import type { DisruptionForecast, ForecastsResponse, Resumption } from "../../src/contracts/forecasts";
 
 const hm = (ms: number) => new Date(ms).toLocaleTimeString("de-CH", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Zurich" });
 const pct = (p: number) => `${Math.round(p * 100)} %`;

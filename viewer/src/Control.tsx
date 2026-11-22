@@ -5,7 +5,6 @@ import { api, send, type Disruption } from "./feed";
 
 type Cat = { code: string; label: string; effect: "interrupted" | "limited"; defaultMinutes: number | null; durationType: string; busShare?: number };
 type Station = { id: string; name: string };
-type Proposal = { measures?: { type: string; label?: string; probability?: number; at?: string }[]; note?: string };
 const fold = (x: string) => x.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
 const zurichDay = (ms: number) => new Date(ms).toLocaleDateString("sv-SE", { timeZone: "Europe/Zurich" });
 /** Epoch ms of a date and a time of day in Swiss time (summer or winter time as that day has it). */

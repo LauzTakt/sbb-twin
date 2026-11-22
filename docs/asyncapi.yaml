@@ -3,8 +3,7 @@ info:
   title: sbb-twin
   version: 1.0.0
   description: |
-    Live digital twin of every Swiss train (GTFS + GTFS-RT on BAV track geometry), MeteoSwiss weather and a
-    temperature map, published on MQTT. Times are epoch milliseconds (UTC). An empty retained payload is a tombstone.
+    Swiss trains on BAV track geometry, service alerts and disruption forecasts over MQTT. Times are epoch milliseconds (UTC). An empty retained payload is a tombstone.
     `truth/*` is ground truth for staff and evaluation only.
 defaultContentType: application/json
 servers:
@@ -22,7 +21,7 @@ servers:
     description: Read-only WebSocket proxy to the team broker through sbb-twin, no credentials, limited to sbb-twin/v1/#.
     variables:
       host:
-        description: Public host shown on the control page's Connect tab.
+        description: Public host serving the twin.
   local-ws:
     host: 127.0.0.1:8787
     pathname: /mqtt
@@ -57,19 +56,6 @@ channels:
     parameters: { kind: { enum: [incident, train, system] } }
     messages: { event: { $ref: "#/components/messages/event" } }
     bindings: { mqtt: { qos: 0, retain: false } }
-  weatherStation:
-    address: sbb-twin/v1/weather/stations/{stationId}
-    parameters: { stationId: { description: MeteoSwiss station abbreviation, e.g. SMA. } }
-    messages: { station: { $ref: "#/components/messages/weatherStation" } }
-    bindings: { mqtt: { qos: 1, retain: true } }
-  weatherSnapshot:
-    address: sbb-twin/v1/weather/snapshot
-    messages: { snapshot: { $ref: "#/components/messages/weatherSnapshot" } }
-    bindings: { mqtt: { qos: 1, retain: true } }
-  temperatureGrid:
-    address: sbb-twin/v1/weather/temperature-grid
-    messages: { grid: { $ref: "#/components/messages/temperatureGrid" } }
-    bindings: { mqtt: { qos: 1, retain: true } }
   truthDisruption:
     address: sbb-twin/v1/truth/disruptions/{disruptionId}
     parameters: { disruptionId: { description: Provoked disruption id. } }
@@ -84,27 +70,27 @@ channels:
     address: sbb-twin/v1/truth/events
     messages: { event: { $ref: "#/components/messages/event" } }
     bindings: { mqtt: { qos: 0, retain: false } }
-  precipitationGrid:
-    address: sbb-twin/v1/weather/precipitation-grid
-    description: Precipitation in mm per 10 minutes on the temperature grid; snow where that cell is <= 1 °C, rain above.
-    messages: { grid: { $ref: "#/components/messages/temperatureGrid" } }
-    bindings: { mqtt: { qos: 1, retain: true } }
-  truthWeather:
-    address: sbb-twin/v1/truth/weather/{overrideId}
-    description: Weather changed from Control (area, values, phase rain/snow, consequence disruption ids). Tombstone when removed.
-    parameters: { overrideId: { description: Weather change id (w-…). } }
-    messages: { override: { payload: { type: object } } }
-    bindings: { mqtt: { qos: 1, retain: true } }
   alert:
     address: sbb-twin/v1/alerts/{alertId}
     description: Real SBB service alerts that touch the railway (opentransportdata.swiss GTFS-RT service alerts), merged per event. Tombstone when withdrawn.
     parameters: { alertId: { description: Stable id of the event (sa-…). } }
     messages: { alert: { payload: { type: object } } }
     bindings: { mqtt: { qos: 1, retain: true } }
-  truthSettings:
-    address: sbb-twin/v1/truth/settings
-    description: Control switches, e.g. {"protection": true}.
-    messages: { settings: { payload: { type: object } } }
+  bulletin:
+    address: sbb-twin/v1/bulletins/{disruptionId}
+    parameters: { disruptionId: { description: Scenario disruption id. } }
+    messages: { bulletin: { payload: { type: object } } }
+    bindings: { mqtt: { qos: 1, retain: true } }
+  forecasts:
+    address: sbb-twin/v1/forecasts/disruptions
+    description: Duration forecasts for active disruptions.
+    messages: { forecasts: { payload: { type: object } } }
+    bindings: { mqtt: { qos: 1, retain: true } }
+  postResumption:
+    address: sbb-twin/v1/forecasts/post-resumption/{disruptionId}
+    parameters: { disruptionId: { description: Resumed disruption id. } }
+    description: Trains due at the affected stations in the hour after service resumes.
+    messages: { forecast: { payload: { type: object } } }
     bindings: { mqtt: { qos: 1, retain: true } }
   detections:
     address: sbb-twin/v1/detections/{team}/{detectionId}
@@ -118,16 +104,13 @@ operations:
   receiveStatus: { action: receive, channel: { $ref: "#/channels/status" } }
   receiveIncident: { action: receive, channel: { $ref: "#/channels/incident" } }
   receiveEvents: { action: receive, channel: { $ref: "#/channels/events" } }
-  receiveWeatherStation: { action: receive, channel: { $ref: "#/channels/weatherStation" } }
-  receiveWeatherSnapshot: { action: receive, channel: { $ref: "#/channels/weatherSnapshot" } }
-  receiveTemperatureGrid: { action: receive, channel: { $ref: "#/channels/temperatureGrid" } }
   receiveTruthDisruption: { action: receive, channel: { $ref: "#/channels/truthDisruption" } }
   receiveTruthTrain: { action: receive, channel: { $ref: "#/channels/truthTrain" } }
   receiveTruthEvents: { action: receive, channel: { $ref: "#/channels/truthEvents" } }
-  receivePrecipitationGrid: { action: receive, channel: { $ref: "#/channels/precipitationGrid" } }
-  receiveTruthWeather: { action: receive, channel: { $ref: "#/channels/truthWeather" } }
-  receiveTruthSettings: { action: receive, channel: { $ref: "#/channels/truthSettings" } }
   receiveAlert: { action: receive, channel: { $ref: "#/channels/alert" } }
+  receiveBulletin: { action: receive, channel: { $ref: "#/channels/bulletin" } }
+  receiveForecasts: { action: receive, channel: { $ref: "#/channels/forecasts" } }
+  receivePostResumption: { action: receive, channel: { $ref: "#/channels/postResumption" } }
   sendDetection: { action: send, channel: { $ref: "#/channels/detections" } }
 components:
   parameters:
@@ -148,7 +131,6 @@ components:
           tick: { type: integer }
           trainsActive: { type: integer }
           realtime: { type: object, properties: { enabled: { type: boolean }, feedAgeSec: { type: [integer, "null"] }, trips: { type: integer } } }
-          weather: { type: object, properties: { stations: { type: integer }, measuredAt: { type: [integer, "null"] } } }
     fleet:
       payload:
         type: object
@@ -243,45 +225,6 @@ components:
       payload:
         type: object
         properties: { v: { type: integer }, ts: { type: integer }, kind: { type: string }, type: { type: string } }
-    weatherStation:
-      payload:
-        type: object
-        properties:
-          v: { type: integer }
-          id: { type: string }
-          name: { type: string }
-          lat: { type: number }
-          lon: { type: number }
-          altitudeM: { type: integer }
-          tempC: { type: [number, "null"] }
-          precipMm: { type: [number, "null"], description: Last 10 minutes. }
-          windKmh: { type: [number, "null"], description: 10-minute mean. }
-          measuredAt: { type: [integer, "null"] }
-    weatherSnapshot:
-      payload:
-        type: object
-        properties:
-          v: { type: integer }
-          ts: { type: integer }
-          measuredAt: { type: [integer, "null"] }
-          fields: { type: array, items: { type: string } }
-          stations: { type: array, items: { type: array } }
-    temperatureGrid:
-      payload:
-        type: object
-        required: [bbox, step, cols, rows, values]
-        properties:
-          v: { type: integer }
-          ts: { type: integer }
-          measuredAt: { type: integer }
-          unit: { type: string }
-          method: { type: string }
-          bbox: { type: array, items: { type: number }, description: "[west, south, east, north]" }
-          step: { type: number, description: Cell size in degrees. }
-          cols: { type: integer }
-          rows: { type: integer }
-          order: { type: string }
-          values: { type: array, items: { type: [number, "null"] }, description: "°C, row-major from north-west; null = no station within 30 km." }
     disruption:
       payload:
         type: object
