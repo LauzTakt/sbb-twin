@@ -396,6 +396,8 @@ const meta: Record<string, [string, string, string]> = {};
 export const tripMeta = (tripId: string) => meta[tripId];
 /** Today's timetable (every trip of the loaded service day). */
 export const dayTrips = () => trips;
+/** The day file's trips without the added ones (replacement buses): the planner keeps a static layer of these. */
+export const baseDayTrips = () => baseTrips;
 /** A trip in the effective timetable now: its expected times (an active train's own timeline, held or slowed trains
  *  move later, else the timetable with the live predictions), forecast past a hold until the section reopens, and the
  *  last call it serves (a short turn cancels the calls after it). `from` is the first stop where a passenger can still

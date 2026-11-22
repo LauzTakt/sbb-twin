@@ -102,7 +102,7 @@ function loop() {
 loop();
 console.log(`[sbb-twin] ${trains.size} trains in service`);
 
-setInterval(warmPlanner, 4000).unref(); // journeys and briefs answer from a ready connection list
+setInterval(warmPlanner, 1000).unref(); // journeys and briefs answer from a ready snapshot (rebuilt within a second of a change)
 setInterval(async () => {
   if (await pollRealtime()) applyRealtime();
 }, config.rtIntervalMs).unref();

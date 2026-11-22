@@ -10,7 +10,7 @@
 // published its witness is replayed against the snapshot with an independent check (validate()); an invalid one is
 // never returned.
 import { createHash } from "node:crypto";
-import { byTrainId, dayTrips, liveTimes, nextDate, servedStations, stationBoard, timetableDate, trains } from "./engine.ts";
+import { baseDayTrips, byTrainId, dayTrips, liveTimes, nextDate, servedStations, stationBoard, timetableDate, trains } from "./engine.ts";
 import { loadDayMappedSync, searchStations, stationIndex, stops, type Trip } from "./timetable.ts";
 import { edgesGeometry, edgeSpans, metres, pathBetween, sectionEdges, travelPath } from "./geometry.ts";
 import { serviceOrigin, zurich } from "./time.ts";
@@ -128,7 +128,8 @@ type Closure = {
   a?: number;
   b?: number;
   bbox?: [number, number, number, number];
-  hit: Map<number, boolean>; // station pair -> does a leg between them run on the section
+  hit: Map<number, boolean>; // station pair -> does a leg between them run on the section (computed on the track)
+  pairs?: Set<number>; // the same for every leg of the static layer, from its edge index (set by build())
 };
 /** When a scenario disruption interrupts its section, as decided at `now`: the measures at their effective times;
  *  UNTIL_AT_LEAST is a lower bound only (crossing after it is conditional), UNKNOWN gives no timed crossing. */
@@ -213,6 +214,12 @@ function closuresAt(now: number): Closure[] {
 /** Does a rail leg between two consecutive calls run on the closure (its tracks, or a station closed with it)? A leg
  *  without matched track geometry near the closure counts as running on it (unresolved geometry earns no route). */
 function legHits(c: Closure, s1: number, s2: number) {
+  const key = s1 * 65536 + s2;
+  if (c.pairs && layer?.pairTrips.has(key)) return c.pairs.has(key); // the index covers every leg of the static layer
+  return legHitsOnTrack(c, s1, s2);
+}
+/** The same from the track geometry itself (validate() uses this, not the index). */
+function legHitsOnTrack(c: Closure, s1: number, s2: number) {
   const key = s1 * 65536 + s2;
   let h = c.hit.get(key);
   if (h === undefined) {
@@ -399,8 +406,7 @@ type Snapshot = {
   meta: { feed: string[]; serviceDates: string[]; rtFeedTime: number | null; measureRevision: number; simTime: number; trips: number; connections: number; buildMs: number };
 };
 
-let snap: Snapshot | undefined;
-const snapshots = new Map<string, Snapshot>(); // the last few, for journeys pinned to them
+let snap: Snapshot | undefined; // journeys copy what they need from it: a newer snapshot never changes an older answer
 let nextDay: { date: string; trips: Trip[] } | undefined;
 const dayIds = new WeakMap<Trip[], number>();
 let dayIdSeq = 0;
@@ -434,102 +440,202 @@ function snapshot(t: number): Snapshot {
   const sig = `${today}|${dayId(dayTrips())}|${nextDay?.date ?? ""}:${nextDay?.trips.length ?? 0}|${live.fetchedAt}|${effective.generation}|${tripChanges.size}|${disruptionSig(t)}`;
   if (snap && snap.sig === sig && (!anySim || t - snap.builtAt < SNAPSHOT_MAX_AGE_MS) && t - snap.builtAt < 15 * 60_000) return snap;
   snap = build(t, sig);
-  snapshots.set(snap.id, snap);
-  while (snapshots.size > 4) snapshots.delete(snapshots.keys().next().value!);
   return snap;
 }
-/** Keep the snapshot fresh so a journey request (and /api/brief) never waits for the build. */
-export const __snap = () => snap; // diagnostics
+export const __snap = () => snap; // diagnostics (tests)
+export const __rebuild = () => (snap = build(Date.now(), "bench"));
+/** Keep the snapshot fresh so a journey request (and /api/brief) never waits for the build: cheap when nothing
+ *  changed (a signature check), a rebuild of the changed trips otherwise. */
 export function warmPlanner() {
   snapshot(Date.now());
 }
 
-function build(t: number, sig: string): Snapshot {
-  const t0 = performance.now();
-  const today = dayTrips();
-  const keys = new Set(today.map((x) => x.key));
-  const extra = (nextDay?.trips ?? []).filter((x) => !keys.has(x.key)); // a trip occurrence is in both files when it runs past midnight
-  const all = extra.length ? [...today, ...extra] : today;
-  const from = t - 3 * 3600_000;
-  let until = t;
-  for (const x of all) until = Math.max(until, x.dep[x.dep.length - 1]);
-  const closures = closuresAt(t);
-  const trips: Trip[] = [];
-  const effs: Eff[] = [];
-  const routes: (TripRoute | undefined)[] = [];
-  for (const trip of all) {
-    const n = trip.stops.length;
-    if (trip.arr[n - 1] < from - 2 * 3600_000) continue;
-    const route = trip.cat === "EV" && trip.tripId.startsWith("EV-") ? undefined : tripRoute(trip);
-    const e = effectiveTrip(trip, t, route);
-    if (e.cancelled || e.arr[n - 1] < from) continue;
-    trips.push(trip);
-    effs.push(e);
-    routes.push(route);
-  }
-  const nQ = quayCount();
-  const nNodes = nQ + stops.length;
-  let nCalls = 0;
-  const base = new Int32Array(trips.length + 1);
-  trips.forEach((trip, k) => {
-    base[k] = nCalls;
-    nCalls += trip.stops.length;
-  });
-  base[trips.length] = nCalls;
-  const callNode = new Int32Array(nCalls);
-  const callFlag = new Uint8Array(nCalls);
-  const callArr = new Float64Array(nCalls);
-  const callDep = new Float64Array(nCalls);
-  const used = new Uint8Array(nNodes);
-  const stationOfQuay = new Int32Array(nQ).fill(-1);
-  for (let q = 0; q < nQ; q++) stationOfQuay[q] = stationIndex(quayStation[q]) ?? -1;
-  // connections: count first
-  let nConn = 0;
-  const legFlag = new Uint8Array(nCalls); // per call i: the leg i -> i+1 (conditional, after a reopening)
-  const firstUsable = new Int32Array(trips.length);
-  const stopAt = new Int32Array(trips.length); // the last call the vehicle reaches (a blocked leg stops it)
-  const stationClosed = closures.filter((c) => !c.edges.size && c.inside.size); // plain station closures: no boarding or alighting
-  trips.forEach((trip, k) => {
-    const e = effs[k];
-    const route = routes[k];
-    const n = trip.stops.length;
-    const b = base[k];
-    const road = trip.cat === "EV";
-    let stop = e.lastServed; // the vehicle does not get past a blocked leg
-    let cond = 0;
-    for (let i = Math.max(e.from, e.firstServed); i < e.lastServed; i++) {
-      if (road || !closures.length) continue;
+/** One trip's calls in the snapshot arrays from offset b: node, times, flags (boarding where pickup allows, alighting
+ *  where drop-off allows, none at skipped calls or at a closed station), and its legs against the closures (a blocked
+ *  leg stops the vehicle there). Returns the first usable call and the last call the vehicle reaches. */
+function tripCalls(trip: Trip, route: TripRoute | undefined, e: Eff, closures: Closure[], stationClosed: Closure[], nQ: number, b: number, a: { callNode: Int32Array; callFlag: Uint8Array; callArr: Float64Array; callDep: Float64Array; legFlag: Uint8Array }) {
+  const n = trip.stops.length;
+  const road = trip.cat === "EV";
+  const first = Math.max(e.from, e.firstServed);
+  let stop = e.cancelled ? first : e.lastServed; // the vehicle does not get past a blocked leg
+  let cond = 0;
+  if (!road && closures.length)
+    for (let i = first; i < stop; i++) {
       const st = legState(closures, trip.stops[i], trip.stops[i + 1], e.dep[i], e.arr[i + 1]);
       if (st & BLOCKED) {
         stop = i;
         break;
       }
       if (st & CONDITIONAL) cond = C_COND;
-      legFlag[b + i] = cond | (st & AFTER_REOPENING);
+      a.legFlag[b + i] = cond | (st & AFTER_REOPENING);
     }
-    const first = Math.max(e.from, e.firstServed);
-    firstUsable[k] = first;
-    for (let i = 0; i < n; i++) {
-      const s = trip.stops[i];
-      const node = route ? route.quay[i] : nQ + s;
-      callNode[b + i] = node;
-      callArr[b + i] = e.arr[i];
-      callDep[b + i] = e.dep[i];
-      used[node] = 1;
-      if (i < first || i > stop) continue;
-      if (e.skipped?.[i]) continue;
-      let f = STOPS;
-      const closedHere = stationClosed.some((c) => c.inside.has(s) && c.closed.some(([x, y]) => e.dep[i] < y && e.arr[i] >= x));
-      if (!closedHere) {
-        if (i < stop && (!route || route.pickup[i] === 0)) f |= BOARD;
-        if (i > first && (!route || route.dropOff[i] === 0)) f |= ALIGHT;
-      }
-      callFlag[b + i] = f;
+  for (let i = 0; i < n; i++) {
+    const st = trip.stops[i];
+    a.callNode[b + i] = route ? route.quay[i] : nQ + st;
+    a.callArr[b + i] = e.arr[i];
+    a.callDep[b + i] = e.dep[i];
+    a.callFlag[b + i] = 0;
+    if (i < first || i > stop || e.skipped?.[i]) continue;
+    let f = STOPS;
+    const closedHere = stationClosed.length > 0 && stationClosed.some((c) => c.inside.has(st) && c.closed.some(([x, y]) => e.dep[i] < y && e.arr[i] >= x));
+    if (!closedHere) {
+      if (i < stop && (!route || route.pickup[i] === 0)) f |= BOARD;
+      if (i > first && (!route || route.dropOff[i] === 0)) f |= ALIGHT;
     }
-    if (stop > first) nConn += stop - first;
-    stopAt[k] = stop;
+    a.callFlag[b + i] = f;
+  }
+  return [first, stop] as const;
+}
+type Conns = { n: number; trip: Int32Array; call: Int32Array; dep: Float64Array; arr: Float64Array; flag: Uint8Array; from: Int32Array; to: Int32Array; fromF: Uint8Array; toF: Uint8Array };
+/** The connections of some trips, sorted by departure, then arrival, then trip and call. */
+function connectionsOf(ks: Iterable<number>, base: Int32Array, firstUsable: Int32Array, stopAt: Int32Array, a: { callNode: Int32Array; callFlag: Uint8Array; callArr: Float64Array; callDep: Float64Array; legFlag: Uint8Array }, excCalls: Set<number>, from: number): Conns {
+  const list = [...ks];
+  let n = 0;
+  for (const k of list) n += Math.max(0, stopAt[k] - firstUsable[k]);
+  const cTrip = new Int32Array(n), cCall = new Int32Array(n), cDep = new Float64Array(n), cArr = new Float64Array(n);
+  let x = 0;
+  for (const k of list)
+    for (let i = firstUsable[k]; i < stopAt[k]; i++) {
+      cTrip[x] = k;
+      cCall[x] = i;
+      cDep[x] = a.callDep[base[k] + i];
+      cArr[x] = a.callArr[base[k] + i + 1];
+      x++;
+    }
+  const order = sortConnections(cDep, cArr, n, from);
+  const out: Conns = { n, trip: new Int32Array(n), call: new Int32Array(n), dep: new Float64Array(n), arr: new Float64Array(n), flag: new Uint8Array(n), from: new Int32Array(n), to: new Int32Array(n), fromF: new Uint8Array(n), toF: new Uint8Array(n) };
+  for (let y = 0; y < n; y++) {
+    const o = order[y];
+    const k = cTrip[o];
+    const i = cCall[o];
+    const ci = base[k] + i;
+    out.trip[y] = k;
+    out.call[y] = i;
+    out.dep[y] = cDep[o];
+    out.arr[y] = cArr[o];
+    out.flag[y] = a.legFlag[ci] | (excCalls.has(k * 1024 + i + 1) ? C_EXC : 0);
+    out.from[y] = a.callNode[ci];
+    out.to[y] = a.callNode[ci + 1];
+    out.fromF[y] = a.callFlag[ci];
+    out.toF[y] = a.callFlag[ci + 1];
+  }
+  return out;
+}
+
+// The static layer: every trip of the loaded day files at its planned times, with its quays, flags, connections
+// and trip-to-trip rules. Rebuilt only when the day files change; each snapshot overlays the trips that differ.
+type Layer = {
+  key: string;
+  trips: Trip[];
+  route: (TripRoute | undefined)[];
+  eff: Eff[];
+  base: Int32Array;
+  callNode: Int32Array;
+  callFlag: Uint8Array;
+  callArr: Float64Array;
+  callDep: Float64Array;
+  legFlag: Uint8Array;
+  firstUsable: Int32Array;
+  stopAt: Int32Array;
+  conns: Conns;
+  keyIndex: Map<string, number>;
+  pairTrips: Map<number, number[]>; // station pair of a leg -> the trips running it
+  edgePairs: Map<number, number[]>;
+  stationPairs: Map<number, number[]>;
+  loosePairs: number[];
+  byTripId: Map<string, number[]>;
+  exc: Map<number, Exc[]>;
+  veto: Snapshot["veto"];
+  hasVeto: Uint8Array;
+  excCalls: Set<number>;
+  used: Uint8Array;
+  adjUsed: Uint8Array;
+  stationOfQuay: Int32Array;
+  nQ: number;
+  until: number;
+  dates: string[];
+  ms: number;
+};
+let layer: Layer | undefined;
+const pairMemo = new Map<string, Set<number>>();
+// Two alternating buffer sets for the snapshot arrays: only the current snapshot is ever read (journeys copy what they
+// keep), so the next build can write into the other set (no allocation, no page faults on the request path).
+type Buffers = { calls: number; conns: number; callFlag: Uint8Array; callArr: Float64Array; callDep: Float64Array; legFlag: Uint8Array; c: Conns };
+const pools: (Buffers | undefined)[] = [undefined, undefined];
+let poolTurn = 0;
+function buffers(calls: number, conns: number): Buffers {
+  poolTurn ^= 1;
+  let b = pools[poolTurn];
+  if (!b || b.calls < calls || b.conns < conns) {
+    const C = Math.ceil(calls * 1.1);
+    const N = Math.ceil(conns * 1.1);
+    b = { calls: C, conns: N, callFlag: new Uint8Array(C), callArr: new Float64Array(C), callDep: new Float64Array(C), legFlag: new Uint8Array(C), c: { n: 0, trip: new Int32Array(N), call: new Int32Array(N), dep: new Float64Array(N), arr: new Float64Array(N), flag: new Uint8Array(N), from: new Int32Array(N), to: new Int32Array(N), fromF: new Uint8Array(N), toF: new Uint8Array(N) } };
+    pools[poolTurn] = b;
+  }
+  return b;
+}
+function staticLayer(): Layer {
+  const today = baseDayTrips();
+  const key = `${dayId(today)}|${nextDay?.date ?? ""}:${dayId(nextDay?.trips ?? [])}|${quayCount()}|${stops.length}`;
+  if (layer?.key === key) return layer;
+  const t0 = performance.now();
+  const keys = new Set(today.map((x) => x.key));
+  const extra = (nextDay?.trips ?? []).filter((x) => !keys.has(x.key)); // an occurrence running past midnight is in both files
+  const trips = extra.length ? [...today, ...extra] : [...today];
+  const nQ = quayCount();
+  const nNodes = nQ + stops.length;
+  const route = trips.map((trip) => tripRoute(trip));
+  const eff: Eff[] = trips.map((trip) => ({ arr: trip.arr, dep: trip.dep, cancelled: false, from: 0, firstServed: 0, lastServed: trip.stops.length - 1, sim: false, held: false }));
+  const base = new Int32Array(trips.length + 1);
+  let nCalls = 0;
+  trips.forEach((trip, k) => {
+    base[k] = nCalls;
+    nCalls += trip.stops.length;
   });
-  // trip-to-trip rules on this snapshot's trip occurrences
+  base[trips.length] = nCalls;
+  const a = { callNode: new Int32Array(nCalls), callFlag: new Uint8Array(nCalls), callArr: new Float64Array(nCalls), callDep: new Float64Array(nCalls), legFlag: new Uint8Array(nCalls) };
+  const firstUsable = new Int32Array(trips.length);
+  const stopAt = new Int32Array(trips.length);
+  const used = new Uint8Array(nNodes);
+  const stationOfQuay = new Int32Array(nQ).fill(-1);
+  for (let q = 0; q < nQ; q++) stationOfQuay[q] = stationIndex(quayStation[q]) ?? -1;
+  const keyIndex = new Map<string, number>();
+  const pairTrips = new Map<number, number[]>();
+  const edgePairs = new Map<number, number[]>(); // track edge -> the station pairs whose legs run on it
+  const stationPairs = new Map<number, number[]>(); // station -> the pairs with a leg to or from it
+  const loosePairs: number[] = []; // pairs without matched track geometry
+  let until = 0;
+  trips.forEach((trip, k) => {
+    const [first, stop] = tripCalls(trip, route[k], eff[k], [], [], nQ, base[k], a);
+    firstUsable[k] = first;
+    stopAt[k] = stop;
+    keyIndex.set(trip.key, k);
+    for (let i = 0; i < trip.stops.length; i++) used[a.callNode[base[k] + i]] = 1;
+    if (trip.cat !== "EV")
+      for (let i = 0; i + 1 < trip.stops.length; i++) {
+        const pk = trip.stops[i] * 65536 + trip.stops[i + 1];
+        const l = pairTrips.get(pk);
+        if (!l) {
+          pairTrips.set(pk, [k]);
+          const path = pathBetween(stops[trip.stops[i]], stops[trip.stops[i + 1]]);
+          if (path.bav) for (const sp of edgeSpans(path)) {
+            if (!sp.ref) continue;
+            const e = Math.abs(sp.ref);
+            const pl = edgePairs.get(e);
+            if (!pl) edgePairs.set(e, [pk]);
+            else if (pl[pl.length - 1] !== pk) pl.push(pk);
+          }
+          else loosePairs.push(pk);
+          for (const st of [trip.stops[i], trip.stops[i + 1]]) {
+            const sl = stationPairs.get(st);
+            if (sl) sl.push(pk);
+            else stationPairs.set(st, [pk]);
+          }
+        } else if (l[l.length - 1] !== k) l.push(k);
+      }
+    until = Math.max(until, trip.dep[trip.dep.length - 1]);
+  });
+  // trip-to-trip rules on the occurrences
   const byTripId = new Map<string, number[]>();
   trips.forEach((trip, k) => {
     const l = byTripId.get(trip.tripId);
@@ -537,27 +643,27 @@ function build(t: number, sig: string): Snapshot {
     else byTripId.set(trip.tripId, [k]);
   });
   const exc = new Map<number, Exc[]>();
-  const veto = new Map<number, { fromNode: number; toNode: number; sec: number; type: number }[]>();
+  const veto: Snapshot["veto"] = new Map();
   const hasVeto = new Uint8Array(trips.length);
   const excCalls = new Set<number>();
   for (const [tripId, ks] of byTripId) {
     const rules = rulesFrom.get(tripId);
     if (!rules) continue;
     for (const ka of ks) {
-      const ra = routes[ka];
+      const ra = route[ka];
       if (!ra) continue;
       const A = trips[ka];
       for (const r of rules) {
         if (r.dates && !r.dates.includes(A.serviceDate)) continue;
         const ja = ra.quay.indexOf(r.fromQuay);
         if (ja < 0) continue;
-        const arrA = callArr[base[ka] + ja];
+        const arrA = A.arr[ja];
         for (const kb of byTripId.get(r.toTrip) ?? []) {
-          const rb = routes[kb];
+          const rb = route[kb];
           if (!rb) continue;
           const jb = rb.quay.indexOf(r.toQuay);
           if (jb < 0) continue;
-          const depB = callDep[base[kb] + jb];
+          const depB = trips[kb].dep[jb];
           if (depB < arrA - 3600_000 || depB > arrA + 6 * 3600_000) continue; // the occurrence of the same service day
           if (r.type === 3 || (r.type === 2 && r.sec > genericSec(r.fromQuay, r.toQuay, stationOfQuay))) {
             const vk = ka * 131072 + kb;
@@ -576,65 +682,163 @@ function build(t: number, sig: string): Snapshot {
       }
     }
   }
-  // connections, sorted by departure (then arrival, then trip order and call)
-  const cTrip = new Int32Array(nConn);
-  const cCall = new Int32Array(nConn);
-  const cDep = new Float64Array(nConn);
-  const cArr = new Float64Array(nConn);
-  const cFlag = new Uint8Array(nConn);
-  let x = 0;
-  trips.forEach((trip, k) => {
-    const first = firstUsable[k];
-    const b = base[k];
-    for (let i = first; i < stopAt[k]; i++) {
-      cTrip[x] = k;
-      cCall[x] = i;
-      cDep[x] = callDep[b + i];
-      cArr[x] = callArr[b + i + 1];
-      cFlag[x] = legFlag[b + i] | (excCalls.has(k * 1024 + i + 1) ? C_EXC : 0);
+  const all = { length: trips.length, *[Symbol.iterator]() { for (let k = 0; k < trips.length; k++) yield k; } };
+  const conns = connectionsOf(all, base, firstUsable, stopAt, a, excCalls, Date.now() - 86_400_000);
+  const dates = [...new Set(trips.map((trip) => trip.serviceDate))].sort();
+  const adjUsed = Uint8Array.from(used);
+  for (let st = 0; st < stops.length; st++) adjUsed[nQ + st] = 1; // the twin's buses call at stations: every station's bus node exists
+  layer = { adjUsed, key, trips, route, eff, base, ...a, firstUsable, stopAt, conns, keyIndex, pairTrips, edgePairs, stationPairs, loosePairs, byTripId, exc, veto, hasVeto, excCalls, used, stationOfQuay, nQ, until, dates, ms: Math.round(performance.now() - t0) };
+  console.log(`[planner] static layer: ${trips.length} trips, ${conns.n} connections, ${layer.ms} ms`);
+  return layer;
+}
+
+/** A snapshot: the static layer with the trips that differ now recomputed and merged in (realtime, the twin's trip
+ *  changes and simulated trains, legs on a closure, the twin's own buses). */
+function build(t: number, sig: string): Snapshot {
+  const t0 = performance.now();
+  const L = staticLayer();
+  const closures = closuresAt(t);
+  const stationClosed = closures.filter((c) => !c.edges.size && c.inside.size);
+  const nBase = L.trips.length;
+  // the trips that differ from the static layer
+  const over = new Uint8Array(nBase);
+  const mark = (key: string) => {
+    const k = L.keyIndex.get(key);
+    if (k !== undefined) over[k] = 1;
+  };
+  for (const [key, rt] of live.trips) if (rt.cancelled || rt.updates.length) mark(key);
+  for (const key of tripChanges.keys()) mark(key);
+  for (const tr of trains.values()) if (tr.mode === "sim" || tr.warp > 30_000 || tr.cancelled || tr.motion === "held" || tr.skipped.some((x) => x)) mark(tr.trip.key);
+  for (const c of closures) {
+    const memoKey = `${c.id}|${L.key}|${c.edges.size}|${c.inside.size}`;
+    let pairs = pairMemo.get(memoKey);
+    if (!pairs) {
+      pairs = new Set<number>();
+      for (const e of c.edges) for (const pk of L.edgePairs.get(e) ?? []) pairs.add(pk);
+      for (const st of c.inside) for (const pk of L.stationPairs.get(st) ?? []) pairs.add(pk);
+      for (const pk of L.loosePairs) if (legHitsOnTrack(c, Math.floor(pk / 65536), pk % 65536)) pairs.add(pk);
+      pairMemo.set(memoKey, pairs);
+      if (pairMemo.size > 64) pairMemo.delete(pairMemo.keys().next().value!);
+    }
+    c.pairs = pairs;
+    for (const pk of pairs) for (const k of L.pairTrips.get(pk) ?? []) over[k] = 1;
+  }
+  const added = dayTrips().slice(baseDayTrips().length); // the twin's buses (and any added trip)
+  const nT = nBase + added.length;
+  const nQ = L.nQ;
+  const trips = added.length ? [...L.trips, ...added] : L.trips;
+  const route: (TripRoute | undefined)[] = added.length ? [...L.route, ...added.map(() => undefined)] : L.route;
+  const eff = L.eff.slice();
+  const baseOff = new Int32Array(nT + 1);
+  baseOff.set(L.base.subarray(0, nBase + 1));
+  let nCalls = L.base[nBase];
+  for (let k = nBase; k < nT; k++) {
+    baseOff[k] = nCalls;
+    nCalls += trips[k].stops.length;
+  }
+  baseOff[nT] = nCalls;
+  // connections: the static ones of unchanged trips, plus the recomputed ones (counted after the trips)
+  let keep = 0;
+  for (let y = 0; y < L.conns.n; y++) if (!over[L.conns.trip[y]]) keep++;
+  let addedConns = 0;
+  for (const trip of added) addedConns += trip.stops.length;
+  let overConns = 0;
+  for (let k = 0; k < nBase; k++) if (over[k]) overConns += L.trips[k].stops.length;
+  const buf = buffers(nCalls, keep + overConns + addedConns);
+  const view = <A extends Uint8Array | Float64Array>(x: A, src: A) => {
+    const v = x.subarray(0, nCalls) as A;
+    v.set(src);
+    if (nCalls > src.length) v.fill(0, src.length);
+    return v;
+  };
+  let callNode = L.callNode;
+  if (added.length) {
+    callNode = new Int32Array(nCalls);
+    callNode.set(L.callNode);
+  }
+  const a = { callNode, callFlag: view(buf.callFlag, L.callFlag), callArr: view(buf.callArr, L.callArr), callDep: view(buf.callDep, L.callDep), legFlag: view(buf.legFlag, L.legFlag) };
+  const firstUsable = new Int32Array(nT);
+  firstUsable.set(L.firstUsable);
+  const stopAt = new Int32Array(nT);
+  stopAt.set(L.stopAt);
+  const changed: number[] = [];
+  for (let k = 0; k < nT; k++) {
+    if (k < nBase && !over[k]) continue;
+    const trip = trips[k];
+    const e = effectiveTrip(trip, t, route[k]);
+    if (k < nBase) eff[k] = e;
+    else eff.push(e);
+    const [first, stop] = tripCalls(trip, route[k], e, closures, stationClosed, nQ, baseOff[k], a);
+    firstUsable[k] = first;
+    stopAt[k] = stop;
+    changed.push(k);
+  }
+  const fresh = connectionsOf(changed, baseOff, firstUsable, stopAt, a, L.excCalls, t - 86_400_000);
+  // merge the static connections of unchanged trips with the recomputed ones
+  const B = L.conns;
+  const nConn = keep + fresh.n;
+  const sub = <A extends Int32Array | Uint8Array | Float64Array>(x: A) => x.subarray(0, nConn) as A;
+  const P = buf.c;
+  const c: Conns = { n: nConn, trip: sub(P.trip), call: sub(P.call), dep: sub(P.dep), arr: sub(P.arr), flag: sub(P.flag), from: sub(P.from), to: sub(P.to), fromF: sub(P.fromF), toF: sub(P.toF) };
+  {
+    // a tight two-way merge (the static list without the recomputed trips, and the recomputed list)
+    const bT = B.trip, bC = B.call, bD = B.dep, bA = B.arr, bF = B.flag, bFr = B.from, bTo = B.to, bFF = B.fromF, bTF = B.toF;
+    const fT = fresh.trip, fC = fresh.call, fD = fresh.dep, fA = fresh.arr, fF = fresh.flag, fFr = fresh.from, fTo = fresh.to, fFF = fresh.fromF, fTF = fresh.toF;
+    const oT = c.trip, oC = c.call, oD = c.dep, oA = c.arr, oF = c.flag, oFr = c.from, oTo = c.to, oFF = c.fromF, oTF = c.toF;
+    const nb = B.n, nf = fresh.n;
+    let x = 0, y = 0, z = 0;
+    for (;;) {
+      while (y < nb && over[bT[y]] === 1) y++;
+      let fromB: boolean;
+      if (y < nb && z < nf) {
+        const d1 = bD[y], d2 = fD[z];
+        fromB = d1 < d2 || (d1 === d2 && (bA[y] < fA[z] || (bA[y] === fA[z] && (bT[y] < fT[z] || (bT[y] === fT[z] && bC[y] < fC[z])))));
+      } else if (y < nb) fromB = true;
+      else if (z < nf) fromB = false;
+      else break;
+      if (fromB) {
+        oT[x] = bT[y]; oC[x] = bC[y]; oD[x] = bD[y]; oA[x] = bA[y]; oF[x] = bF[y]; oFr[x] = bFr[y]; oTo[x] = bTo[y]; oFF[x] = bFF[y]; oTF[x] = bTF[y];
+        y++;
+      } else {
+        oT[x] = fT[z]; oC[x] = fC[z]; oD[x] = fD[z]; oA[x] = fA[z]; oF[x] = fF[z]; oFr[x] = fFr[z]; oTo[x] = fTo[z]; oFF[x] = fFF[z]; oTF[x] = fTF[z];
+        z++;
+      }
       x++;
     }
-  });
-  const order = sortConnections(cDep, cArr, nConn, from);
-  const sTrip = new Int32Array(nConn), sCall = new Int32Array(nConn), sDep = new Float64Array(nConn), sArr = new Float64Array(nConn), sFlag = new Uint8Array(nConn);
-  const sFrom = new Int32Array(nConn), sTo = new Int32Array(nConn), sFromF = new Uint8Array(nConn), sToF = new Uint8Array(nConn);
-  for (let y = 0; y < nConn; y++) {
-    const o = order[y];
-    sTrip[y] = cTrip[o];
-    sCall[y] = cCall[o];
-    sDep[y] = cDep[o];
-    sArr[y] = cArr[o];
-    sFlag[y] = cFlag[o];
-    const ci = base[cTrip[o]] + cCall[o];
-    sFrom[y] = callNode[ci];
-    sTo[y] = callNode[ci + 1];
-    sFromF[y] = callFlag[ci];
-    sToF[y] = callFlag[ci + 1];
   }
-  const nodes = adjacency(nQ, nNodes, used, stationOfQuay);
-  const dates = [...new Set(trips.map((trip) => trip.serviceDate))].sort();
+  let used = L.used;
+  if (added.length) {
+    used = new Uint8Array(L.used.length);
+    used.set(L.used);
+    for (let k = nBase; k < nT; k++) for (let i = 0; i < trips[k].stops.length; i++) used[a.callNode[baseOff[k] + i]] = 1;
+  }
+  const nNodes = nQ + stops.length;
+  const nodes = adjacency(nQ, nNodes, L.adjUsed, L.stationOfQuay);
+  const hasVeto = new Uint8Array(nT);
+  hasVeto.set(L.hasVeto);
+  const dates = L.dates;
   const incomplete: string[] = [];
   if (!nextDay?.trips.length) incomplete.push(`no timetable for ${nextDate()}: the search ends with today's last trains`);
   for (const d of [timetableDate(), nextDay?.date].filter(Boolean) as string[]) if (!routingLoaded().some((r) => r.date === d)) incomplete.push(`no routing data for ${d}: station-level transfer times`);
   const id = `s-${createHash("sha1").update(`${sig}|${t}`).digest("hex").slice(0, 12)}`;
   const s: Snapshot = {
-    id, builtAt: t, sig, from, until, dates, incomplete, trips, eff: effs, base, callNode, callFlag, callArr, callDep, legFlag, firstUsable, stopAt, route: routes,
-    nConn, cTrip: sTrip, cCall: sCall, cDep: sDep, cArr: sArr, cFlag: sFlag, cFrom: sFrom, cTo: sTo, cFromF: sFromF, cToF: sToF,
+    id, builtAt: t, sig, from: -Infinity, until: Math.max(L.until, t), dates, incomplete, trips, eff, base: baseOff, ...a, firstUsable, stopAt, route,
+    nConn, cTrip: c.trip, cCall: c.call, cDep: c.dep, cArr: c.arr, cFlag: c.flag, cFrom: c.from, cTo: c.to, cFromF: c.fromF, cToF: c.toF,
     nQ, nNodes, used, nodeStation: nodes.nodeStation, adjStart: nodes.adjStart, adjNode: nodes.adjNode, adjSec: nodes.adjSec, stationNodes: nodes.stationNodes,
-    exc, veto, hasVeto, byTripId, closures,
+    exc: L.exc, veto: L.veto, hasVeto, byTripId: L.byTripId, closures,
     meta: {
       feed: [...new Set(routingLoaded().map((r) => r.feed))],
       serviceDates: dates,
       rtFeedTime: live.feedTime || null,
       measureRevision: effective.generation,
       simTime: t,
-      trips: trips.length,
+      trips: nT,
       connections: nConn,
       buildMs: 0,
     },
   };
   s.meta.buildMs = Math.round(performance.now() - t0);
-  if (s.meta.buildMs > 400) console.warn(`[planner] snapshot ${s.id} took ${s.meta.buildMs} ms (${nConn} connections)`);
+  if (s.meta.buildMs > 150) console.warn(`[planner] snapshot ${s.id} took ${s.meta.buildMs} ms (${changed.length} trips recomputed)`);
   return s;
 }
 /** The published minimum time between two quays: their stop-pair row, else the Swiss default inside one stop. */
@@ -1098,7 +1302,7 @@ function validate(q: Query, w: Witness, tau: number): string | null {
     for (let c = p.i; c < p.j; c++) {
       if (e.arr[c + 1] < e.dep[c] || e.dep[c + 1] < e.arr[c + 1]) return `${trip.trainId}: times not monotonic at call ${c}`;
       if (trip.cat !== "EV") {
-        const st = legState(s.closures, trip.stops[c], trip.stops[c + 1], e.dep[c], e.arr[c + 1]);
+        const st = legState(s.closures.map((x) => ({ ...x, pairs: undefined })), trip.stops[c], trip.stops[c + 1], e.dep[c], e.arr[c + 1]);
         if (st & BLOCKED) return `${trip.trainId} runs on a closed section between ${stops[trip.stops[c]].name} and ${stops[trip.stops[c + 1]].name}`;
         if (q.certain && st & CONDITIONAL) return `${trip.trainId} relies on an unconfirmed reopening`;
         if (st & (CONDITIONAL | AFTER_REOPENING)) crossed = true;
