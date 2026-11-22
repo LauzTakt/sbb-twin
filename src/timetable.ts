@@ -61,3 +61,32 @@ export function searchStations(q: string, limit = 8) {
   hits.sort((a, b) => rank(a) - rank(b) || a.name.length - b.name.length);
   return hits.slice(0, limit);
 }
+
+/** Another service day's trips on the current stop list (the planner reads the next morning with it), or [] when
+ *  that day has no file. Unlike loadDay it never replaces the stop list: stops it does not know are dropped. */
+export async function loadDayMapped(date: string): Promise<Trip[]> {
+  const file = join(config.daysDir, `day-${date}.json.gz`);
+  if (!existsSync(file)) return [];
+  const day = JSON.parse(gunzipSync(await readFile(file)).toString()) as DayFile;
+  const map = day.stops.map(([id]) => byId.get(id) ?? -1);
+  const origin = serviceOrigin(date);
+  const out: Trip[] = [];
+  for (const [key, cat, line, head, flat] of day.trips) {
+    const [serviceDate, tripId, start] = key.split("/");
+    const n = flat.length / 3;
+    const s = new Int32Array(n);
+    const arr = new Float64Array(n);
+    const dep = new Float64Array(n);
+    let ok = true;
+    for (let i = 0; i < n; i++) {
+      s[i] = map[flat[i * 3]] ?? -1;
+      if (s[i] < 0) ok = false;
+      arr[i] = origin + flat[i * 3 + 1] * 1000;
+      dep[i] = origin + flat[i * 3 + 2] * 1000;
+    }
+    if (!ok) continue;
+    const trainId = `${serviceDate}_${tripId.replace(/^\./, "")}${start ? `_${start}` : ""}`.replace(/[+#/\s]/g, "-");
+    out.push({ key, trainId, tripId, serviceDate, cat, line: line.replace(/\s+/g, ""), head, stops: s, arr, dep });
+  }
+  return out;
+}

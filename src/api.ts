@@ -237,7 +237,8 @@ export function api() {
     if (!from || !to) throw new InputError("from and to are required (station id or name)");
     const after = Number(c.req.query("after") ?? Date.now()) || Date.now();
     const limit = Math.max(1, Math.min(6, Number(c.req.query("limit") ?? 4) || 4));
-    const r = plan(from, to, after, limit);
+    const mt = c.req.query("maxTransfers");
+    const r = plan(from, to, after, limit, { maxTransfers: mt === undefined ? undefined : Number(mt), via: c.req.query("via") || undefined, includeWait: c.req.query("includeWait") === "true" || c.req.query("includeWait") === "1" });
     return "error" in r ? c.json({ error: r.error }, 404) : c.json(r);
   });
   app.get("/brief", (c) => {

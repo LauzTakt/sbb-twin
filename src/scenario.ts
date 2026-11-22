@@ -184,11 +184,16 @@ function candidates(d: Disruption & { scenario: Scenario }, trips: Trip[]) {
   touching.set(d.id, { trips, list });
   return list;
 }
+const changeSignature = () => {
+  let h = tripChanges.size;
+  for (const [key, ch] of tripChanges) for (const ch2 of `${key}${ch.cut ?? ""}|${ch.holdAt ?? ""}|${ch.holdUntil ?? ""}|${ch.startAt ?? ""}`) h = (h * 31 + ch2.charCodeAt(0)) | 0;
+  return h;
+};
 /** Rebuild every trip change from the scenario disruptions (committed short turns stay as they are). */
 export function recompute(t = Date.now()) {
   const t0 = performance.now();
   lastRecompute = t;
-  effective.generation++;
+  const before = changeSignature();
   tripChanges.clear();
   const all = scenarios();
   for (const d of all) {
@@ -243,6 +248,7 @@ export function recompute(t = Date.now()) {
       } else if (st.cancelShare > 0 && fraction(trip.trainId) < st.cancelShare) cutAt("one_track_open");
     }
   }
+  if (changeSignature() !== before) effective.generation++; // readers (the planner) rebuild only on a real change
   const ms = performance.now() - t0;
   if (ms > Number(process.env.SCENARIO_WARN_MS ?? 150)) console.warn(`[scenario] effective timetable took ${Math.round(ms)} ms`);
 }

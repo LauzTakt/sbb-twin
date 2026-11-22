@@ -97,7 +97,7 @@ export function brief(q: { station?: string; from?: string; to?: string }) {
     const a = resolveStation(q.from);
     const b = resolveStation(q.to);
     if (a === undefined || b === undefined) return { error: `Unknown station: ${a === undefined ? q.from : q.to}` };
-    const p = plan(stops[a].id, stops[b].id, t, 3);
+    const p = plan(stops[a].id, stops[b].id, t, 3, { quick: true });
     const journeys = "error" in p ? [] : p.journeys.slice(0, 3);
     // the way between: every station the journeys call at (boarding, changing, alighting) and their trains
     const ids = new Set([stops[a].id, stops[b].id]);

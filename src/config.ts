@@ -24,7 +24,7 @@ export const config = {
   daysDir: process.env.RAIL_DAYS_DIR ?? (existsSync(here("../data/days/")) ? here("../data/days/") : "/workspace/sbb/gtfs/"),
   gtfsRtKey: process.env.OTD_GTFS_RT_KEY ?? "",
   gtfsRtUrl: process.env.OTD_GTFS_RT_URL ?? "https://api.opentransportdata.swiss/la/gtfs-rt",
-  rtIntervalMs: Number(process.env.RT_INTERVAL_MS ?? 30_000),
+  rtIntervalMs: Number(process.env.RT_INTERVAL_MS ?? 13_000), // the API allows 5 calls a minute: one every 13 s keeps a small margin,
   // real service alerts (a separate opentransportdata.swiss key)
   gtfsSaKey: process.env.OTD_GTFS_SA_KEY ?? "",
   gtfsSaUrl: process.env.OTD_GTFS_SA_URL ?? "https://api.opentransportdata.swiss/la/gtfs-sa",
