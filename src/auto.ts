@@ -11,7 +11,7 @@ import { createHash } from "node:crypto";
 import { byTrainId, delayOf, trains, type Train } from "./engine.ts";
 import { stops } from "./timetable.ts";
 import { edgesGeometry, pathBetween, sectionEdges } from "./geometry.ts";
-import { incidents, type Incident } from "./disruptions.ts";
+import { incidents, tripChanges, type Incident } from "./disruptions.ts";
 
 const STOPPED_S = 30;
 const SLOW_S = 60;
@@ -80,6 +80,9 @@ export function autoIncidents(t: number, crashes: { trainId: string; impactKmh: 
     const id = tr.trip.trainId;
     if (collided.has(id) && (tr.mode !== "sim" || tr.speed >= 0.5)) collided.delete(id); // released or synced
     if (!onMap(tr)) continue;
+    // already explained in public: a control-centre disruption cut, cancelled or holds this trip (its bulletin says so)
+    const explained = tripChanges.has(tr.trip.key);
+    if (tr.cancelled && explained) continue;
     if (tr.cancelled) {
       want.set(`auto-cancelled-${hash(id)}`, train("cancelled", tr, "minor", `Cancelled: ${label(tr)}`));
       continue;
@@ -104,7 +107,7 @@ export function autoIncidents(t: number, crashes: { trainId: string; impactKmh: 
       const arrived = tr.actArr[k];
       if (k < tr.trip.stops.length - 1 && Number.isFinite(arrived)) {
         const due = Math.max(tr.trip.dep[k], arrived + (tr.trip.dep[k] - tr.trip.arr[k]));
-        if (t - due >= HELD_S * 1000) push(heldAt, tr.trip.stops[k], tr);
+        if (t - due >= HELD_S * 1000 && !explained) push(heldAt, tr.trip.stops[k], tr);
       }
     }
     // late, or losing time fast

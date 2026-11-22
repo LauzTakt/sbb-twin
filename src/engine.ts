@@ -405,8 +405,13 @@ export function liveTimes(trip: Trip, t: number) {
   const n = trip.stops.length;
   const change = tripChanges.get(trip.key);
   let lastServed = n - 1;
+  let firstServed = 0;
   let cancelled = base.cancelled;
   if (change) {
+    if (change.startAt !== undefined) {
+      firstServed = change.startAt;
+      base.from = Math.max(base.from, change.startAt);
+    }
     if (change.cut !== undefined && change.cut >= base.from) {
       lastServed = change.cut;
       if (change.cut === 0) cancelled = true;
@@ -423,7 +428,7 @@ export function liveTimes(trip: Trip, t: number) {
       }
     }
   }
-  return { ...base, cancelled, lastServed, change };
+  return { ...base, cancelled, lastServed, firstServed, change };
 }
 function baseTimes(trip: Trip, t: number) {
   const tr = trains.get(trip.key);
@@ -470,7 +475,7 @@ export function stationBoard(station: number, t: number, minutes = 60, limit = 1
       const lt = liveTimes(trip, t);
       if (lt.skipped[i]) continue; // passes without stopping
       const expected = lt.dep[i];
-      const cancelled = lt.cancelled || i >= lt.lastServed;
+      const cancelled = lt.cancelled || i >= lt.lastServed || i < lt.firstServed;
       if (expected < t - 60_000 && !cancelled) continue;
       const cut = lt.lastServed < n - 1 && i < lt.lastServed;
       rows.push({
@@ -565,7 +570,13 @@ function makeTrain(trip: Trip, t: number, rt?: TripLive): Train {
     infoAt: 0,
     continuity: 0,
   };
-  settle(tr, place(tr, t), 0);
+  const ch0 = tripChanges.get(trip.key);
+  const s0 = ch0?.startAt;
+  if (s0) {
+    tr.tau = Math.max(t, tr.eArr[s0]); // enters service at its first served call
+    ch0!.committed = true;
+  }
+  settle(tr, place(tr, tr.tau), 0);
   return tr;
 }
 
@@ -626,6 +637,15 @@ function step(tr: Train, t: number, dt: number) {
   const change = tripChanges.get(tr.trip.key);
   const pos = tr.leg >= 0 ? tr.leg + 1 : tr.call;
   const cut = change?.cut !== undefined && change.cut >= pos && change.cut < n - 1 ? change.cut : undefined;
+  if (change?.startAt && tr.leg < 0 && tr.call < change.startAt && Number.isNaN(tr.actDep[tr.call])) {
+    // not departed yet and its first served call is after a closed section: it enters service there
+    tr.tau = Math.max(tr.tau, tr.eArr[change.startAt]);
+    tr.warp = 0;
+    tr.continuity++;
+    settle(tr, place(tr, tr.tau), 0);
+    change.committed = true;
+    disruptions.get(change.by)?.affected.add(tr.trip.trainId);
+  }
   if (cut !== undefined && cut === 0 && tr.leg < 0) {
     change!.committed = true;
     disruptions.get(change!.by)?.affected.add(tr.trip.trainId);
@@ -854,7 +874,8 @@ export function tick(t: number): TickResult {
       if (trip.dep[0] - 3_600_000 > t || last + 4 * 3_600_000 < t) continue;
       const rt = live.trips.get(trip.key);
       const tl = timeline(trip, rt);
-      if (t < tl.eDep[0] - 120_000 || t > tl.eArr[tl.eArr.length - 1] + 60_000) continue;
+      const s0 = tripChanges.get(trip.key)?.startAt ?? 0; // it starts after a closed section
+      if (t < tl.eDep[s0] - 120_000 || t > tl.eArr[tl.eArr.length - 1] + 60_000) continue;
       const tr = makeTrain(trip, t, rt);
       trains.set(trip.key, tr);
       byTrainId.set(trip.trainId, tr);

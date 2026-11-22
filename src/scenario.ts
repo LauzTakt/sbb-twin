@@ -9,7 +9,7 @@
 //   - the public bulletin (a new version on every change) and the public incident.
 import { createHash, randomUUID } from "node:crypto";
 import { CAUSES, causeOf, MEASURES, proposal, type DurationType, type EffectState, type MeasureType } from "./catalogue.ts";
-import { disruptions, incidents, InputError, tripChanges, type Bulletin, type BulletinMessage, type Disruption, type Incident, type Measure, type Scenario } from "./disruptions.ts";
+import { disruptions, incidents, InputError, tripChanges, type Bulletin, type BulletinMessage, type Disruption, type Incident, type Measure, type Scenario, type TripChange } from "./disruptions.ts";
 import { dayTrips, liveTimes, removeExtraTrips, setExtraTrips, timetableDate, trains } from "./engine.ts";
 import { stationIndex, stops, type Trip } from "./timetable.ts";
 import { edgeSpans, edgesGeometry, edgesWithin, metres, pathBetween, sectionEdges } from "./geometry.ts";
@@ -130,7 +130,10 @@ export function stateAt(d: Disruption & { scenario: Scenario }, at: number, now 
   if (sc.resumedAt !== undefined && at >= sc.resumedAt) return { ...out, state: "resumed" };
   for (const m of [...sc.measures].sort((x, y) => x.at - y.at)) {
     if (m.announcedAt > now || m.at > at) continue;
-    if (m.type === "partial_resumption") out.state = "limited";
+    if (m.type === "partial_resumption") {
+      out.state = "limited";
+      if (m.params.kmh !== undefined) out.kmh = Number(m.params.kmh) || 40;
+    }
     else if (m.type === "interruption") out.state = "interrupted";
     else if (m.type === "one_track_open") {
       out.state = "limited";
@@ -185,7 +188,10 @@ export function recompute(t = Date.now()) {
   lastRecompute = t;
   tripChanges.clear();
   const all = scenarios();
-  for (const d of all) for (const [key, cut] of Object.entries(d.scenario.committed)) tripChanges.set(key, { by: d.id, cut, reason: "short_turn", committed: true });
+  for (const d of all) {
+    for (const [key, cut] of Object.entries(d.scenario.committed)) tripChanges.set(key, { by: d.id, cut, reason: "short_turn", committed: true });
+    for (const [key, startAt] of Object.entries(d.scenario.committedStart ?? {})) tripChanges.set(key, { by: d.id, startAt, reason: "short_turn", committed: true });
+  }
   const trips = dayTrips();
   for (const d of all) {
     if (d.endedAt) continue;
@@ -212,11 +218,16 @@ export function recompute(t = Date.now()) {
       if (!atStation && lt.dep[k] < sc.start - 60_000) continue; // it passes before the disruption starts
       const st = stateAt(d, D, t);
       if (st.state === "resumed") continue; // it gets there after service resumed
-      const from = (m: Measure) => D >= m.at;
+      const from = (m: Measure) => D >= m.at && (m.withdrawAt === undefined || D < m.withdrawAt);
       const side = sideOf(sc, trip.stops[k]);
+      // a cut at its origin: when it continues beyond the section, it starts there instead (the unit that turned back)
+      const notStarted = !tr || (tr.leg < 0 && Number.isNaN(tr.actDep[tr.call]) && tr.call === 0);
+      let after = k;
+      while (after < n - 1 && hits(d, trip.stops[after], trip.stops[after + 1])) after++;
+      const cutAt = (reason: TripChange["reason"]) => tripChanges.set(trip.key, k === 0 && notStarted && after < n - 1 ? { by: d.id, startAt: after, reason } : { by: d.id, cut: k, reason });
       const cancelled = announced(d, "cancel_lines", t).some((m) => from(m) && ((m.params.lines as string[]) ?? []).includes(trip.line));
       if (cancelled) {
-        tripChanges.set(trip.key, { by: d.id, cut: k, reason: "cancel_lines" });
+        cutAt("cancel_lines");
         continue;
       }
       if (st.state === "interrupted") {
@@ -224,9 +235,9 @@ export function recompute(t = Date.now()) {
         const hold = announced(d, "hold", t).filter(from).at(-1);
         const maxWait = Number(hold?.params.maxWaitMin ?? HOLD_MAX_MIN) * 60_000;
         const turn = announced(d, "short_turn", t).some((m) => from(m) && (m.params.at === undefined || m.params.at === "both" || m.params.at === side));
-        if (turn && wait > maxWait) tripChanges.set(trip.key, { by: d.id, cut: k, reason: "short_turn" });
+        if (turn && wait > maxWait) cutAt("short_turn");
         else tripChanges.set(trip.key, { by: d.id, holdAt: k, holdUntil: end ?? undefined, reason: "hold" });
-      } else if (st.cancelShare > 0 && fraction(trip.trainId) < st.cancelShare) tripChanges.set(trip.key, { by: d.id, cut: k, reason: "one_track_open" });
+      } else if (st.cancelShare > 0 && fraction(trip.trainId) < st.cancelShare) cutAt("one_track_open");
     }
   }
   const ms = performance.now() - t0;
@@ -285,6 +296,7 @@ function refreshBuses(d: Disruption & { scenario: Scenario }, t: number) {
   if (!d.endedAt && seq.length >= 2) {
     const end = expectedEnd(d, t);
     for (const m of announced(d, "replacement_bus", t)) {
+      if (m.params.sought) continue; // still being organised: no departures yet
       const until = Math.min(m.withdrawAt ?? Infinity, end ?? t + BUS_HORIZON_MS, t + 6 * 3600_000);
       for (const side of ["A", "B"] as const) {
         const route = side === "A" ? seq : [...seq].reverse();
@@ -315,12 +327,13 @@ const T = {
     where: (a: string, b?: string) => (b ? `between ${a} and ${b}` : `at ${a}`),
     head: (state: EffectState, where: string) => `${state === "interrupted" ? "Interrupted" : "Limited"} train service ${where}.`,
     cause: (clause: string) => `This is due to ${clause}.`,
-    duration: (type: DurationType, until: number | null) => (until === null || type === "UNKNOWN" ? null : type === "UNTIL" ? `The restriction lasts until approx. ${hhmm(until)}.` : `The restriction lasts at least until ${hhmm(until)}.`),
+    duration: (type: DurationType, until: number | null) => (until === null || type === "UNKNOWN" ? "The duration of the restriction is not known." : type === "UNTIL" ? `The restriction lasts until approx. ${hhmm(until)}.` : `The restriction lasts at least until ${hhmm(until)}.`),
     lines: (lines: string[]) => (lines.length ? (lines.length === 1 ? `Line ${lines[0]} is affected.` : `Lines ${joinAnd(lines)} are affected.`) : null),
     allow: "Allow for delays and cancellations.",
     none: "No trains are running.",
     oneTrack: (kmh: number) => `Trains run on one track at reduced speed (${kmh} km/h).`,
     bus: (where: string) => `Passengers travelling ${where} should use the replacement bus service (EV).`,
+    sought: (where: string) => `Replacement buses (EV) are being organized ${where}. Please allow for longer waiting times.`,
     resumed: (where: string) => `The train service ${where} has been resumed.\nAllow for further delays and occasional cancellations.`,
   },
 };
@@ -335,7 +348,9 @@ function messages(d: Disruption & { scenario: Scenario }, t: number): BulletinMe
   for (const m of sc.measures) {
     if (m.announcedAt > t) continue;
     const from = m.at > m.announcedAt + 60_000 ? ` from ${hhmm(m.at)}` : "";
-    if (m.type === "replacement_bus") {
+    if (m.type === "replacement_bus" && m.params.sought) {
+      out.push({ ts: m.announcedAt, title: "Replacement bus", text: `Replacement buses (EV) are being organized ${where}. Long waiting times are to be expected.` });
+    } else if (m.type === "replacement_bus") {
       const f = firstBuses(d, m, t);
       const pattern = Array.isArray(m.params.minutesA) || Array.isArray(m.params.minutesB);
       const mins = (xs: unknown) => joinAnd(((xs as number[]) ?? []).map((x) => `:${String(x).padStart(2, "0")}`));
@@ -347,7 +362,7 @@ function messages(d: Disruption & { scenario: Scenario }, t: number): BulletinMe
           ? `First departures from ${A} at ${hhmm(f.A[0])} and from ${B} at ${hhmm(f.B[0])}, then every ${Number(m.params.everyMin ?? 15)} minutes.`
           : "";
       out.push({ ts: m.announcedAt, title: "Replacement bus", text: [route, times, "Please allow for longer travel times."].filter(Boolean).join(" ") });
-      if (m.withdrawAt !== undefined && (m.withdrawnAnnouncedAt ?? m.announcedAt) <= t)
+      if (m.withdrawAt !== undefined && (m.withdrawnAnnouncedAt ?? m.announcedAt) <= t && !m.params.replaced)
         out.push({ ts: m.withdrawnAnnouncedAt ?? m.announcedAt, title: "Replacement bus", text: `The replacement buses ${where} stop running at ${hhmm(m.withdrawAt)}.` });
     } else if (m.type === "prognosis") {
       const until = m.params.until as number | null;
@@ -365,7 +380,7 @@ function messages(d: Disruption & { scenario: Scenario }, t: number): BulletinMe
     } else if (m.type === "hold") out.push({ ts: m.announcedAt, title: "Impact on train services", text: `Trains wait ${B ? `at ${A} and ${B}` : `before ${A}`} until the line reopens.` });
     else if (m.type === "cancel_lines") {
       const lines = ((m.params.lines as string[]) ?? []).slice().sort(byLine);
-      out.push({ ts: m.announcedAt, title: "Cancellations", text: `${lines.length === 1 ? `Line ${lines[0]} is` : `Lines ${joinAnd(lines)} are`} cancelled ${where}${from || ` from ${hhmm(m.at)}`}.` });
+      out.push({ ts: m.announcedAt, title: "Cancellations", text: `${lines.length === 1 ? `Line ${lines[0]} is` : `Lines ${joinAnd(lines)} are`} cancelled ${where}${from}.` });
     } else if (m.type === "resume") {
       if (m.at > t) out.push({ ts: m.announcedAt, title: "Traffic can resume", text: `Trains can run ${where} again from ${hhmm(m.at)}.` });
       else out.push({ ts: Math.max(m.announcedAt, m.at), title: "End of disruption", text: `The disruption ${where} is over. Allow for further delays and occasional cancellations.` });
@@ -374,6 +389,15 @@ function messages(d: Disruption & { scenario: Scenario }, t: number): BulletinMe
   return out.sort((x, y) => x.ts - y.ts);
 }
 
+/** When limited, the lines still affected: those of the trains the disruption still cuts (as SBB lists them). */
+function linesCut(d: Disruption & { scenario: Scenario }) {
+  const out = new Set<string>();
+  for (const { trip } of candidates(d, dayTrips())) {
+    const ch = tripChanges.get(trip.key);
+    if (ch && ch.by === d.id && (ch.cut !== undefined || ch.startAt !== undefined) && !ch.committed) out.add(trip.line);
+  }
+  return [...out].filter((l) => d.scenario.lines.includes(l)).sort(byLine);
+}
 /** The public bulletin as it reads at time t (deterministic: the same record gives the same text). */
 export function render(d: Disruption & { scenario: Scenario }, t: number): Omit<Bulletin, "version" | "ts"> {
   const sc = d.scenario;
@@ -382,24 +406,30 @@ export function render(d: Disruption & { scenario: Scenario }, t: number): Omit<
   const where = L.where(A, B);
   const place = B ? `${A} - ${B}` : A;
   const st = stateAt(d, t, t);
-  const base = { id: d.id, lang: "en" as const, lines: sc.lines, messages: messages(d, t) };
+  const lines = st.state === "limited" ? linesCut(d) : sc.lines;
+  const base = { id: d.id, lang: "en" as const, lines: lines.length ? lines : sc.lines, messages: messages(d, t) };
   if (st.state === "resumed") return { ...base, lifecycle: "ENDED", title: L.title("resumed", place), description: L.resumed(where) };
   const cause = causeOf(sc.cause.code);
-  const bus = announced(d, "replacement_bus", t).some((m) => m.at <= t + 30 * 60_000 && (m.withdrawAt === undefined || m.withdrawAt > t));
+  const bus = busState(d, t);
   const description = [
     L.head(st.state, where),
     L.cause(cause?.clause.en ?? sc.cause.label.toLowerCase()),
     L.duration(st.durationType, st.until),
-    L.lines(sc.lines),
+    L.lines(base.lines),
     L.allow,
     st.state === "interrupted" ? L.none : announced(d, "one_track_open", t).some((m) => m.at <= t) ? L.oneTrack(st.kmh) : null,
-    bus && B ? L.bus(where) : null,
+    bus === "running" && B ? L.bus(where) : bus === "sought" && B ? L.sought(where) : null,
   ]
     .filter(Boolean)
     .join("\n");
   return { ...base, lifecycle: "INFO", title: L.title(st.state, place), description };
 }
 
+/** Replacement buses now: running (or decided, first departure within 30 min), still being organised, or none. */
+function busState(d: Disruption & { scenario: Scenario }, t: number): "running" | "sought" | null {
+  const live = announced(d, "replacement_bus", t).filter((m) => m.at <= t + 30 * 60_000 && (m.withdrawAt === undefined || m.withdrawAt > t));
+  return live.some((m) => !m.params.sought) ? "running" : live.length ? "sought" : null;
+}
 export const latestBulletin = (d: Disruption & { scenario: Scenario }) => d.scenario.bulletins.at(-1) ?? null;
 const severityOf = (s: StateAt["state"]): Incident["severity"] => (s === "interrupted" ? "critical" : s === "limited" ? "major" : "info");
 
@@ -424,13 +454,13 @@ function publicIncident(d: Disruption & { scenario: Scenario }, b: Bulletin, t: 
     updatedAt: t,
     cause: sc.cause,
     effect: st.state === "resumed" ? "resumed" : st.state,
-    lines: sc.lines,
+    lines: b.lines,
     durationType: st.durationType,
     until: st.until,
     lifecycle: b.lifecycle,
     bulletinVersion: b.version,
     messages: b.messages,
-    replacementBus: announced(d, "replacement_bus", t).some((m) => m.at <= t + 30 * 60_000 && (m.withdrawAt === undefined || m.withdrawAt > t)),
+    replacementBus: busState(d, t) === "running",
   };
 }
 
@@ -473,8 +503,12 @@ export function scenarioTick(t = Date.now(), force = false) {
       d.params.maxKmh = st.kmh;
     }
     d.endsAt = d.endedAt ? d.endedAt : expectedEnd(d, t);
-    for (const [key, ch] of tripChanges) if (ch.committed && ch.by === d.id && ch.cut !== undefined) sc.committed[key] = ch.cut;
-    const sig = `${st.state}|${d.endsAt}|${sc.measures.length}|${sc.measures.map((m) => `${m.withdrawAt ?? ""}${m.at <= t ? 1 : 0}`).join()}|${Object.keys(sc.committed).length}`;
+    for (const [key, ch] of tripChanges) {
+      if (!ch.committed || ch.by !== d.id) continue;
+      if (ch.cut !== undefined) sc.committed[key] = ch.cut;
+      else if (ch.startAt !== undefined) (sc.committedStart ??= {})[key] = ch.startAt;
+    }
+    const sig = `${st.state}|${d.endsAt}|${sc.measures.length}|${sc.measures.map((m) => `${m.withdrawAt ?? ""}${m.at <= t ? 1 : 0}`).join()}|${Object.keys(sc.committed).length}|${Object.keys(sc.committedStart ?? {}).length}`;
     if (sigs.get(d.id) !== sig) {
       sigs.set(d.id, sig);
       dirty = true;
@@ -646,14 +680,13 @@ export function acceptProposal(d: Disruption & { scenario: Scenario }, now = Dat
   scenarioTick(now, true);
   return added;
 }
-export function withdrawMeasure(d: Disruption & { scenario: Scenario }, measureId: string, at: unknown, now = Date.now()) {
+export function withdrawMeasure(d: Disruption & { scenario: Scenario }, measureId: string, at: unknown, now = Date.now(), replaced = false) {
   const m = d.scenario.measures.find((x) => x.id === measureId);
   if (!m) throw new InputError("Unknown measure");
-  if (m.type !== "replacement_bus") {
-    // decisions other than buses are withdrawn by removing them if they have not taken effect yet
-    if (m.at <= now) throw new InputError("Only replacement buses or decisions not yet in effect can be withdrawn");
-    d.scenario.measures.splice(d.scenario.measures.indexOf(m), 1);
-  } else {
+  if (replaced) m.params.replaced = true; // superseded by a newer decision: no separate withdrawal message
+  if (m.at > now && m.announcedAt <= now && at === undefined) d.scenario.measures.splice(d.scenario.measures.indexOf(m), 1); // not in effect yet: dropped
+  else if (["partial_resumption", "interruption", "prognosis", "resume"].includes(m.type) && m.at <= now) throw new InputError("This decision already took effect");
+  else {
     m.withdrawAt = parseTime(at, now);
     m.withdrawnAnnouncedAt = now;
   }
@@ -682,7 +715,8 @@ export function scenarioFields(d: Disruption & { scenario: Scenario }, t = Date.
   const b = latestBulletin(d);
   let cut = 0;
   let held = 0;
-  for (const ch of tripChanges.values()) if (ch.by === d.id) ch.cut !== undefined ? cut++ : held++;
+  let late = 0;
+  for (const ch of tripChanges.values()) if (ch.by === d.id) ch.cut !== undefined ? cut++ : ch.startAt !== undefined ? late++ : held++;
   return {
     kind: "scenario",
     cause: sc.cause,
@@ -702,7 +736,7 @@ export function scenarioFields(d: Disruption & { scenario: Scenario }, t = Date.
     bulletin: b,
     summary: b?.title ?? d.label,
     description: b?.description ?? "",
-    impact: { tripsCut: cut, tripsHeld: held, buses: busTrips.get(d.id)?.length ?? 0 },
+    impact: { tripsCut: cut, tripsStartingAfter: late, tripsHeld: held, buses: busTrips.get(d.id)?.length ?? 0 },
     linkedTrain: sc.linkedTrain ?? null,
   };
 }

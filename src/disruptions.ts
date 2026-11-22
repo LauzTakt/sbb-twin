@@ -74,6 +74,7 @@ export type Scenario = {
   inside: string[]; // stations between A and B (closed with the section)
   busStops: string[]; // A, the stations between, B: the replacement bus route
   committed: Record<string, number>; // trip key -> last served call, decided and carried out (stays after a resume)
+  committedStart?: Record<string, number>; // trip key -> first served call, for trips that entered service after the section
   bulletins: Bulletin[]; // every version, oldest first
   proposal: Proposal;
   linkedTrain?: string; // created by a train breakdown: ends when the train is released
@@ -84,6 +85,7 @@ export type Scenario = {
 export type TripChange = {
   by: string; // disruption id
   cut?: number; // last served call: the run ends there, later calls are cancelled (0 = the whole trip is cancelled)
+  startAt?: number; // first served call: its origin side is closed, so it starts after the section (the unit turned there)
   holdAt?: number; // the call where it waits for the section to reopen
   holdUntil?: number; // expected reopening
   reason: "short_turn" | "cancel_lines" | "one_track_open" | "hold";

@@ -8,6 +8,7 @@ import { bulletins, controlState, disruptionPayload, event, incidentPayload, inf
 import { CAUSES, MEASURES } from "./catalogue.ts";
 import { acceptProposal, addMeasure, createScenario, forgetAll, isScenario, latestBulletin, resume, scenarioTick, setState, withdrawMeasure, type ScenarioInput } from "./scenario.ts";
 import { stops } from "./timetable.ts";
+import { replayOutcome, replayStatus, startReplay } from "./replay.ts";
 import { clear, publish } from "./mqtt.ts";
 import { releaseAll, releaseTrain } from "./god.ts";
 import { alertsState } from "./alerts.ts";
@@ -161,7 +162,7 @@ export function api() {
     const d = scenarioOf(c.req.param("id"));
     if (!d) return c.json({ error: "Unknown disruption" }, 404);
     const b = await body(c);
-    withdrawMeasure(d, c.req.param("mid"), b.at);
+    withdrawMeasure(d, c.req.param("mid"), b.at, Date.now(), b.replaced === true);
     return c.json(answer(d));
   });
   app.post("/disruptions/:id/proposal/accept", (c) => {
@@ -196,6 +197,9 @@ export function api() {
     return c.json({ removed: d.id });
   });
   app.get("/bulletins", (c) => c.json(bulletins()));
+  app.get("/replays", (c) => c.json(replayStatus()));
+  app.get("/replays/outcome", (c) => c.json(replayOutcome()));
+  app.post("/replays/:name/start", (c) => c.json(startReplay(c.req.param("name")), 201));
   app.get("/bulletins/:id", (c) => {
     const d = disruptions.get(c.req.param("id"));
     if (!d || !isScenario(d)) return c.json({ error: "Unknown disruption" }, 404);

@@ -60,6 +60,7 @@ export function infoPayload(tr: Train, t: number) {
   // the effective timetable: forecast times (a hold until the section reopens) and the last call it serves
   const lt = liveTimes(tr.trip, t);
   const last = lt.lastServed;
+  const first = lt.firstServed;
   const cut = last < n - 1;
   return {
     v: 1,
@@ -72,7 +73,9 @@ export function infoPayload(tr: Train, t: number) {
     operator: m?.[1] || null,
     headsign: cut ? stop(last).name : tr.trip.head,
     status: tr.cancelled || lt.cancelled ? "cancelled" : tr.terminatedAt ? "terminated" : "active",
-    origin: { id: stop(0).id, name: stop(0).name },
+    origin: { id: stop(first).id, name: stop(first).name },
+    plannedOrigin: { id: stop(0).id, name: stop(0).name },
+    firstServedSequence: first,
     destination: { id: stop(last).id, name: stop(last).name },
     plannedDestination: { id: stop(n - 1).id, name: stop(n - 1).name },
     lastServedSequence: last,
@@ -84,12 +87,12 @@ export function infoPayload(tr: Train, t: number) {
       lon: r6(stop(i).lon),
       plannedArr: i > 0 ? tr.trip.arr[i] : null,
       plannedDep: i < n - 1 ? tr.trip.dep[i] : null,
-      expectedArr: i > 0 && i > passed && i <= last ? Math.round(lt.arr[i]) : null,
-      expectedDep: i < last && i >= passed && !(i === passed && tr.leg >= 0) ? Math.round(lt.dep[i]) : null,
+      expectedArr: i > 0 && i > passed && i <= last && i > first ? Math.round(lt.arr[i]) : null,
+      expectedDep: i < last && i >= first && i >= passed && !(i === passed && tr.leg >= 0) ? Math.round(lt.dep[i]) : null,
       actualArr: i > 0 ? num(tr.actArr[i]) : null,
       actualDep: i < n - 1 ? num(tr.actDep[i]) : null,
-      skipped: Boolean(tr.skipped[i]) || i > last,
-      cancelled: i > last,
+      skipped: Boolean(tr.skipped[i]) || i > last || i < first,
+      cancelled: i > last || i < first,
     })),
     updatedAt: t,
   };
@@ -98,7 +101,7 @@ export function infoPayload(tr: Train, t: number) {
 function infoSignature(tr: Train, t: number) {
   const k = nextCall(tr);
   const lt = liveTimes(tr.trip, t);
-  return `${tr.cancelled || lt.cancelled}|${Math.round(delayOf(tr, t) / 30)}|${k}|${Array.from(tr.skipped).join("")}|${lt.lastServed}|${Math.round((lt.dep[Math.min(k, lt.dep.length - 1)] ?? 0) / 60_000)}|${tr.terminatedAt ? 1 : 0}`;
+  return `${tr.cancelled || lt.cancelled}|${Math.round(delayOf(tr, t) / 30)}|${k}|${Array.from(tr.skipped).join("")}|${lt.lastServed}|${lt.firstServed}|${Math.round((lt.dep[Math.min(k, lt.dep.length - 1)] ?? 0) / 60_000)}|${tr.terminatedAt ? 1 : 0}`;
 }
 
 /** Ground truth for a train a provoked disruption took over (never in the public payloads). */

@@ -1,4 +1,5 @@
 // sbb-twin: live digital twin of every Swiss train, published on MQTT.
+import { nextTickIn } from "./clock.ts"; // first: a replay replaces the clock before anything reads it
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
@@ -19,6 +20,7 @@ import { publish } from "./mqtt.ts";
 import { alertsState, pollAlerts } from "./alerts.ts";
 import { bulletins } from "./feed.ts";
 import { scenarioTick } from "./scenario.ts";
+import { recordRemoved, replayTick, startReplay } from "./replay.ts";
 
 process.on("unhandledRejection", (e) => console.error("[sbb-twin] unhandled:", (e as Error)?.message ?? e));
 
@@ -63,18 +65,21 @@ server.listen(config.port, config.host, () =>
   console.log(`[sbb-twin] viewer + API http://${config.host}:${config.port}/ · MQTT ${config.mqttUrl ? `on ${new URL(config.mqttUrl).host} (read-only WebSocket proxy at /mqtt)` : `tcp://${config.host}:${config.mqttPort} + ws://${config.host}:${config.port}/mqtt`}`),
 );
 event("system", { type: "system.started" });
+if (process.env.RAIL_REPLAY_SCENARIO) console.log("[replay]", JSON.stringify(startReplay(process.env.RAIL_REPLAY_SCENARIO).upcoming?.length ?? 0), "steps to come");
 
 // One tick per wall-clock second: every train moves, then everything is published with that timestamp.
 function loop() {
   const t = Math.floor(Date.now() / 1000) * 1000;
   try {
+    replayTick(t); // a scripted replay's decisions at their real times
     scenarioTick(t); // decisions taking effect, the effective timetable, buses and bulletins
     const { removed } = tick(t);
+    recordRemoved(removed);
     publishTick(t, removed);
   } catch (err) {
     console.error("[sbb-twin] tick failed:", err);
   }
-  setTimeout(loop, 1000 - (Date.now() % 1000) + 5);
+  setTimeout(loop, nextTickIn());
 }
 loop();
 console.log(`[sbb-twin] ${trains.size} trains in service`);
