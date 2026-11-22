@@ -1660,7 +1660,7 @@ export function plan(fromQ: string, toQ: string, after = Date.now(), limit = 4, 
   const pick = out.find((j) => !j.uncertain);
   for (const j of out) if (j === pick) j.fastest = true; else delete j.fastest;
   const ms = Math.round((performance.now() - t0) * 10) / 10;
-  if (cut) incomplete.push("the search stopped at its time budget: the best journey is exact, later alternatives may be missing");
+  if (cut) incomplete.push("the search stopped at its time budget: the earliest arrival is exact; a later departure for it, or later alternatives, may be missing");
   return {
     from: place(from),
     to: place(to),
